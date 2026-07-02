@@ -1,0 +1,716 @@
+     1→"use client";
+     2→
+     3→import { motion } from "framer-motion";
+     4→import {
+     5→  Plane, Hotel, Bus, Palmtree, TrendingUp, TrendingDown, Wallet,
+     6→  Users, Target, Receipt, DollarSign, Calendar, ArrowUpRight, ArrowRight,
+     7→  Bell, Plus, FileSpreadsheet, CreditCard, Building2, Activity,
+     8→  Server, Globe, Zap, AlertTriangle, CheckCircle2, Clock,
+     9→} from "lucide-react";
+    10→import {
+    11→  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+    12→  PieChart, Pie, Cell,
+    13→} from "recharts";
+    14→import { useAuthStore } from "@/store/app-store";
+    15→import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+    16→import { Button } from "@/components/ui/button";
+    17→import { Badge } from "@/components/ui/badge";
+    18→import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+    19→import {
+    20→  REVENUE_DATA, BOOKING_TYPE_DATA, TOP_DESTINATIONS, RECENT_ACTIVITIES,
+    21→  BOOKINGS, NOTIFICATIONS, AGENCIES, LEADS, TASKS,
+    22→} from "@/lib/mock-data";
+    23→import { formatINR, formatFullINR, StatusBadge, avatarGradient, initials } from "@/components/shared/ui-helpers";
+    24→import { cn } from "@/lib/utils";
+    25→
+    26→function StatCard({ icon: Icon, label, value, change, trend, color, subtitle }: {
+    27→  icon: React.ElementType; label: string; value: string; change?: number; trend?: "up" | "down"; color: string; subtitle?: string;
+    28→}) {
+    29→  return (
+    30→    <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+    31→      <Card className="relative overflow-hidden hover:shadow-md transition-shadow">
+    32→        <CardContent className="p-4">
+    33→          <div className="flex items-start justify-between">
+    34→            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", color)}>
+    35→              <Icon className="w-5 h-5" />
+    36→            </div>
+    37→            {change !== undefined && trend && (
+    38→              <span className={cn("text-xs font-medium flex items-center gap-0.5", trend === "up" ? "text-emerald-600" : "text-rose-600")}>
+    39→                {trend === "up" ? <ArrowUpRight className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+    40→                {Math.abs(change)}%
+    41→              </span>
+    42→            )}
+    43→          </div>
+    44→          <p className="text-2xl font-bold mt-3 tracking-tight">{value}</p>
+    45→          <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+    46→          {subtitle && <p className="text-[11px] text-muted-foreground/70 mt-0.5">{subtitle}</p>}
+    47→        </CardContent>
+    48→      </Card>
+    49→    </motion.div>
+    50→  );
+    51→}
+    52→
+    53→function QuickAction({ icon: Icon, label, color }: { icon: React.ElementType; label: string; color: string }) {
+    54→  return (
+    55→    <button className="flex flex-col items-center gap-2 p-3 rounded-xl border border-border hover:border-primary/40 hover:bg-muted/50 transition-all group">
+    56→      <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform", color)}>
+    57→        <Icon className="w-5 h-5" />
+    58→      </div>
+    59→      <span className="text-[11px] font-medium text-center leading-tight">{label}</span>
+    60→    </button>
+    61→  );
+    62→}
+    63→
+    64→const ACTIVITY_ICONS: Record<string, React.ElementType> = {
+    65→  booking: Plane, payment: CreditCard, quotation: FileSpreadsheet, refund: Receipt, visa: CheckCircle2, task: Target,
+    66→};
+    67→
+    68→export function DashboardView() {
+    69→  const { user } = useAuthStore();
+    70→  if (!user) return null;
+    71→  if (user.role === "super_admin") return <SuperAdminDashboard />;
+    72→  if (user.role === "customer") return <CustomerDashboard />;
+    73→  if (user.role === "employee") return <EmployeeDashboard />;
+    74→  return <AgencyDashboard />;
+    75→}
+    76→
+    77→function AgencyDashboard() {
+    78→  const recentBookings = BOOKINGS.slice(0, 6);
+    79→  const myTasks = TASKS.filter((t) => t.assignedTo === "Sneha Reddy").slice(0, 4);
+    80→
+    81→  const stats = [
+    82→    { icon: Plane, label: "Total Bookings", value: "3,420", change: 12.5, trend: "up" as const, color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", subtitle: "All time" },
+    83→    { icon: Calendar, label: "Today's Bookings", value: "28", change: 8.2, trend: "up" as const, color: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400", subtitle: "vs yesterday" },
+    84→    { icon: DollarSign, label: "Today's Revenue", value: formatINR(285000), change: 15.3, trend: "up" as const, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "₹2.85L today" },
+    85→    { icon: Receipt, label: "Pending Payments", value: formatINR(184000), change: 5.1, trend: "down" as const, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400", subtitle: "12 invoices" },
+    86→    { icon: Wallet, label: "Wallet Balance", value: formatINR(845000), change: 22.4, trend: "up" as const, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400", subtitle: "Available" },
+    87→    { icon: TrendingUp, label: "Commission Earned", value: formatINR(1240000), change: 18.7, trend: "up" as const, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400", subtitle: "This month" },
+    88→    { icon: Users, label: "Total Customers", value: "1,284", change: 6.4, trend: "up" as const, color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400", subtitle: "Active" },
+    89→    { icon: Target, label: "New Enquiries", value: "47", change: 11.2, trend: "up" as const, color: "bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400", subtitle: "This week" },
+    90→  ];
+    91→
+    92→  return (
+    93→    <div className="space-y-5">
+    94→      <motion.div
+    95→        initial={{ opacity: 0, y: 10 }}
+    96→        animate={{ opacity: 1, y: 0 }}
+    97→        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-teal-600 via-teal-700 to-emerald-700 text-white p-5 lg:p-6"
+    98→      >
+    99→        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-amber-400/20 blur-3xl -translate-y-1/2 translate-x-1/3" />
+   100→        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+   101→          <div>
+   102→            <p className="text-teal-100 text-sm">Welcome back,</p>
+   103→            <h1 className="text-2xl font-bold">{useAuthStore.getState().user?.name} 👋</h1>
+   104→            <p className="text-teal-100 text-sm mt-1">
+   105→              You have <span className="font-semibold text-white">3 pending approvals</span> and <span className="font-semibold text-white">5 new enquiries</span> today.
+   106→            </p>
+   107→          </div>
+   108→          <div className="flex items-center gap-2">
+   109→            <Button className="bg-white text-teal-700 hover:bg-teal-50">
+   110→              <Plus className="w-4 h-4 mr-1.5" /> New Booking
+   111→            </Button>
+   112→            <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+   113→              <FileSpreadsheet className="w-4 h-4 mr-1.5" /> Create Quote
+   114→            </Button>
+   115→          </div>
+   116→        </div>
+   117→      </motion.div>
+   118→
+   119→      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+   120→        {stats.map((s) => <StatCard key={s.label} {...s} />)}
+   121→      </div>
+   122→
+   123→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   124→        <Card className="lg:col-span-2">
+   125→          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+   126→            <div>
+   127→              <CardTitle className="text-base">Revenue Overview</CardTitle>
+   128→              <CardDescription className="text-xs">Monthly revenue & commission trend</CardDescription>
+   129→            </div>
+   130→            <div className="flex items-center gap-3 text-xs">
+   131→              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-500" /> Revenue</span>
+   132→              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400" /> Commission</span>
+   133→            </div>
+   134→          </CardHeader>
+   135→          <CardContent>
+   136→            <ResponsiveContainer width="100%" height={280}>
+   137→              <AreaChart data={REVENUE_DATA} margin={{ left: -16, right: 8, top: 8 }}>
+   138→                <defs>
+   139→                  <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+   140→                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.4} />
+   141→                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
+   142→                  </linearGradient>
+   143→                  <linearGradient id="comGrad" x1="0" y1="0" x2="0" y2="1">
+   144→                    <stop offset="0%" stopColor="var(--chart-2)" stopOpacity={0.4} />
+   145→                    <stop offset="100%" stopColor="var(--chart-2)" stopOpacity={0} />
+   146→                  </linearGradient>
+   147→                </defs>
+   148→                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+   149→                <XAxis dataKey="month" tick={{ fontSize: 11 }} className="text-muted-foreground" axisLine={false} tickLine={false} />
+   150→                <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 100000}L`} />
+   151→                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }} formatter={(v: number) => formatFullINR(v)} />
+   152→                <Area type="monotone" dataKey="revenue" stroke="var(--chart-1)" strokeWidth={2.5} fill="url(#revGrad)" />
+   153→                <Area type="monotone" dataKey="commission" stroke="var(--chart-2)" strokeWidth={2.5} fill="url(#comGrad)" />
+   154→              </AreaChart>
+   155→            </ResponsiveContainer>
+   156→          </CardContent>
+   157→        </Card>
+   158→
+   159→        <Card>
+   160→          <CardHeader className="pb-2">
+   161→            <CardTitle className="text-base">Booking Distribution</CardTitle>
+   162→            <CardDescription className="text-xs">By service type</CardDescription>
+   163→          </CardHeader>
+   164→          <CardContent>
+   165→            <ResponsiveContainer width="100%" height={200}>
+   166→              <PieChart>
+   167→                <Pie data={BOOKING_TYPE_DATA} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
+   168→                  {BOOKING_TYPE_DATA.map((_, i) => <Cell key={i} fill={`var(--chart-${i + 1})`} />)}
+   169→                </Pie>
+   170→                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
+   171→              </PieChart>
+   172→            </ResponsiveContainer>
+   173→            <div className="grid grid-cols-2 gap-1.5 mt-2">
+   174→              {BOOKING_TYPE_DATA.map((d, i) => (
+   175→                <div key={d.name} className="flex items-center gap-1.5 text-xs">
+   176→                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: `var(--chart-${i + 1})` }} />
+   177→                  <span className="text-muted-foreground">{d.name}</span>
+   178→                  <span className="font-medium ml-auto">{d.value}</span>
+   179→                </div>
+   180→              ))}
+   181→            </div>
+   182→          </CardContent>
+   183→        </Card>
+   184→      </div>
+   185→
+   186→      <Card>
+   187→        <CardHeader className="pb-3">
+   188→          <CardTitle className="text-base">Quick Actions</CardTitle>
+   189→        </CardHeader>
+   190→        <CardContent>
+   191→          <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+   192→            <QuickAction icon={Plane} label="Book Flight" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" />
+   193→            <QuickAction icon={Hotel} label="Book Hotel" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" />
+   194→            <QuickAction icon={Bus} label="Book Bus" color="bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400" />
+   195→            <QuickAction icon={Palmtree} label="Holiday" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" />
+   196→            <QuickAction icon={FileSpreadsheet} label="Quotation" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" />
+   197→            <QuickAction icon={Users} label="Add Customer" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" />
+   198→            <QuickAction icon={Target} label="Add Lead" color="bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400" />
+   199→            <QuickAction icon={CreditCard} label="Collect Payment" color="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" />
+   200→          </div>
+   201→        </CardContent>
+   202→      </Card>
+   203→
+   204→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   205→        <Card className="lg:col-span-2">
+   206→          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+   207→            <CardTitle className="text-base">Recent Bookings</CardTitle>
+   208→            <Button variant="ghost" size="sm" className="text-xs h-7">View all <ArrowRight className="w-3 h-3 ml-1" /></Button>
+   209→          </CardHeader>
+   210→          <CardContent className="p-0">
+   211→            <div className="divide-y divide-border">
+   212→              {recentBookings.map((b) => (
+   213→                <div key={b.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors">
+   214→                  <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+   215→                    {b.service === "Flight" && <Plane className="w-4 h-4 text-teal-600" />}
+   216→                    {b.service === "Hotel" && <Hotel className="w-4 h-4 text-amber-600" />}
+   217→                    {b.service === "Bus" && <Bus className="w-4 h-4 text-cyan-600" />}
+   218→                    {b.service === "Holiday" && <Palmtree className="w-4 h-4 text-rose-600" />}
+   219→                    {(b.service === "Visa" || b.service === "Insurance") && <FileSpreadsheet className="w-4 h-4 text-violet-600" />}
+   220→                  </div>
+   221→                  <div className="flex-1 min-w-0">
+   222→                    <p className="text-sm font-medium truncate">{b.customerName}</p>
+   223→                    <p className="text-xs text-muted-foreground truncate">{b.route} · {b.travelDate}</p>
+   224→                  </div>
+   225→                  <div className="text-right hidden sm:block">
+   226→                    <p className="text-sm font-semibold">{formatFullINR(b.amount)}</p>
+   227→                    <p className="text-[10px] text-muted-foreground">{b.bookingRef}</p>
+   228→                  </div>
+   229→                  <div className="flex flex-col gap-1 items-end">
+   230→                    <StatusBadge status={b.status} />
+   231→                    <StatusBadge status={b.paymentStatus} />
+   232→                  </div>
+   233→                </div>
+   234→              ))}
+   235→            </div>
+   236→          </CardContent>
+   237→        </Card>
+   238→
+   239→        <div className="space-y-4">
+   240→          <Card>
+   241→            <CardHeader className="pb-2">
+   242→              <CardTitle className="text-base">My Tasks</CardTitle>
+   243→            </CardHeader>
+   244→            <CardContent className="space-y-2">
+   245→              {myTasks.map((t) => (
+   246→                <div key={t.id} className="flex items-start gap-2 p-2 rounded-lg hover:bg-muted/50 transition-colors">
+   247→                  <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", t.priority === "Urgent" ? "bg-rose-500" : t.priority === "High" ? "bg-amber-500" : "bg-sky-500")} />
+   248→                  <div className="flex-1 min-w-0">
+   249→                    <p className="text-xs font-medium leading-tight line-clamp-2">{t.title}</p>
+   250→                    <div className="flex items-center gap-2 mt-1">
+   251→                      <StatusBadge status={t.status} className="text-[9px] h-4" />
+   252→                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+   253→                        <Clock className="w-2.5 h-2.5" /> {t.dueDate}
+   254→                      </span>
+   255→                    </div>
+   256→                  </div>
+   257→                </div>
+   258→              ))}
+   259→            </CardContent>
+   260→          </Card>
+   261→
+   262→          <Card>
+   263→            <CardHeader className="pb-2">
+   264→              <CardTitle className="text-base">Activity Feed</CardTitle>
+   265→            </CardHeader>
+   266→            <CardContent className="space-y-3">
+   267→              {RECENT_ACTIVITIES.slice(0, 5).map((a) => {
+   268→                const Icon = ACTIVITY_ICONS[a.type] || Activity;
+   269→                return (
+   270→                  <div key={a.id} className="flex gap-2.5">
+   271→                    <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center shrink-0">
+   272→                      <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+   273→                    </div>
+   274→                    <div className="flex-1 min-w-0">
+   275→                      <p className="text-xs leading-tight">
+   276→                        <span className="font-medium">{a.user}</span> {a.action}{" "}
+   277→                        <span className="text-muted-foreground">{a.target}</span>
+   278→                      </p>
+   279→                      <p className="text-[10px] text-muted-foreground mt-0.5">{a.time}</p>
+   280→                    </div>
+   281→                  </div>
+   282→                );
+   283→              })}
+   284→            </CardContent>
+   285→          </Card>
+   286→        </div>
+   287→      </div>
+   288→
+   289→      <Card>
+   290→        <CardHeader className="pb-2">
+   291→          <CardTitle className="text-base">Top Destinations</CardTitle>
+   292→          <CardDescription className="text-xs">Best performing routes this month</CardDescription>
+   293→        </CardHeader>
+   294→        <CardContent>
+   295→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+   296→            {TOP_DESTINATIONS.map((d, i) => (
+   297→              <div key={d.destination} className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:border-primary/30 transition-colors">
+   298→                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+   299→                  #{i + 1}
+   300→                </div>
+   301→                <div className="flex-1 min-w-0">
+   302→                  <p className="text-sm font-medium">{d.destination}</p>
+   303→                  <p className="text-[11px] text-muted-foreground">{d.bookings} bookings · {formatINR(d.revenue)}</p>
+   304→                </div>
+   305→                <span className="text-xs font-medium text-emerald-600 flex items-center gap-0.5">
+   306→                  <TrendingUp className="w-3 h-3" />{d.growth}%
+   307→                </span>
+   308→              </div>
+   309→            ))}
+   310→          </div>
+   311→        </CardContent>
+   312→      </Card>
+   313→    </div>
+   314→  );
+   315→}
+   316→
+   317→function SuperAdminDashboard() {
+   318→  const totalRevenue = AGENCIES.reduce((s, a) => s + a.monthlyRevenue, 0);
+   319→  const totalWallet = AGENCIES.reduce((s, a) => s + a.walletBalance, 0);
+   320→  const totalCommission = AGENCIES.reduce((s, a) => s + a.commissionEarned, 0);
+   321→  const totalBookings = AGENCIES.reduce((s, a) => s + a.totalBookings, 0);
+   322→
+   323→  return (
+   324→    <div className="space-y-5">
+   325→      <motion.div
+   326→        initial={{ opacity: 0, y: 10 }}
+   327→        animate={{ opacity: 1, y: 0 }}
+   328→        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-purple-700 to-fuchsia-800 text-white p-5 lg:p-6"
+   329→      >
+   330→        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-amber-400/20 blur-3xl -translate-y-1/2 translate-x-1/3" />
+   331→        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+   332→          <div>
+   333→            <p className="text-purple-100 text-sm flex items-center gap-1.5">
+   334→              <Globe className="w-4 h-4" /> Platform Overview
+   335→            </p>
+   336→            <h1 className="text-2xl font-bold">Super Admin Console</h1>
+   337→            <p className="text-purple-100 text-sm mt-1">
+   338→              Managing <span className="font-semibold text-white">{AGENCIES.length} agencies</span> · {formatINR(totalRevenue)} monthly revenue
+   339→            </p>
+   340→          </div>
+   341→          <div className="flex items-center gap-2">
+   342→            <Button className="bg-white text-violet-700 hover:bg-purple-50">
+   343→              <Plus className="w-4 h-4 mr-1.5" /> Add Agency
+   344→            </Button>
+   345→            <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
+   346→              <Activity className="w-4 h-4 mr-1.5" /> System Health
+   347→            </Button>
+   348→          </div>
+   349→        </div>
+   350→      </motion.div>
+   351→
+   352→      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+   353→        <StatCard icon={Building2} label="Active Agencies" value={String(AGENCIES.filter((a) => a.status === "Active").length)} change={9.1} trend="up" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle="6 total onboarded" />
+   354→        <StatCard icon={DollarSign} label="Platform Revenue" value={formatINR(totalRevenue)} change={14.2} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="This month" />
+   355→        <StatCard icon={Wallet} label="Agency Wallets" value={formatINR(totalWallet)} change={7.8} trend="up" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" subtitle="Total balance" />
+   356→        <StatCard icon={TrendingUp} label="Commission Earned" value={formatINR(totalCommission)} change={19.4} trend="up" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All agencies" />
+   357→        <StatCard icon={Plane} label="Total Bookings" value={totalBookings.toLocaleString()} change={11.6} trend="up" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="All time" />
+   358→        <StatCard icon={Users} label="Total Customers" value="12,847" change={8.9} trend="up" color="bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400" subtitle="Across agencies" />
+   359→        <StatCard icon={Server} label="API Health" value="99.9%" change={0.1} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="All vendors" />
+   360→        <StatCard icon={AlertTriangle} label="Active Alerts" value="2" change={50} trend="down" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="1 critical" />
+   361→      </div>
+   362→
+   363→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   364→        <Card className="lg:col-span-2">
+   365→          <CardHeader className="pb-2">
+   366→            <CardTitle className="text-base">Platform Revenue</CardTitle>
+   367→            <CardDescription className="text-xs">All agencies · last 12 months</CardDescription>
+   368→          </CardHeader>
+   369→          <CardContent>
+   370→            <ResponsiveContainer width="100%" height={280}>
+   371→              <AreaChart data={REVENUE_DATA} margin={{ left: -16, right: 8, top: 8 }}>
+   372→                <defs>
+   373→                  <linearGradient id="platGrad" x1="0" y1="0" x2="0" y2="1">
+   374→                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.4} />
+   375→                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
+   376→                  </linearGradient>
+   377→                </defs>
+   378→                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+   379→                <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+   380→                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 100000}L`} />
+   381→                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} formatter={(v: number) => formatFullINR(v)} />
+   382→                <Area type="monotone" dataKey="revenue" stroke="var(--chart-1)" strokeWidth={2.5} fill="url(#platGrad)" />
+   383→              </AreaChart>
+   384→            </ResponsiveContainer>
+   385→          </CardContent>
+   386→        </Card>
+   387→
+   388→        <Card>
+   389→          <CardHeader className="pb-2">
+   390→            <CardTitle className="text-base">API Usage</CardTitle>
+   391→            <CardDescription className="text-xs">Vendor distribution</CardDescription>
+   392→          </CardHeader>
+   393→          <CardContent>
+   394→            <ResponsiveContainer width="100%" height={200}>
+   395→              <PieChart>
+   396→                <Pie data={[
+   397→                  { name: "Flight APIs", value: 42 },
+   398→                  { name: "Hotel APIs", value: 28 },
+   399→                  { name: "Bus APIs", value: 16 },
+   400→                  { name: "Train APIs", value: 14 },
+   401→                ]} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
+   402→                  {[1, 2, 4, 5].map((c, i) => <Cell key={i} fill={`var(--chart-${c})`} />)}
+   403→                </Pie>
+   404→                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
+   405→              </PieChart>
+   406→            </ResponsiveContainer>
+   407→            <div className="grid grid-cols-2 gap-1.5 mt-2">
+   408→              {[
+   409→                { n: "Flight APIs", c: 1 },
+   410→                { n: "Hotel APIs", c: 2 },
+   411→                { n: "Bus APIs", c: 4 },
+   412→                { n: "Train APIs", c: 5 },
+   413→              ].map((d) => (
+   414→                <div key={d.n} className="flex items-center gap-1.5 text-xs">
+   415→                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: `var(--chart-${d.c})` }} />
+   416→                  <span className="text-muted-foreground">{d.n}</span>
+   417→                </div>
+   418→              ))}
+   419→            </div>
+   420→          </CardContent>
+   421→        </Card>
+   422→      </div>
+   423→
+   424→      <Card>
+   425→        <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+   426→          <CardTitle className="text-base">Agency Performance</CardTitle>
+   427→          <Button variant="ghost" size="sm" className="text-xs h-7">Manage all <ArrowRight className="w-3 h-3 ml-1" /></Button>
+   428→        </CardHeader>
+   429→        <CardContent className="p-0">
+   430→          <div className="divide-y divide-border max-h-80 overflow-y-auto scroll-thin">
+   431→            {AGENCIES.map((a) => (
+   432→              <div key={a.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors">
+   433→                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
+   434→                  {initials(a.name)}
+   435→                </div>
+   436→                <div className="flex-1 min-w-0">
+   437→                  <p className="text-sm font-medium truncate">{a.name}</p>
+   438→                  <p className="text-xs text-muted-foreground truncate">{a.owner} · {a.branches} branches · {a.employees} employees</p>
+   439→                </div>
+   440→                <div className="text-right hidden md:block">
+   441→                  <p className="text-sm font-semibold">{formatINR(a.monthlyRevenue)}</p>
+   442→                  <p className="text-[10px] text-muted-foreground">{a.totalBookings} bookings</p>
+   443→                </div>
+   444→                <div className="text-right hidden lg:block">
+   445→                  <p className="text-sm font-semibold text-emerald-600">{formatINR(a.walletBalance)}</p>
+   446→                  <p className="text-[10px] text-muted-foreground">wallet</p>
+   447→                </div>
+   448→                <div className="flex flex-col items-end gap-1">
+   449→                  <StatusBadge status={a.status} />
+   450→                  <StatusBadge status={a.plan} />
+   451→                </div>
+   452→              </div>
+   453→            ))}
+   454→          </div>
+   455→        </CardContent>
+   456→      </Card>
+   457→
+   458→      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+   459→        <Card>
+   460→          <CardHeader className="pb-2">
+   461→            <CardTitle className="text-base flex items-center gap-2"><Zap className="w-4 h-4 text-amber-500" /> System Monitoring</CardTitle>
+   462→          </CardHeader>
+   463→          <CardContent className="space-y-3">
+   464→            {[
+   465→              { label: "Server CPU", value: 42, color: "bg-emerald-500" },
+   466→              { label: "Memory Usage", value: 67, color: "bg-amber-500" },
+   467→              { label: "Database Load", value: 28, color: "bg-emerald-500" },
+   468→              { label: "API Response Time", value: 89, color: "bg-teal-500" },
+   469→            ].map((m) => (
+   470→              <div key={m.label}>
+   471→                <div className="flex items-center justify-between text-xs mb-1">
+   472→                  <span className="text-muted-foreground">{m.label}</span>
+   473→                  <span className="font-medium">{m.value}%</span>
+   474→                </div>
+   475→                <div className="h-2 rounded-full bg-muted overflow-hidden">
+   476→                  <div className={cn("h-full rounded-full transition-all", m.color)} style={{ width: `${m.value}%` }} />
+   477→                </div>
+   478→              </div>
+   479→            ))}
+   480→          </CardContent>
+   481→        </Card>
+   482→
+   483→        <Card>
+   484→          <CardHeader className="pb-2">
+   485→            <CardTitle className="text-base flex items-center gap-2"><Bell className="w-4 h-4 text-rose-500" /> Platform Alerts</CardTitle>
+   486→          </CardHeader>
+   487→          <CardContent className="space-y-2">
+   488→            {NOTIFICATIONS.slice(0, 5).map((n) => (
+   489→              <div key={n.id} className="flex gap-2.5 p-2 rounded-lg hover:bg-muted/50">
+   490→                <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", n.priority === "high" ? "bg-rose-500" : n.priority === "medium" ? "bg-amber-500" : "bg-slate-400")} />
+   491→                <div className="flex-1 min-w-0">
+   492→                  <p className="text-xs font-medium leading-tight">{n.title}</p>
+   493→                  <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
+   494→                  <p className="text-[10px] text-muted-foreground mt-0.5">{n.time}</p>
+   495→                </div>
+   496→              </div>
+   497→            ))}
+   498→          </CardContent>
+   499→        </Card>
+   500→      </div>
+   501→    </div>
+   502→  );
+   503→}
+   504→
+   505→function EmployeeDashboard() {
+   506→  const myTasks = TASKS.filter((t) => t.assignedTo === "Sneha Reddy");
+   507→  const myLeads = LEADS.filter((l) => l.assignedTo === "Sneha Reddy");
+   508→  const myBookings = BOOKINGS.filter((b) => b.agent === "Sneha Reddy").slice(0, 5);
+   509→
+   510→  return (
+   511→    <div className="space-y-5">
+   512→      <motion.div
+   513→        initial={{ opacity: 0, y: 10 }}
+   514→        animate={{ opacity: 1, y: 0 }}
+   515→        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-rose-500 via-pink-600 to-orange-600 text-white p-5 lg:p-6"
+   516→      >
+   517→        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-amber-400/20 blur-3xl -translate-y-1/2 translate-x-1/3" />
+   518→        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+   519→          <div>
+   520→            <p className="text-pink-100 text-sm">Good morning,</p>
+   521→            <h1 className="text-2xl font-bold">Sneha Reddy 🌟</h1>
+   522→            <p className="text-pink-100 text-sm mt-1">
+   523→              You&apos;ve achieved <span className="font-semibold text-white">122% of your target</span> · Top performer this month!
+   524→            </p>
+   525→          </div>
+   526→          <Button className="bg-white text-rose-600 hover:bg-rose-50">
+   527→            <Plus className="w-4 h-4 mr-1.5" /> New Booking
+   528→          </Button>
+   529→        </div>
+   530→      </motion.div>
+   531→
+   532→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   533→        <StatCard icon={Target} label="My Target" value={formatINR(500000)} color="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" subtitle="This month" />
+   534→        <StatCard icon={TrendingUp} label="Achieved" value={formatINR(612000)} change={22.4} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="122% achieved" />
+   535→        <StatCard icon={Wallet} label="My Commission" value={formatINR(18000)} change={14.2} trend="up" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="This month" />
+   536→        <StatCard icon={Users} label="My Customers" value="48" change={6.4} trend="up" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle="Active" />
+   537→      </div>
+   538→
+   539→      <Card>
+   540→        <CardHeader className="pb-2">
+   541→          <CardTitle className="text-base">Monthly Target Progress</CardTitle>
+   542→          <CardDescription className="text-xs">You&apos;re at 122% of your monthly goal 🎉</CardDescription>
+   543→        </CardHeader>
+   544→        <CardContent>
+   545→          <div className="flex items-center justify-between text-xs mb-1.5">
+   546→            <span className="font-medium">Sales Achievement</span>
+   547→            <span className="text-emerald-600 font-semibold">₹6.12L / ₹5.00L</span>
+   548→          </div>
+   549→          <div className="h-3 rounded-full bg-muted overflow-hidden">
+   550→            <motion.div
+   551→              initial={{ width: 0 }}
+   552→              animate={{ width: "100%" }}
+   553→              transition={{ duration: 1, delay: 0.3 }}
+   554→              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500"
+   555→            />
+   556→          </div>
+   557→        </CardContent>
+   558→      </Card>
+   559→
+   560→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   561→        <Card className="lg:col-span-2">
+   562→          <CardHeader className="pb-2">
+   563→            <CardTitle className="text-base">My Recent Bookings</CardTitle>
+   564→          </CardHeader>
+   565→          <CardContent className="p-0">
+   566→            <div className="divide-y divide-border">
+   567→              {myBookings.map((b) => (
+   568→                <div key={b.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40">
+   569→                  <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
+   570→                    {b.service === "Flight" && <Plane className="w-4 h-4 text-teal-600" />}
+   571→                    {b.service === "Hotel" && <Hotel className="w-4 h-4 text-amber-600" />}
+   572→                    {b.service === "Bus" && <Bus className="w-4 h-4 text-cyan-600" />}
+   573→                    {b.service === "Holiday" && <Palmtree className="w-4 h-4 text-rose-600" />}
+   574→                    {(b.service === "Visa" || b.service === "Insurance") && <FileSpreadsheet className="w-4 h-4 text-violet-600" />}
+   575→                  </div>
+   576→                  <div className="flex-1 min-w-0">
+   577→                    <p className="text-sm font-medium truncate">{b.customerName}</p>
+   578→                    <p className="text-xs text-muted-foreground truncate">{b.route} · {b.travelDate}</p>
+   579→                  </div>
+   580→                  <div className="text-right hidden sm:block">
+   581→                    <p className="text-sm font-semibold">{formatFullINR(b.amount)}</p>
+   582→                    <p className="text-[10px] text-emerald-600">+{formatFullINR(b.commission)} comm.</p>
+   583→                  </div>
+   584→                  <StatusBadge status={b.status} />
+   585→                </div>
+   586→              ))}
+   587→            </div>
+   588→          </CardContent>
+   589→        </Card>
+   590→
+   591→        <Card>
+   592→          <CardHeader className="pb-2">
+   593→            <CardTitle className="text-base">My Tasks ({myTasks.length})</CardTitle>
+   594→          </CardHeader>
+   595→          <CardContent className="space-y-2 max-h-80 overflow-y-auto scroll-thin">
+   596→            {myTasks.map((t) => (
+   597→              <div key={t.id} className="flex items-start gap-2 p-2 rounded-lg border border-border">
+   598→                <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", t.priority === "Urgent" ? "bg-rose-500" : t.priority === "High" ? "bg-amber-500" : "bg-sky-500")} />
+   599→                <div className="flex-1 min-w-0">
+   600→                  <p className="text-xs font-medium leading-tight line-clamp-2">{t.title}</p>
+   601→                  <div className="flex items-center gap-2 mt-1">
+   602→                    <StatusBadge status={t.status} className="text-[9px] h-4" />
+   603→                    <span className="text-[10px] text-muted-foreground">{t.dueDate}</span>
+   604→                  </div>
+   605→                </div>
+   606→              </div>
+   607→            ))}
+   608→          </CardContent>
+   609→        </Card>
+   610→      </div>
+   611→
+   612→      <Card>
+   613→        <CardHeader className="pb-2">
+   614→          <CardTitle className="text-base">My Leads ({myLeads.length})</CardTitle>
+   615→        </CardHeader>
+   616→        <CardContent className="p-0">
+   617→          <div className="divide-y divide-border">
+   618→            {myLeads.map((l) => (
+   619→              <div key={l.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-muted/40">
+   620→                <Avatar className="w-8 h-8">
+   621→                  <AvatarFallback className={cn("bg-gradient-to-br text-white text-[10px] font-semibold", avatarGradient(l.customerName))}>
+   622→                    {initials(l.customerName)}
+   623→                  </AvatarFallback>
+   624→                </Avatar>
+   625→                <div className="flex-1 min-w-0">
+   626→                  <p className="text-sm font-medium truncate">{l.customerName}</p>
+   627→                  <p className="text-xs text-muted-foreground">{l.service} · {l.source}</p>
+   628→                </div>
+   629→                <div className="text-right hidden sm:block">
+   630→                  <p className="text-sm font-semibold">{formatFullINR(l.value)}</p>
+   631→                  <p className="text-[10px] text-muted-foreground">due {l.expectedClose}</p>
+   632→                </div>
+   633→                <StatusBadge status={l.stage} />
+   634→              </div>
+   635→            ))}
+   636→          </div>
+   637→        </CardContent>
+   638→      </Card>
+   639→    </div>
+   640→  );
+   641→}
+   642→
+   643→function CustomerDashboard() {
+   644→  return (
+   645→    <div className="space-y-5">
+   646→      <motion.div
+   647→        initial={{ opacity: 0, y: 10 }}
+   648→        animate={{ opacity: 1, y: 0 }}
+   649→        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-500 via-red-500 to-rose-600 text-white p-5 lg:p-6"
+   650→      >
+   651→        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-amber-400/20 blur-3xl -translate-y-1/2 translate-x-1/3" />
+   652→        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+   653→          <div>
+   654→            <p className="text-orange-100 text-sm">
+   655→              <span className="px-2 py-0.5 rounded-full bg-amber-400/30 text-amber-100 text-[10px] font-semibold">PLATINUM MEMBER</span>
+   656→            </p>
+   657→            <h1 className="text-2xl font-bold mt-1">Welcome, Karthik! ✈️</h1>
+   658→            <p className="text-orange-100 text-sm mt-1">
+   659→              You have <span className="font-semibold text-white">4,850 loyalty points</span> · Your next trip is in 25 days
+   660→            </p>
+   661→          </div>
+   662→          <Button className="bg-white text-orange-600 hover:bg-orange-50">
+   663→            <Plane className="w-4 h-4 mr-1.5" /> Book a Trip
+   664→          </Button>
+   665→        </div>
+   666→      </motion.div>
+   667→
+   668→      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+   669→        <StatCard icon={Plane} label="Total Trips" value="24" change={12} trend="up" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" />
+   670→        <StatCard icon={DollarSign} label="Total Spent" value={formatINR(485000)} change={8} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" />
+   671→        <StatCard icon={Wallet} label="Loyalty Points" value="4,850" change={15} trend="up" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" />
+   672→        <StatCard icon={Calendar} label="Upcoming Trips" value="2" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle="Next: Feb 14" />
+   673→      </div>
+   674→
+   675→      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+   676→        <Card className="lg:col-span-2">
+   677→          <CardHeader className="pb-2">
+   678→            <CardTitle className="text-base">Your Upcoming Trips</CardTitle>
+   679→          </CardHeader>
+   680→          <CardContent className="space-y-3">
+   681→            {[
+   682→              { ref: "BK-8841", title: "Mumbai → Delhi Round Trip", date: "Feb 14, 2025", type: "Flight", status: "Confirmed", icon: Plane },
+   683→              { ref: "BK-8849", title: "W Goa, 3 Nights", date: "Feb 12, 2025", type: "Hotel", status: "Confirmed", icon: Hotel },
+   684→            ].map((t) => (
+   685→              <div key={t.ref} className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/30 transition-colors">
+   686→                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-white shrink-0">
+   687→                  <t.icon className="w-5 h-5" />
+   688→                </div>
+   689→                <div className="flex-1 min-w-0">
+   690→                  <p className="text-sm font-medium">{t.title}</p>
+   691→                  <p className="text-xs text-muted-foreground">{t.ref} · {t.date}</p>
+   692→                </div>
+   693→                <StatusBadge status={t.status} />
+   694→              </div>
+   695→            ))}
+   696→          </CardContent>
+   697→        </Card>
+   698→
+   699→        <Card>
+   700→          <CardHeader className="pb-2">
+   701→            <CardTitle className="text-base">Loyalty Wallet</CardTitle>
+   702→          </CardHeader>
+   703→          <CardContent className="text-center py-4">
+   704→            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mx-auto mb-3">
+   705→              <Wallet className="w-9 h-9 text-white" />
+   706→            </div>
+   707→            <p className="text-3xl font-bold">4,850</p>
+   708→            <p className="text-xs text-muted-foreground mt-1">Loyalty Points</p>
+   709→            <Button className="w-full mt-3" variant="outline" size="sm">Redeem Points</Button>
+   710→          </CardContent>
+   711→        </Card>
+   712→      </div>
+   713→    </div>
+   714→  );
+   715→}
+   716→
