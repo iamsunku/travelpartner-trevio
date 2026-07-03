@@ -69,7 +69,6 @@ export function DashboardView() {
   const { user } = useAuthStore();
   if (!user) return null;
   if (user.role === "super_admin") return <SuperAdminDashboard />;
-  if (user.role === "customer") return <CustomerDashboard />;
   if (user.role === "employee") return <EmployeeDashboard />;
   return <AgencyDashboard />;
 }
@@ -636,80 +635,6 @@ function EmployeeDashboard() {
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function CustomerDashboard() {
-  return (
-    <div className="space-y-5">
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#2A7BBD] via-[#2575b0] to-[#00A79D] text-white p-5 lg:p-6"
-      >
-        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-white/15 blur-3xl -translate-y-1/2 translate-x-1/3" />
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div>
-            <p className="text-white/80 text-sm">
-              <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-semibold">PLATINUM MEMBER</span>
-            </p>
-            <h1 className="text-2xl font-bold mt-1">Welcome, Karthik! ✈️</h1>
-            <p className="text-white/80 text-sm mt-1">
-              You have <span className="font-semibold text-white">4,850 loyalty points</span> · Your next trip is in 25 days
-            </p>
-          </div>
-          <Button className="bg-white text-[#2A7BBD] hover:bg-white/90">
-            <Plane className="w-4 h-4 mr-1.5" /> Book a Trip
-          </Button>
-        </div>
-      </motion.div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={Plane} label="Total Trips" value="24" change={12} trend="up" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" />
-        <StatCard icon={DollarSign} label="Total Spent" value={formatINR(485000)} change={8} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" />
-        <StatCard icon={Wallet} label="Loyalty Points" value="4,850" change={15} trend="up" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" />
-        <StatCard icon={Calendar} label="Upcoming Trips" value="2" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle="Next: Feb 14" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Your Upcoming Trips</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {[
-              { ref: "BK-8841", title: "Mumbai → Delhi Round Trip", date: "Feb 14, 2025", type: "Flight", status: "Confirmed", icon: Plane },
-              { ref: "BK-8849", title: "W Goa, 3 Nights", date: "Feb 12, 2025", type: "Hotel", status: "Confirmed", icon: Hotel },
-            ].map((t) => (
-              <div key={t.ref} className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/30 transition-colors">
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-white shrink-0">
-                  <t.icon className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{t.title}</p>
-                  <p className="text-xs text-muted-foreground">{t.ref} · {t.date}</p>
-                </div>
-                <StatusBadge status={t.status} />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Loyalty Wallet</CardTitle>
-          </CardHeader>
-          <CardContent className="text-center py-4">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center mx-auto mb-3">
-              <Wallet className="w-9 h-9 text-white" />
-            </div>
-            <p className="text-3xl font-bold">4,850</p>
-            <p className="text-xs text-muted-foreground mt-1">Loyalty Points</p>
-            <Button className="w-full mt-3" variant="outline" size="sm">Redeem Points</Button>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }

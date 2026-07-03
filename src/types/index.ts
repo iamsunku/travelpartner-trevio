@@ -5,8 +5,7 @@ export type Role =
   | "agency_admin"
   | "branch_manager"
   | "employee"
-  | "accountant"
-  | "customer";
+  | "accountant";
 
 export interface User {
   id: string;

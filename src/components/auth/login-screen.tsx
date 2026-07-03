@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Plane, Hotel, Bus, Palmtree, Shield, ArrowRight, Mail, Lock, Phone,
   KeyRound, Building2, UserCog, User, Eye, EyeOff, CheckCircle2, Sparkles,
-  Globe, TrendingUp, Users2,
+  Globe, TrendingUp,
 } from "lucide-react";
 import { useAuthStore } from "@/store/app-store";
 import { ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/nav-config";
@@ -25,7 +25,6 @@ const ROLE_CARDS: { role: Role; icon: React.ElementType; gradient: string }[] = 
   { role: "branch_manager", icon: UserCog, gradient: "from-teal-500 to-cyan-600" },
   { role: "employee", icon: User, gradient: "from-sky-500 to-blue-600" },
   { role: "accountant", icon: TrendingUp, gradient: "from-teal-600 to-emerald-600" },
-  { role: "customer", icon: Users2, gradient: "from-blue-500 to-cyan-500" },
 ];
 
 const HIGHLIGHTS = [
@@ -211,7 +210,6 @@ export function LoginScreen() {
                           className="pl-9 h-11"
                           defaultValue={
                             selectedRole === "super_admin" ? "superadmin@travelpartner.pro" :
-                            selectedRole === "customer" ? "karthik.v@gmail.com" :
                             "admin@wanderlusttravels.in"
                           }
                           placeholder="you@agency.com"

@@ -389,3 +389,30 @@ Stage Summary:
 - Logo image used in login hero, sidebar header, footer, and as favicon.
 - All gradient banners across all role dashboards now use blue→teal (matching the two-tone logo design).
 - Verified end-to-end with zero errors. The blue+teal palette is confirmed suitable and cohesive for a travel booking platform.
+
+---
+Task ID: 2-fix-roles-and-sidebar
+Agent: Main (orchestrator)
+Task: Remove the customer dashboard/user role, and fix the sidebar navigation scrolling.
+
+Work Log:
+- Removed "customer" from the Role type union (src/types/index.ts). Kept the unrelated notification `type: "customer"` category intact.
+- Removed customer from nav-config: ALL roles array, all 7 nav-item role arrays (flights/hotels/bus/train/holiday/visa/insurance), ROLE_LABELS, and ROLE_DESCRIPTIONS.
+- Removed the customer user entry from ROLE_USERS in mock-data.ts.
+- Removed the customer role card from login-screen ROLE_CARDS (now 5 cards: Super Admin, Agency Admin, Branch Manager, Employee, Accountant). Removed the customer email conditional from the email input default. Removed now-unused Users2 import.
+- Removed the `user.role === "customer"` dispatch and the entire CustomerDashboard component from dashboard.tsx.
+- Removed customer from sidebar ALL_ROLES and simplified the upgrade-card condition to `user.role !== "super_admin"`.
+
+- FIXED SIDEBAR SCROLLING: Root cause was the radix `ScrollArea` component used inside a `flex flex-col` aside with `flex-1`. The radix Root is `position: relative` without `min-h-0`, so in a flex column the nav item could not shrink below its content's intrinsic height — it grew to fit ALL nav items, overflowing the `h-screen` aside and pushing the upgrade card + bottom nav items off-screen (only reachable by scrolling the whole page, not the sidebar).
+  - Replaced `<ScrollArea className="flex-1 ...">` with a native `<nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 scroll-thin">`. The `min-h-0` is the critical fix: it lets the flex item shrink to the aside's available height so the internal `overflow-y-auto` engages. Removed the now-unused ScrollArea import.
+- Ran `bun run lint` — zero errors.
+
+- Verified with Agent Browser (viewport 1440×900 / 800):
+  - Login screen now shows exactly 5 role cards (Super, Agency, Branch, Employee, Accountant) — no Customer. Zero errors.
+  - Super Admin sidebar nav: scrollHeight 1433 vs clientHeight 759 → canScroll: true. After scrolling nav, the last item (Settings) became visible (top 837, within viewport). pageScrollY stayed 0 (page doesn't scroll, only the nav).
+  - Agency Admin sidebar: nav canScroll: true (height 541, constrained). Upgrade card pinned at bottom (top 682, visible). After scrolling nav to bottom: upgrade card STAYED pinned (top 682, visible) and last nav item became visible. pageScrollY 0.
+  - VLM visual check of screenshot confirmed: Trevio logo top, scrollable nav, Enterprise Plan card pinned at bottom, correct layout (sidebar/topbar/content/footer), no visual issues.
+
+Stage Summary:
+- Customer role fully removed (type, nav config, mock user, login card, dashboard, sidebar switcher, upgrade-card check). App now has 5 roles.
+- Sidebar scrolling fixed via native scrollable nav with min-h-0 (replacing radix ScrollArea). Nav now scrolls independently within the fixed-height aside; the logo header, user card, and upgrade card stay pinned; the page itself no longer scrolls to reveal sidebar content. Verified end-to-end with zero errors.

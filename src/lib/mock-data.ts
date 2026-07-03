@@ -30,11 +30,6 @@ export const ROLE_USERS: Record<string, User> = {
     phone: "+91 98500 44444", role: "accountant", agencyId: "ag-1",
     designation: "Finance Manager",
   },
-  customer: {
-    id: "u-cu-1", name: "Karthik Venkat", email: "karthik.v@gmail.com",
-    phone: "+91 99600 55555", role: "customer",
-    designation: "Platinum Member",
-  },
 };
 
 export const AGENCIES: Agency[] = [

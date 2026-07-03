@@ -22,7 +22,7 @@ export interface NavSection {
   items: NavItem[];
 }
 
-const ALL: Role[] = ["super_admin", "agency_admin", "branch_manager", "employee", "accountant", "customer"];
+const ALL: Role[] = ["super_admin", "agency_admin", "branch_manager", "employee", "accountant"];
 
 export const NAV_SECTIONS: NavSection[] = [
   {
@@ -34,13 +34,13 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Bookings",
     items: [
-      { key: "flights", label: "Flights", icon: Plane, roles: ["super_admin", "agency_admin", "branch_manager", "employee", "customer"] },
-      { key: "hotels", label: "Hotels", icon: Hotel, roles: ["super_admin", "agency_admin", "branch_manager", "employee", "customer"] },
-      { key: "bus", label: "Bus", icon: Bus, roles: ["super_admin", "agency_admin", "branch_manager", "employee", "customer"] },
-      { key: "train", label: "Train", icon: Train, roles: ["super_admin", "agency_admin", "branch_manager", "employee", "customer"] },
+      { key: "flights", label: "Flights", icon: Plane, roles: ["super_admin", "agency_admin", "branch_manager", "employee"] },
+      { key: "hotels", label: "Hotels", icon: Hotel, roles: ["super_admin", "agency_admin", "branch_manager", "employee"] },
+      { key: "bus", label: "Bus", icon: Bus, roles: ["super_admin", "agency_admin", "branch_manager", "employee"] },
+      { key: "train", label: "Train", icon: Train, roles: ["super_admin", "agency_admin", "branch_manager", "employee"] },
       { key: "holiday", label: "Holiday Packages", icon: Palmtree, roles: ALL },
-      { key: "visa", label: "Visa", icon: FileText, roles: ["super_admin", "agency_admin", "branch_manager", "employee", "customer"] },
-      { key: "insurance", label: "Insurance", icon: Shield, roles: ["super_admin", "agency_admin", "branch_manager", "employee", "customer"] },
+      { key: "visa", label: "Visa", icon: FileText, roles: ["super_admin", "agency_admin", "branch_manager", "employee"] },
+      { key: "insurance", label: "Insurance", icon: Shield, roles: ["super_admin", "agency_admin", "branch_manager", "employee"] },
       { key: "bookings", label: "Booking Management", icon: Ticket, roles: ["super_admin", "agency_admin", "branch_manager", "employee"] },
     ],
   },
@@ -105,7 +105,6 @@ export const ROLE_LABELS: Record<Role, string> = {
   branch_manager: "Branch Manager",
   employee: "Employee / Agent",
   accountant: "Accountant",
-  customer: "Customer",
 };
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
@@ -114,5 +113,4 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   branch_manager: "Manage a branch — oversee staff & approvals",
   employee: "Travel consultant — handle bookings & leads",
   accountant: "Finance staff — payments, GST & settlements",
-  customer: "Traveler — book trips & manage your journeys",
 };

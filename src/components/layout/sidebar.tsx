@@ -11,11 +11,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { avatarGradient, initials } from "@/components/shared/ui-helpers";
 import type { Role } from "@/types";
 
-const ALL_ROLES: Role[] = ["super_admin", "agency_admin", "branch_manager", "employee", "accountant", "customer"];
+const ALL_ROLES: Role[] = ["super_admin", "agency_admin", "branch_manager", "employee", "accountant"];
 
 export function Sidebar() {
   const { activeView, setView, sidebarOpen, setSidebarOpen } = useAppStore();
@@ -110,9 +109,9 @@ export function Sidebar() {
           </AnimatePresence>
         </div>
 
-        {/* Navigation */}
-        <ScrollArea className="flex-1 px-3 py-3 scroll-thin">
-          <nav className="space-y-5 pb-4">
+        {/* Navigation — native scroll for reliable height constraint in flex layout */}
+        <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-3 scroll-thin">
+          <div className="space-y-5 pb-4">
             {sections.map((section) => (
               <div key={section.title}>
                 <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
@@ -145,11 +144,11 @@ export function Sidebar() {
                 </div>
               </div>
             ))}
-          </nav>
-        </ScrollArea>
+          </div>
+        </nav>
 
         {/* Footer upgrade card */}
-        {user.role !== "super_admin" && user.role !== "customer" && (
+        {user.role !== "super_admin" && (
           <div className="p-3 border-t border-sidebar-border shrink-0">
             <div className="rounded-xl bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] p-3 text-white relative overflow-hidden">
               <div className="absolute -right-4 -top-4 w-16 h-16 rounded-full bg-white/10" />
