@@ -94,19 +94,19 @@ function AgencyDashboard() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-teal-600 via-teal-700 to-emerald-700 text-white p-5 lg:p-6"
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D] text-white p-5 lg:p-6"
       >
-        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-amber-400/20 blur-3xl -translate-y-1/2 translate-x-1/3" />
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-white/15 blur-3xl -translate-y-1/2 translate-x-1/3" />
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <p className="text-teal-100 text-sm">Welcome back,</p>
+            <p className="text-white/80 text-sm">Welcome back,</p>
             <h1 className="text-2xl font-bold">{useAuthStore.getState().user?.name} 👋</h1>
-            <p className="text-teal-100 text-sm mt-1">
+            <p className="text-white/80 text-sm mt-1">
               You have <span className="font-semibold text-white">3 pending approvals</span> and <span className="font-semibold text-white">5 new enquiries</span> today.
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button className="bg-white text-teal-700 hover:bg-teal-50">
+            <Button className="bg-white text-[#2A7BBD] hover:bg-white/90">
               <Plus className="w-4 h-4 mr-1.5" /> New Booking
             </Button>
             <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
@@ -325,21 +325,21 @@ function SuperAdminDashboard() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 via-purple-700 to-fuchsia-800 text-white p-5 lg:p-6"
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#2A7BBD] via-[#1d6298] to-[#00897F] text-white p-5 lg:p-6"
       >
-        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-amber-400/20 blur-3xl -translate-y-1/2 translate-x-1/3" />
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-white/15 blur-3xl -translate-y-1/2 translate-x-1/3" />
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <p className="text-purple-100 text-sm flex items-center gap-1.5">
+            <p className="text-white/80 text-sm flex items-center gap-1.5">
               <Globe className="w-4 h-4" /> Platform Overview
             </p>
             <h1 className="text-2xl font-bold">Super Admin Console</h1>
-            <p className="text-purple-100 text-sm mt-1">
+            <p className="text-white/80 text-sm mt-1">
               Managing <span className="font-semibold text-white">{AGENCIES.length} agencies</span> · {formatINR(totalRevenue)} monthly revenue
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button className="bg-white text-violet-700 hover:bg-purple-50">
+            <Button className="bg-white text-[#2A7BBD] hover:bg-white/90">
               <Plus className="w-4 h-4 mr-1.5" /> Add Agency
             </Button>
             <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20">
@@ -512,18 +512,18 @@ function EmployeeDashboard() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-rose-500 via-pink-600 to-orange-600 text-white p-5 lg:p-6"
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#2A7BBD] via-[#2878b8] to-[#00A79D] text-white p-5 lg:p-6"
       >
-        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-amber-400/20 blur-3xl -translate-y-1/2 translate-x-1/3" />
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-white/15 blur-3xl -translate-y-1/2 translate-x-1/3" />
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <p className="text-pink-100 text-sm">Good morning,</p>
+            <p className="text-white/80 text-sm">Good morning,</p>
             <h1 className="text-2xl font-bold">Sneha Reddy 🌟</h1>
-            <p className="text-pink-100 text-sm mt-1">
+            <p className="text-white/80 text-sm mt-1">
               You&apos;ve achieved <span className="font-semibold text-white">122% of your target</span> · Top performer this month!
             </p>
           </div>
-          <Button className="bg-white text-rose-600 hover:bg-rose-50">
+          <Button className="bg-white text-[#2A7BBD] hover:bg-white/90">
             <Plus className="w-4 h-4 mr-1.5" /> New Booking
           </Button>
         </div>
@@ -551,7 +551,7 @@ function EmployeeDashboard() {
               initial={{ width: 0 }}
               animate={{ width: "100%" }}
               transition={{ duration: 1, delay: 0.3 }}
-              className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-teal-500"
+              className="h-full rounded-full bg-gradient-to-r from-[#2A7BBD] to-[#00A79D]"
             />
           </div>
         </CardContent>
@@ -646,20 +646,20 @@ function CustomerDashboard() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-500 via-red-500 to-rose-600 text-white p-5 lg:p-6"
+        className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#2A7BBD] via-[#2575b0] to-[#00A79D] text-white p-5 lg:p-6"
       >
-        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-amber-400/20 blur-3xl -translate-y-1/2 translate-x-1/3" />
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-white/15 blur-3xl -translate-y-1/2 translate-x-1/3" />
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <p className="text-orange-100 text-sm">
-              <span className="px-2 py-0.5 rounded-full bg-amber-400/30 text-amber-100 text-[10px] font-semibold">PLATINUM MEMBER</span>
+            <p className="text-white/80 text-sm">
+              <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-semibold">PLATINUM MEMBER</span>
             </p>
             <h1 className="text-2xl font-bold mt-1">Welcome, Karthik! ✈️</h1>
-            <p className="text-orange-100 text-sm mt-1">
+            <p className="text-white/80 text-sm mt-1">
               You have <span className="font-semibold text-white">4,850 loyalty points</span> · Your next trip is in 25 days
             </p>
           </div>
-          <Button className="bg-white text-orange-600 hover:bg-orange-50">
+          <Button className="bg-white text-[#2A7BBD] hover:bg-white/90">
             <Plane className="w-4 h-4 mr-1.5" /> Book a Trip
           </Button>
         </div>

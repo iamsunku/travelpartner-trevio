@@ -20,12 +20,12 @@ import { cn } from "@/lib/utils";
 type Mode = "login" | "otp" | "forgot" | "2fa";
 
 const ROLE_CARDS: { role: Role; icon: React.ElementType; gradient: string }[] = [
-  { role: "super_admin", icon: Shield, gradient: "from-violet-500 to-purple-600" },
-  { role: "agency_admin", icon: Building2, gradient: "from-teal-500 to-emerald-600" },
-  { role: "branch_manager", icon: UserCog, gradient: "from-amber-500 to-orange-600" },
-  { role: "employee", icon: User, gradient: "from-rose-500 to-pink-600" },
-  { role: "accountant", icon: TrendingUp, gradient: "from-cyan-500 to-teal-600" },
-  { role: "customer", icon: Users2, gradient: "from-orange-500 to-red-600" },
+  { role: "super_admin", icon: Shield, gradient: "from-blue-600 to-indigo-700" },
+  { role: "agency_admin", icon: Building2, gradient: "from-blue-500 to-teal-500" },
+  { role: "branch_manager", icon: UserCog, gradient: "from-teal-500 to-cyan-600" },
+  { role: "employee", icon: User, gradient: "from-sky-500 to-blue-600" },
+  { role: "accountant", icon: TrendingUp, gradient: "from-teal-600 to-emerald-600" },
+  { role: "customer", icon: Users2, gradient: "from-blue-500 to-cyan-500" },
 ];
 
 const HIGHLIGHTS = [
@@ -74,10 +74,10 @@ export function LoginScreen() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-background">
       {/* Left hero panel */}
-      <div className="lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-800 text-white p-8 lg:p-12 flex flex-col justify-between">
+      <div className="lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D] text-white p-8 lg:p-12 flex flex-col justify-between">
         <div className="absolute inset-0 hero-pattern opacity-40" />
-        <div className="absolute top-20 -right-20 w-72 h-72 rounded-full bg-amber-400/20 blur-3xl" />
-        <div className="absolute bottom-10 -left-10 w-80 h-80 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="absolute top-20 -right-20 w-72 h-72 rounded-full bg-white/15 blur-3xl" />
+        <div className="absolute bottom-10 -left-10 w-80 h-80 rounded-full bg-[#00A79D]/30 blur-3xl" />
 
         {/* Floating plane animation */}
         <motion.div
@@ -90,14 +90,9 @@ export function LoginScreen() {
 
         <div className="relative z-10">
           <div className="flex items-center gap-2.5 mb-2">
-            <div className="w-11 h-11 rounded-xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/20">
-              <Globe className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">Travel Partner Pro</h1>
-              <p className="text-xs text-teal-100">Enterprise Travel SaaS Platform</p>
-            </div>
+            <img src="/trevio-logo.png" alt="Trevio Global" className="h-10 w-auto brightness-0 invert" />
           </div>
+          <p className="text-xs text-white/70 mt-1">Enterprise Travel SaaS Platform</p>
         </div>
 
         <div className="relative z-10 space-y-6 max-w-md">
@@ -128,14 +123,14 @@ export function LoginScreen() {
                 transition={{ delay: 0.3 + i * 0.1 }}
                 className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/15"
               >
-                <h.icon className="w-4 h-4 text-amber-300 shrink-0" />
+                <h.icon className="w-4 h-4 text-white shrink-0" />
                 <span className="text-sm font-medium">{h.label}</span>
               </motion.div>
             ))}
           </div>
         </div>
 
-        <div className="relative z-10 flex items-center gap-6 text-sm text-teal-100">
+        <div className="relative z-10 flex items-center gap-6 text-sm text-white/80">
           <div>
             <div className="text-2xl font-bold text-white">6</div>
             <div className="text-xs">Role Types</div>

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Globe, ChevronDown, LogOut, X, Sparkles,
+  ChevronDown, LogOut, X, Sparkles,
 } from "lucide-react";
 import { useAppStore, useAuthStore } from "@/store/app-store";
 import { getNavForRole, ROLE_LABELS } from "@/lib/nav-config";
@@ -44,13 +44,7 @@ export function Sidebar() {
         {/* Logo header */}
         <div className="h-16 px-4 flex items-center justify-between border-b border-sidebar-border shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-sm">
-              <Globe className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="font-bold text-sm leading-tight">Travel Partner</p>
-              <p className="text-[10px] text-muted-foreground leading-tight">Pro Platform</p>
-            </div>
+            <img src="/trevio-logo.png" alt="Trevio Global" className="h-8 w-auto" />
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -157,11 +151,11 @@ export function Sidebar() {
         {/* Footer upgrade card */}
         {user.role !== "super_admin" && user.role !== "customer" && (
           <div className="p-3 border-t border-sidebar-border shrink-0">
-            <div className="rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 p-3 text-white relative overflow-hidden">
+            <div className="rounded-xl bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] p-3 text-white relative overflow-hidden">
               <div className="absolute -right-4 -top-4 w-16 h-16 rounded-full bg-white/10" />
               <p className="text-xs font-semibold relative">Enterprise Plan</p>
-              <p className="text-[10px] text-teal-50 mt-0.5 relative">Unlock unlimited API calls</p>
-              <Button size="sm" variant="secondary" className="w-full mt-2 h-7 text-xs bg-white text-teal-700 hover:bg-teal-50">
+              <p className="text-[10px] text-white/80 mt-0.5 relative">Unlock unlimited API calls</p>
+              <Button size="sm" variant="secondary" className="w-full mt-2 h-7 text-xs bg-white text-[#2A7BBD] hover:bg-white/90">
                 Upgrade Plan
               </Button>
             </div>

@@ -14,10 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Travel Partner Pro — Enterprise Travel Booking Platform",
-  description: "All-in-one travel booking SaaS: flights, hotels, buses, holidays, visa & insurance. Multi-agency RBAC, CRM, payments, commission engine.",
-  keywords: ["travel booking", "flight booking", "hotel booking", "travel agency software", "CRM", "Razorpay"],
-  authors: [{ name: "Travel Partner Pro" }],
+  title: "Trevio Global — Enterprise Travel Booking Platform",
+  description: "Trevio Global — all-in-one travel booking SaaS: flights, hotels, buses, holidays, visa & insurance. Multi-agency RBAC, CRM, payments, commission engine.",
+  keywords: ["Trevio Global", "travel booking", "flight booking", "hotel booking", "travel agency software", "CRM", "Razorpay"],
+  authors: [{ name: "Trevio Global" }],
+  icons: {
+    icon: "/trevio-logo.png",
+  },
 };
 
 export default function RootLayout({

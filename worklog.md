@@ -347,3 +347,45 @@ Stage Summary:
 - Platform: Agencies, Branches, API Marketplace, API Management, Monitoring, Marketing, CMS.
 - Sticky footer, responsive sidebar, light/dark theme toggle, animations throughout.
 - All verification passed — no errors.
+
+---
+Task ID: 1-rebrand
+Agent: Main (orchestrator)
+Task: Apply the Trevio Global logo's colors to the entire application (rebrand from teal-only palette to the logo's blue+teal palette).
+
+Work Log:
+- Analyzed uploaded logo "Trevio Global logo.png" using VLM (z-ai vision). Extracted brand colors:
+  - Primary blue #2A7BBD (TREVO text, ~60% dominant)
+  - Secondary teal #00A79D (GLOBAL block, travel accent)
+  - White #FFFFFF (airplane icon + GLOBAL text)
+  - Light gray #F5F5F5 (background)
+- Copied logo to /public/trevio-logo.png (2891x315 wide horizontal format).
+- Rewrote /src/app/globals.css with Trevio brand palette:
+  - --primary = blue #2A7BBD (oklch 0.546 0.145 251)
+  - --brand-teal = #00A79D (oklch 0.68 0.118 185)
+  - Chart colors lead with brand blue + brand teal
+  - Added --brand-blue and --brand-teal CSS vars + .text-gradient-brand / .bg-brand-gradient utilities
+  - Updated light + dark mode tokens
+- Updated /src/components/auth/login-screen.tsx:
+  - Left hero gradient: blue #2A7BBD → teal #00A79D (mirrors logo split)
+  - Replaced Globe icon logo with Trevio logo image (inverted white for dark panel)
+  - Role card gradients updated to blue/teal/cyan family (matching brand)
+  - Highlight icons + footer text → white
+- Updated /src/components/layout/sidebar.tsx:
+  - Header: Trevio logo image (replaced Globe icon + text)
+  - Upgrade card gradient: blue→teal, button text blue
+  - Removed unused Globe import
+- Updated /src/components/layout/footer.tsx: Trevio logo + "© 2025 Trevio Global" + "Powered by Trevio Global Platform"
+- Updated /src/components/views/dashboard.tsx: all 4 dashboard hero banners (Agency, Super Admin, Employee, Customer) → blue→teal gradient; progress bar → blue→teal; CTA buttons → blue text on white
+- Updated /src/app/layout.tsx metadata: title "Trevio Global — Enterprise Travel Booking Platform", favicon = trevio-logo.png
+- Ran `bun run lint` — zero errors.
+- Verified with Agent Browser:
+  - Login screen: TREVIO logo top-left, blue-to-teal gradient panel, page title "Trevio Global — Enterprise Travel Booking Platform". Zero errors.
+  - Super Admin dashboard: Trevio Global logo in sidebar, blue-to-teal hero banner, brand-cohesive stat cards. Zero errors.
+- VLM visual verification of both screenshots confirmed: cohesive blue+teal brand theme, no broken images, no color clashes, professional unified look.
+
+Stage Summary:
+- Application fully rebranded to Trevio Global using the logo's exact colors (blue #2A7BBD primary + teal #00A79D accent).
+- Logo image used in login hero, sidebar header, footer, and as favicon.
+- All gradient banners across all role dashboards now use blue→teal (matching the two-tone logo design).
+- Verified end-to-end with zero errors. The blue+teal palette is confirmed suitable and cohesive for a travel booking platform.
