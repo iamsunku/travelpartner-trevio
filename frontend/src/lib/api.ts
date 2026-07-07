@@ -198,7 +198,48 @@ export const api = {
 
   getFinance: () =>
     apiFetch<ApiFinanceResponse>("/api/finance"),
+
+  // Phase 3 Endpoints
+
+  getMarketingCampaigns: () => apiFetch<{ campaigns: any[] }>("/api/marketing/campaigns"),
+  createMarketingCampaign: (body: any) => apiFetch<any>("/api/marketing/campaigns", { method: "POST", body: JSON.stringify(body) }),
+
+  getCmsPages: () => apiFetch<{ pages: any[] }>("/api/cms/pages"),
+  createCmsPage: (body: any) => apiFetch<any>("/api/cms/pages", { method: "POST", body: JSON.stringify(body) }),
+
+  getApiKeys: () => apiFetch<{ keys: any[] }>("/api/management/keys"),
+  createApiKey: (body: any) => apiFetch<any>("/api/management/keys", { method: "POST", body: JSON.stringify(body) }),
+
+  getSupportTickets: () => apiFetch<{ tickets: any[] }>("/api/support/tickets"),
+  createSupportTicket: (body: any) => apiFetch<any>("/api/support/tickets", { method: "POST", body: JSON.stringify(body) }),
+
+  getSettings: () => apiFetch<any>("/api/settings"),
+  updateSettings: (body: any) => apiFetch<any>("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
+
+  getMonitoringMetrics: () => apiFetch<any>("/api/monitoring/metrics"),
+
+  searchBus: (params?: any) => {
+    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
+    return apiFetch<{ results: any[] }>(`/api/bus/search${q}`);
+  },
+  searchTrain: (params?: any) => {
+    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
+    return apiFetch<{ results: any[] }>(`/api/train/search${q}`);
+  },
+  searchHoliday: (params?: any) => {
+    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
+    return apiFetch<{ results: any[] }>(`/api/holiday/search${q}`);
+  },
+  searchVisa: (params?: any) => {
+    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
+    return apiFetch<{ results: any[] }>(`/api/visa/search${q}`);
+  },
+  searchInsurance: (params?: any) => {
+    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
+    return apiFetch<{ results: any[] }>(`/api/insurance/search${q}`);
+  },
 };
+
 
 export interface ApiUser {
   id: string;

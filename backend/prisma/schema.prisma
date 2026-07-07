@@ -244,3 +244,92 @@ model Notification {
   userId    String?
   createdAt DateTime @default(now())
 }
+
+model MarketingCampaign {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   // Email|SMS|Push
+  status      String   @default("Draft") // Draft|Active|Completed|Paused
+  audience    String
+  sentCount   Int      @default(0)
+  openRate    Float    @default(0)
+  clickRate   Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ContentPage {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  content     String
+  status      String   @default("Draft") // Published|Draft|Archived
+  author      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ContentPost {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  excerpt     String?
+  content     String
+  status      String   @default("Draft") // Published|Draft|Archived
+  author      String
+  category    String?
+  image       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  name        String
+  key         String   @unique
+  environment String   @default("Test") // Test|Production
+  status      String   @default("Active") // Active|Revoked
+  calls       Int      @default(0)
+  limit       Int      @default(1000)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+}
+
+model SupportTicket {
+  id          String   @id @default(cuid())
+  ticketId    String   @unique
+  subject     String
+  description String
+  status      String   @default("Open") // Open|In Progress|Resolved|Closed
+  priority    String   @default("Medium") // Low|Medium|High|Critical
+  customerName String
+  customerId  String?
+  assignedTo  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  messages    TicketMessage[]
+}
+
+model TicketMessage {
+  id          String   @id @default(cuid())
+  ticketId    String
+  sender      String
+  message     String
+  isInternal  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id])
+}
+
+model Settings {
+  id          String   @id @default(cuid())
+  agencyId    String   @unique
+  theme       String   @default("system")
+  currency    String   @default("INR")
+  timezone    String   @default("Asia/Kolkata")
+  notifications Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+

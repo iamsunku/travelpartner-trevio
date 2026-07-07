@@ -35,6 +35,8 @@ import {
   mapApiQuotation,
   mapApiTask,
   mapApiWalletTxn,
+  mapApiFinance,
+  mapApiCommission,
 } from "@/lib/api-mappers";
 
 export interface VisaApplication {
@@ -83,6 +85,10 @@ interface DemoDataState {
   bookingSeq: number;
   paymentSeq: number;
 
+  dashboardStats: any;
+  financeStats: any;
+  commissionStats: any;
+
   addBooking: (input: NewBookingInput) => Booking;
   updateBookingStatus: (id: string, status: Booking["status"]) => void;
   addCustomer: (customer: Omit<Customer, "id" | "totalBookings" | "totalSpent" | "loyaltyPoints" | "createdAt">) => Customer;
@@ -128,6 +134,9 @@ const initialState = {
   visaApplications: INITIAL_VISA,
   bookingSeq: 8853,
   paymentSeq: 100,
+  dashboardStats: null,
+  financeStats: null,
+  commissionStats: null,
 };
 
 export const useDemoDataStore = create<DemoDataState>()(
@@ -466,19 +475,22 @@ export const useDemoDataStore = create<DemoDataState>()(
 
       hydrateFromApi: async (agencyId) => {
         try {
-          const [bookingsRes, customersRes, notificationsRes, leadsRes, quotationsRes, paymentsRes, employeesRes, tasksRes] =
-            await Promise.all([
-              api.getBookings(),
-              api.getCustomers(),
-              api.getNotifications(),
-              api.getLeads(),
-              api.getQuotations(),
-              api.getPayments(),
-              api.getEmployees(agencyId),
-              api.getTasks(),
-            ]);
+    const [bookingsRes, customersRes, notificationsRes, leadsRes, quotationsRes, paymentsRes, employeesRes, tasksRes, dashboardRes, financeRes, commissionRes] =
+      await Promise.all([
+        api.getBookings(),
+        api.getCustomers(),
+        api.getNotifications(),
+        api.getLeads(),
+        api.getQuotations(),
+        api.getPayments(),
+        api.getEmployees(agencyId),
+        api.getTasks(),
+        api.getDashboard(),
+        api.getFinance(),
+        api.getCommission(),
+      ]);
 
-          const patch: Partial<DemoDataState> = {};
+    const patch: Partial<DemoDataState> = {};
 
           if (bookingsRes.bookings?.length) {
             patch.bookings = bookingsRes.bookings.map(mapApiBooking);
@@ -504,6 +516,10 @@ export const useDemoDataStore = create<DemoDataState>()(
           if (tasksRes.tasks?.length) {
             patch.tasks = tasksRes.tasks.map(mapApiTask);
           }
+          
+          if (dashboardRes?.stats) patch.dashboardStats = dashboardRes.stats;
+          if (financeRes?.summary) patch.financeStats = mapApiFinance(financeRes);
+          if (commissionRes?.summary) patch.commissionStats = mapApiCommission(commissionRes);
 
           if (agencyId) {
             try {

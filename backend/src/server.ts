@@ -865,6 +865,150 @@ app.get("/api/finance", optionalAuth, async (_req, res) => {
   }
 });
 
+// --- Phase 2 Endpoints ---
+
+app.get("/api/marketing/campaigns", optionalAuth, async (req, res) => {
+  try {
+    const campaigns = await db.marketingCampaign.findMany({ orderBy: { createdAt: "desc" } });
+    res.json({ campaigns });
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/marketing/campaigns", optionalAuth, async (req, res) => {
+  try {
+    const data = req.body;
+    const campaign = await db.marketingCampaign.create({ data });
+    res.json(campaign);
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/cms/pages", optionalAuth, async (req, res) => {
+  try {
+    const pages = await db.contentPage.findMany({ orderBy: { createdAt: "desc" } });
+    res.json({ pages });
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/cms/pages", optionalAuth, async (req, res) => {
+  try {
+    const data = req.body;
+    const page = await db.contentPage.create({ data });
+    res.json(page);
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/management/keys", optionalAuth, async (req, res) => {
+  try {
+    const keys = await db.apiKey.findMany({ orderBy: { createdAt: "desc" } });
+    res.json({ keys });
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/management/keys", optionalAuth, async (req, res) => {
+  try {
+    const data = req.body;
+    const key = await db.apiKey.create({ data });
+    res.json(key);
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/support/tickets", optionalAuth, async (req, res) => {
+  try {
+    const tickets = await db.supportTicket.findMany({
+      include: { messages: true },
+      orderBy: { createdAt: "desc" }
+    });
+    res.json({ tickets });
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/support/tickets", optionalAuth, async (req, res) => {
+  try {
+    const data = req.body;
+    const ticket = await db.supportTicket.create({ data });
+    res.json(ticket);
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/settings", optionalAuth, async (req, res) => {
+  try {
+    const agencyId = "ag-1";
+    let settings = await db.settings.findUnique({ where: { agencyId } });
+    if (!settings) {
+      settings = await db.settings.create({ data: { agencyId } });
+    }
+    res.json(settings);
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/api/settings", optionalAuth, async (req, res) => {
+  try {
+    const agencyId = "ag-1";
+    const data = req.body;
+    const settings = await db.settings.upsert({
+      where: { agencyId },
+      update: data,
+      create: { ...data, agencyId }
+    });
+    res.json(settings);
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/monitoring/metrics", optionalAuth, async (req, res) => {
+  try {
+    res.json({
+      cpu: "12%",
+      memory: "1.2GB",
+      uptime: process.uptime(),
+      requestsPerMin: 124,
+      errorRate: "0.1%",
+    });
+  } catch (e) {
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/bus/search", optionalAuth, async (req, res) => {
+  res.json({ results: [{ id: "bs-1", operator: "VRL Travels", route: "MUM-GOA", price: 1200 }] });
+});
+
+app.get("/api/train/search", optionalAuth, async (req, res) => {
+  res.json({ results: [{ id: "tr-1", trainName: "Rajdhani Exp", route: "MUM-DEL", price: 3200 }] });
+});
+
+app.get("/api/holiday/search", optionalAuth, async (req, res) => {
+  res.json({ results: [{ id: "hol-1", title: "Goa Beach Resort", duration: "3N/4D", price: 15000 }] });
+});
+
+app.get("/api/visa/search", optionalAuth, async (req, res) => {
+  res.json({ results: [{ id: "vs-1", country: "Schengen", type: "Tourist", price: 12000 }] });
+});
+
+app.get("/api/insurance/search", optionalAuth, async (req, res) => {
+  res.json({ results: [{ id: "ins-1", provider: "ICICI Lombard", coverage: "100K USD", price: 1800 }] });
+});
+
+
 app.listen(PORT, () => {
   console.log(`Trevio API running on http://localhost:${PORT}`);
 

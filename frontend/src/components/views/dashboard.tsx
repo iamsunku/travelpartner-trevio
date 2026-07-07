@@ -19,8 +19,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
-  REVENUE_DATA, BOOKING_TYPE_DATA, TOP_DESTINATIONS, RECENT_ACTIVITIES,
-  BOOKINGS, NOTIFICATIONS, AGENCIES, LEADS, TASKS,
+  TOP_DESTINATIONS, RECENT_ACTIVITIES,
+  AGENCIES,
 } from "@/lib/mock-data";
 import { formatINR, formatFullINR, StatusBadge, avatarGradient, initials } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
@@ -78,18 +78,21 @@ export function DashboardView() {
 function AgencyDashboard() {
   const setView = useAppStore((s) => s.setView);
   const bookings = useDemoDataStore((s) => s.bookings);
+  const tasks = useDemoDataStore((s) => s.tasks);
+  const dashboardStats = useDemoDataStore((s) => s.dashboardStats);
+  const financeStats = useDemoDataStore((s) => s.financeStats);
   const recentBookings = bookings.slice(0, 6);
-  const myTasks = TASKS.filter((t) => t.assignedTo === "Sneha Reddy").slice(0, 4);
+  const myTasks = tasks.filter((t) => t.assignedTo === "Sneha Reddy").slice(0, 4);
 
   const stats = [
-    { icon: Plane, label: "Total Bookings", value: "3,420", change: 12.5, trend: "up" as const, color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", subtitle: "All time" },
-    { icon: Calendar, label: "Today's Bookings", value: "28", change: 8.2, trend: "up" as const, color: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400", subtitle: "vs yesterday" },
-    { icon: DollarSign, label: "Today's Revenue", value: formatINR(285000), change: 15.3, trend: "up" as const, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "₹2.85L today" },
+    { icon: Plane, label: "Total Bookings", value: dashboardStats?.bookings?.toLocaleString() || "0", change: 12.5, trend: "up" as const, color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", subtitle: "All time" },
+    { icon: Calendar, label: "Today's Bookings", value: String(Math.floor((dashboardStats?.bookings || 0) / 10)), change: 8.2, trend: "up" as const, color: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400", subtitle: "vs yesterday" },
+    { icon: DollarSign, label: "Today's Revenue", value: formatINR((financeStats?.summary?.totalRevenue || 0) / 10), change: 15.3, trend: "up" as const, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "₹2.85L today" },
     { icon: Receipt, label: "Pending Payments", value: formatINR(184000), change: 5.1, trend: "down" as const, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400", subtitle: "12 invoices" },
     { icon: Wallet, label: "Wallet Balance", value: formatINR(845000), change: 22.4, trend: "up" as const, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400", subtitle: "Available" },
-    { icon: TrendingUp, label: "Commission Earned", value: formatINR(1240000), change: 18.7, trend: "up" as const, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400", subtitle: "This month" },
-    { icon: Users, label: "Total Customers", value: "1,284", change: 6.4, trend: "up" as const, color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400", subtitle: "Active" },
-    { icon: Target, label: "New Enquiries", value: "47", change: 11.2, trend: "up" as const, color: "bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400", subtitle: "This week" },
+    { icon: TrendingUp, label: "Commission Earned", value: formatINR(financeStats?.summary?.totalCommission || 0), change: 18.7, trend: "up" as const, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400", subtitle: "This month" },
+    { icon: Users, label: "Total Customers", value: dashboardStats?.customers?.toLocaleString() || "0", change: 6.4, trend: "up" as const, color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400", subtitle: "Active" },
+    { icon: Target, label: "New Enquiries", value: dashboardStats?.leads?.toLocaleString() || "0", change: 11.2, trend: "up" as const, color: "bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400", subtitle: "This week" },
   ];
 
   return (
@@ -137,7 +140,7 @@ function AgencyDashboard() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={REVENUE_DATA} margin={{ left: -16, right: 8, top: 8 }}>
+              <AreaChart data={financeStats?.monthly || []} margin={{ left: -16, right: 8, top: 8 }}>
                 <defs>
                   <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.4} />
@@ -167,18 +170,18 @@ function AgencyDashboard() {
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={BOOKING_TYPE_DATA} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
-                  {BOOKING_TYPE_DATA.map((_, i) => <Cell key={i} fill={`var(--chart-${i + 1})`} />)}
+                <Pie data={financeStats?.byService?.map((s: any) => ({ name: s.service, value: s.revenue })) || []} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
+                  {(financeStats?.byService?.map((s: any) => ({ name: s.service, value: s.revenue })) || []).map((_, i) => <Cell key={i} fill={`var(--chart-${i + 1})`} />)}
                 </Pie>
                 <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
               </PieChart>
             </ResponsiveContainer>
             <div className="grid grid-cols-2 gap-1.5 mt-2">
-              {BOOKING_TYPE_DATA.map((d, i) => (
+              {(financeStats?.byService?.map((s: any) => ({ name: s.service, value: s.revenue })) || []).map((d: any, i: number) => (
                 <div key={d.name} className="flex items-center gap-1.5 text-xs">
                   <span className="w-2.5 h-2.5 rounded-sm" style={{ background: `var(--chart-${i + 1})` }} />
                   <span className="text-muted-foreground">{d.name}</span>
-                  <span className="font-medium ml-auto">{d.value}</span>
+                  <span className="font-medium ml-auto">{formatINR(d.value)}</span>
                 </div>
               ))}
             </div>
