@@ -1,0 +1,246 @@
+// Travel Partner Pro — Prisma Schema (SQLite)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  phone        String?
+  password     String?
+  role         String   @default("employee") // super_admin|agency_admin|branch_manager|employee|accountant|customer
+  designation  String?
+  agencyId     String?
+  branchId     String?
+  avatar       String?
+  status       String   @default("Active")
+  lastLogin    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  agency       Agency?  @relation(fields: [agencyId], references: [id])
+  branch       Branch?  @relation(fields: [branchId], references: [id])
+  bookings     Booking[]
+  leads        Lead[]
+  tasks        Task[]   @relation("TaskAssignee")
+  quotations   Quotation[]
+  auditLogs    AuditLog[]
+}
+
+model Agency {
+  id              String   @id @default(cuid())
+  name            String
+  owner           String
+  email           String
+  phone           String
+  plan            String   @default("Starter") // Starter|Growth|Enterprise
+  status          String   @default("Active")  // Active|Suspended|Trial
+  walletBalance   Int      @default(0)
+  commissionEarned Int     @default(0)
+  totalBookings   Int      @default(0)
+  monthlyRevenue  Int      @default(0)
+  apiAllocation   String   @default("{}") // JSON: {flights,hotels,bus,train}
+  gstNumber       String?
+  panNumber       String?
+  address         String?
+  logo            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  users           User[]
+  branches        Branch[]
+  bookings        Booking[]
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  agencyId  String
+  name      String
+  manager   String
+  city      String
+  revenue   Int      @default(0)
+  createdAt DateTime @default(now())
+
+  agency    Agency   @relation(fields: [agencyId], references: [id])
+  users     User[]
+}
+
+model Customer {
+  id            String   @id @default(cuid())
+  name          String
+  email         String
+  phone         String
+  type          String   @default("Individual") // Individual|Corporate
+  tier          String   @default("Silver") // Silver|Gold|Platinum
+  totalBookings Int      @default(0)
+  totalSpent    Int      @default(0)
+  loyaltyPoints Int      @default(0)
+  passportNo    String?
+  visaStatus    String?  // Valid|Expired|None
+  city          String?
+  agencyId      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bookings      Booking[]
+  leads         Lead[]
+}
+
+model Booking {
+  id            String   @id @default(cuid())
+  bookingRef    String   @unique
+  customerName  String
+  customerId    String?
+  service       String   // Flight|Hotel|Bus|Train|Holiday|Visa|Insurance
+  route         String
+  travelDate    String
+  amount        Int
+  commission    Int      @default(0)
+  status        String   @default("Pending") // Pending|Confirmed|Ticketed|Completed|Cancelled|Refunded|Failed
+  paymentStatus String   @default("Pending") // Paid|Pending|Partial|Refunded
+  paymentMethod String?
+  agentId       String?
+  agentName     String
+  agencyId      String?
+  agencyName    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  agency        Agency?   @relation(fields: [agencyId], references: [id])
+  agent         User?     @relation(fields: [agentId], references: [id])
+  payments      Payment[]
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  txnId       String   @unique
+  customerName String
+  bookingRef  String
+  bookingId   String?
+  amount      Int
+  method      String   // Razorpay|UPI|Card|Net Banking|Cash|Bank Transfer|Wallet
+  status      String   @default("Success") // Success|Pending|Failed|Refunded
+  type        String   @default("Payment") // Payment|Refund|Wallet Credit|Commission
+  gateway     String?
+  date        DateTime @default(now())
+
+  booking     Booking? @relation(fields: [bookingId], references: [id])
+}
+
+model Lead {
+  id           String   @id @default(cuid())
+  customerName String
+  email        String
+  phone        String
+  source       String   // Website|WhatsApp|Phone|Walk-in|Facebook|Instagram|Google Ads|Referral
+  service      String   // Flight|Hotel|Holiday|Visa|Insurance|Bus|Train
+  value        Int
+  stage        String   @default("New") // New|Qualified|Follow-up|Quotation Sent|Negotiation|Won|Lost
+  assignedToId String?
+  assignedTo   String
+  expectedClose String
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignedToUser User?  @relation(fields: [assignedToId], references: [id])
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  customerId     String?
+}
+
+model Quotation {
+  id         String   @id @default(cuid())
+  quoteNo    String   @unique
+  customerName String
+  service    String   // Flight|Hotel|Holiday|Visa|Insurance
+  items      Int
+  amount     Int
+  gst        Int
+  total      Int
+  status     String   @default("Draft") // Draft|Sent|Accepted|Rejected|Expired
+  validTill  String
+  createdById String?
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  createdByUser User? @relation(fields: [createdById], references: [id])
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  assignedToId String?
+  assignedTo  String
+  assignedBy  String
+  priority    String   @default("Medium") // Low|Medium|High|Urgent
+  status      String   @default("To Do") // To Do|In Progress|Review|Completed
+  dueDate     String
+  relatedTo   String?
+  createdAt   DateTime @default(now())
+
+  assignee    User?    @relation("TaskAssignee", fields: [assignedToId], references: [id])
+}
+
+model WalletTransaction {
+  id          String   @id @default(cuid())
+  agencyId    String?
+  type        String   // Credit|Debit
+  source      String   // Commission|Payment|Refund|Top-up|Transfer|Booking
+  amount      Int
+  balance     Int
+  description String
+  date        DateTime @default(now())
+}
+
+model Employee {
+  id           String   @id @default(cuid())
+  agencyId     String?
+  name         String
+  email        String   @unique
+  phone        String
+  designation  String
+  department   String
+  branch       String
+  role         String
+  status       String   @default("Active")
+  salary       Int      @default(0)
+  incentives   Int      @default(0)
+  target       Int      @default(0)
+  achieved     Int      @default(0)
+  attendance   Int      @default(95)
+  joinDate     String
+  createdAt    DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  userName  String
+  action    String
+  module    String
+  ip        String?
+  details   String?
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String   // booking|payment|api|customer|internal|task
+  title     String
+  message   String
+  priority  String   @default("low") // low|medium|high
+  read      Boolean  @default(false)
+  userId    String?
+  createdAt DateTime @default(now())
+}
