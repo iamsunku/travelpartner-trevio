@@ -37,6 +37,8 @@ const VISA_TYPES = [
   { id: "Work", label: "Work Visa", icon: Building2, desc: "Employment and work permits" },
 ];
 
+const VISA_FEE = 8500;
+
 const DOCUMENTS = [
   { id: "passport", label: "Passport", desc: "First & last page (PDF/JPG, max 5MB)", icon: IdCard, required: true },
   { id: "photo", label: "Passport Photo", desc: "White background, 2x2 inch (JPG)", icon: ImageIcon, required: true },
@@ -111,6 +113,7 @@ export function VisaView() {
       type: visaType,
       applicant: applicantName,
       passport: passportNo,
+      fee: VISA_FEE,
     });
     toast({
       title: "Application Submitted!",
@@ -320,7 +323,7 @@ export function VisaView() {
                   <Alert className="mt-3 bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
                     <AlertCircle className="w-4 h-4 text-amber-600" />
                     <AlertDescription className="text-xs text-amber-700 dark:text-amber-300">
-                      Visa fee: <span className="font-semibold">₹8,500</span> (non-refundable). Payable at embassy appointment.
+                      Visa fee: <span className="font-semibold">₹{VISA_FEE.toLocaleString("en-IN")}</span> (non-refundable). Payable at embassy appointment.
                     </AlertDescription>
                   </Alert>
                 </CardContent>

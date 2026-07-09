@@ -4,8 +4,7 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrainFront, MapPin, Search, Star,
-  CreditCard, Wallet, Building2, Loader2, ShieldCheck, ArrowRight,
-  BadgeIndianRupee, Users, Utensils,
+  ArrowRight, Users, Utensils, CreditCard,
 } from "lucide-react";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -20,13 +19,119 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { formatFullINR, PageHeader } from "@/components/shared/ui-helpers";
+import { CitySearchField, type CityOption } from "@/components/shared/city-search-field";
+import { PaymentModal, type BookingPaymentMethod } from "@/components/shared/payment-modal";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { cn } from "@/lib/utils";
 
-const STATIONS = ["Mumbai Central", "Pune Jn", "Delhi Jn", "Bangalore Jn", "Chennai Central", "Hyderabad Jn", "Howrah Jn", "Ahmedabad Jn", "Jaipur Jn", "Goa Madgaon"];
+const STATIONS: CityOption[] = [
+  // Maharashtra
+  { value: "Mumbai Central", label: "Mumbai Central", sublabel: "MMCT, Maharashtra" },
+  { value: "Chhatrapati Shivaji Mah. Terminus", label: "Chhatrapati Shivaji Mah. Terminus", sublabel: "CSMT, Mumbai" },
+  { value: "Dadar", label: "Dadar", sublabel: "DR, Mumbai" },
+  { value: "Lokmanya Tilak Terminus", label: "Lokmanya Tilak Terminus", sublabel: "LTT, Mumbai" },
+  { value: "Pune Jn", label: "Pune Jn", sublabel: "PUNE, Maharashtra" },
+  { value: "Nagpur Jn", label: "Nagpur Jn", sublabel: "NGP, Maharashtra" },
+  { value: "Nashik Road", label: "Nashik Road", sublabel: "NK, Maharashtra" },
+  { value: "Aurangabad", label: "Aurangabad", sublabel: "AWB, Maharashtra" },
+  { value: "Solapur Jn", label: "Solapur Jn", sublabel: "SUR, Maharashtra" },
+  { value: "Kolhapur", label: "Kolhapur", sublabel: "KOP, Maharashtra" },
+  // Delhi & NCR
+  { value: "New Delhi", label: "New Delhi", sublabel: "NDLS, Delhi" },
+  { value: "Delhi Jn", label: "Delhi Jn", sublabel: "DLI, Delhi" },
+  { value: "Hazrat Nizamuddin", label: "Hazrat Nizamuddin", sublabel: "NZM, Delhi" },
+  { value: "Anand Vihar Terminal", label: "Anand Vihar Terminal", sublabel: "ANVT, Delhi" },
+  // Karnataka
+  { value: "Bangalore Jn (KSR)", label: "Bangalore Jn (KSR)", sublabel: "SBC, Karnataka" },
+  { value: "Mysuru Jn", label: "Mysuru Jn", sublabel: "MYS, Karnataka" },
+  { value: "Hubballi Jn", label: "Hubballi Jn", sublabel: "UBL, Karnataka" },
+  // Tamil Nadu
+  { value: "Chennai Central", label: "Chennai Central", sublabel: "MAS, Tamil Nadu" },
+  { value: "Chennai Egmore", label: "Chennai Egmore", sublabel: "MS, Tamil Nadu" },
+  { value: "Coimbatore Jn", label: "Coimbatore Jn", sublabel: "CBE, Tamil Nadu" },
+  { value: "Madurai Jn", label: "Madurai Jn", sublabel: "MDU, Tamil Nadu" },
+  { value: "Tiruchirappalli Jn", label: "Tiruchirappalli Jn", sublabel: "TPJ, Tamil Nadu" },
+  { value: "Salem Jn", label: "Salem Jn", sublabel: "SA, Tamil Nadu" },
+  // Telangana / AP
+  { value: "Hyderabad Deccan", label: "Hyderabad Deccan", sublabel: "HYB, Telangana" },
+  { value: "Secunderabad Jn", label: "Secunderabad Jn", sublabel: "SC, Telangana" },
+  { value: "Warangal", label: "Warangal", sublabel: "WL, Telangana" },
+  { value: "Vijayawada Jn", label: "Vijayawada Jn", sublabel: "BZA, Andhra Pradesh" },
+  { value: "Visakhapatnam Jn", label: "Visakhapatnam Jn", sublabel: "VSKP, Andhra Pradesh" },
+  { value: "Tirupati", label: "Tirupati", sublabel: "TPTY, Andhra Pradesh" },
+  // West Bengal / East
+  { value: "Howrah Jn", label: "Howrah Jn", sublabel: "HWH, Kolkata" },
+  { value: "Sealdah", label: "Sealdah", sublabel: "SDAH, Kolkata" },
+  { value: "New Jalpaiguri", label: "New Jalpaiguri", sublabel: "NJP, West Bengal" },
+  { value: "Bhubaneswar", label: "Bhubaneswar", sublabel: "BBS, Odisha" },
+  { value: "Puri", label: "Puri", sublabel: "PURI, Odisha" },
+  { value: "Ranchi Jn", label: "Ranchi Jn", sublabel: "RNC, Jharkhand" },
+  { value: "Patna Jn", label: "Patna Jn", sublabel: "PNBE, Bihar" },
+  { value: "Gaya Jn", label: "Gaya Jn", sublabel: "GAYA, Bihar" },
+  { value: "Guwahati", label: "Guwahati", sublabel: "GHY, Assam" },
+  // Gujarat
+  { value: "Ahmedabad Jn", label: "Ahmedabad Jn", sublabel: "ADI, Gujarat" },
+  { value: "Surat", label: "Surat", sublabel: "ST, Gujarat" },
+  { value: "Vadodara Jn", label: "Vadodara Jn", sublabel: "BRC, Gujarat" },
+  { value: "Rajkot Jn", label: "Rajkot Jn", sublabel: "RJT, Gujarat" },
+  // Rajasthan
+  { value: "Jaipur Jn", label: "Jaipur Jn", sublabel: "JP, Rajasthan" },
+  { value: "Jodhpur Jn", label: "Jodhpur Jn", sublabel: "JU, Rajasthan" },
+  { value: "Udaipur City", label: "Udaipur City", sublabel: "UDZ, Rajasthan" },
+  { value: "Ajmer Jn", label: "Ajmer Jn", sublabel: "AII, Rajasthan" },
+  { value: "Bikaner Jn", label: "Bikaner Jn", sublabel: "BKN, Rajasthan" },
+  // Goa
+  { value: "Goa Madgaon", label: "Goa Madgaon", sublabel: "MAO, Goa" },
+  { value: "Vasco Da Gama", label: "Vasco Da Gama", sublabel: "VSG, Goa" },
+  // Uttar Pradesh
+  { value: "Lucknow Jn", label: "Lucknow Jn", sublabel: "LKO, Uttar Pradesh" },
+  { value: "Kanpur Central", label: "Kanpur Central", sublabel: "CNB, Uttar Pradesh" },
+  { value: "Prayagraj Jn", label: "Prayagraj Jn", sublabel: "PRYJ, Uttar Pradesh" },
+  { value: "Varanasi Jn", label: "Varanasi Jn", sublabel: "BSB, Uttar Pradesh" },
+  { value: "Gorakhpur Jn", label: "Gorakhpur Jn", sublabel: "GKP, Uttar Pradesh" },
+  { value: "Agra Cantt", label: "Agra Cantt", sublabel: "AGC, Uttar Pradesh" },
+  // Madhya Pradesh
+  { value: "Bhopal Jn", label: "Bhopal Jn", sublabel: "BPL, Madhya Pradesh" },
+  { value: "Indore Jn", label: "Indore Jn", sublabel: "INDB, Madhya Pradesh" },
+  { value: "Gwalior Jn", label: "Gwalior Jn", sublabel: "GWL, Madhya Pradesh" },
+  { value: "Jabalpur Jn", label: "Jabalpur Jn", sublabel: "JBP, Madhya Pradesh" },
+  // Punjab / North
+  { value: "Amritsar Jn", label: "Amritsar Jn", sublabel: "ASR, Punjab" },
+  { value: "Ludhiana Jn", label: "Ludhiana Jn", sublabel: "LDH, Punjab" },
+  { value: "Chandigarh Jn", label: "Chandigarh Jn", sublabel: "CDG, Chandigarh" },
+  { value: "Jammu Tawi", label: "Jammu Tawi", sublabel: "JAT, Jammu & Kashmir" },
+  { value: "Dehradun", label: "Dehradun", sublabel: "DDN, Uttarakhand" },
+  { value: "Shimla", label: "Shimla", sublabel: "SML, Himachal Pradesh" },
+  // Kerala
+  { value: "Kochi Ernakulam Jn", label: "Kochi Ernakulam Jn", sublabel: "ERS, Kerala" },
+  { value: "Thiruvananthapuram Central", label: "Thiruvananthapuram Central", sublabel: "TVC, Kerala" },
+  { value: "Kozhikode", label: "Kozhikode", sublabel: "CLT, Kerala" },
+  // Chhattisgarh / Jharkhand
+  { value: "Raipur Jn", label: "Raipur Jn", sublabel: "R, Chhattisgarh" },
+  { value: "Jamshedpur", label: "Jamshedpur", sublabel: "TATA, Jharkhand" },
+
+  // International — cross-border and world rail hubs
+  { value: "Dhaka Kamalapur (Maitree Express)", label: "Dhaka Kamalapur", sublabel: "Bangladesh — via Maitree Express" },
+  { value: "Colombo Fort", label: "Colombo Fort", sublabel: "Sri Lanka" },
+  { value: "Lahore Jn (Samjhauta Express)", label: "Lahore Jn", sublabel: "Pakistan — via Samjhauta Express" },
+  { value: "London St Pancras", label: "London St Pancras", sublabel: "United Kingdom — Eurostar" },
+  { value: "Paris Gare du Nord", label: "Paris Gare du Nord", sublabel: "France — Eurostar / TGV" },
+  { value: "Amsterdam Centraal", label: "Amsterdam Centraal", sublabel: "Netherlands" },
+  { value: "Brussels Midi", label: "Brussels Midi", sublabel: "Belgium" },
+  { value: "Frankfurt Hbf", label: "Frankfurt Hbf", sublabel: "Germany — Deutsche Bahn ICE" },
+  { value: "Berlin Hbf", label: "Berlin Hbf", sublabel: "Germany — Deutsche Bahn ICE" },
+  { value: "Zurich HB", label: "Zurich HB", sublabel: "Switzerland" },
+  { value: "Milan Centrale", label: "Milan Centrale", sublabel: "Italy — Frecciarossa" },
+  { value: "Rome Termini", label: "Rome Termini", sublabel: "Italy — Frecciarossa" },
+  { value: "Madrid Atocha", label: "Madrid Atocha", sublabel: "Spain — Renfe AVE" },
+  { value: "Tokyo Station", label: "Tokyo Station", sublabel: "Japan — Shinkansen" },
+  { value: "Osaka Station", label: "Osaka Station", sublabel: "Japan — Shinkansen" },
+  { value: "Beijing South", label: "Beijing South", sublabel: "China — High-speed Rail" },
+  { value: "New York Penn Station", label: "New York Penn Station", sublabel: "USA — Amtrak Acela" },
+  { value: "Washington Union Station", label: "Washington Union Station", sublabel: "USA — Amtrak Acela" },
+];
 
 const TRAIN_CLASSES = [
   { code: "SL", name: "Sleeper" },
@@ -59,154 +164,109 @@ interface TrainResult {
   pantry: boolean;
 }
 
-const TRAINS: TrainResult[] = [
-  {
-    id: "tr-1", name: "Rajdhani Express", number: "12951", origin: "Mumbai Central", destination: "Delhi Jn",
-    departTime: "17:00", arriveTime: "08:35", duration: "15h 35m", rating: 4.6, pantry: true,
-    runningDays: [true, true, true, true, true, true, true],
-    classes: [
-      { code: "3A", fare: 2350, status: "AVL 45" },
-      { code: "2A", fare: 3380, status: "AVL 12" },
-      { code: "1A", fare: 5670, status: "RAC 4" },
-    ],
-  },
-  {
-    id: "tr-2", name: "Duronto Express", number: "12259", origin: "Mumbai Central", destination: "Delhi Jn",
-    departTime: "23:05", arriveTime: "16:30", duration: "17h 25m", rating: 4.4, pantry: true,
-    runningDays: [true, true, false, true, true, false, true],
-    classes: [
-      { code: "SL", fare: 880, status: "WL 12" },
-      { code: "3A", fare: 2210, status: "AVL 28" },
-      { code: "2A", fare: 3180, status: "RAC 8" },
-    ],
-  },
-  {
-    id: "tr-3", name: "Garib Rath Express", number: "12909", origin: "Mumbai Central", destination: "Delhi Jn",
-    departTime: "15:35", arriveTime: "10:55", duration: "19h 20m", rating: 4.1, pantry: false,
-    runningDays: [true, false, true, false, true, true, false],
-    classes: [
-      { code: "CC", fare: 1240, status: "AVL 60" },
-      { code: "2S", fare: 540, status: "AVL 120" },
-    ],
-  },
-  {
-    id: "tr-4", name: "Mumbai Rajdhani", number: "12953", origin: "Mumbai Central", destination: "Delhi Jn",
-    departTime: "16:25", arriveTime: "08:15", duration: "15h 50m", rating: 4.7, pantry: true,
-    runningDays: [true, true, true, true, true, true, true],
-    classes: [
-      { code: "3A", fare: 2410, status: "AVL 22" },
-      { code: "2A", fare: 3450, status: "AVL 5" },
-      { code: "1A", fare: 5810, status: "WL 3" },
-    ],
-  },
-  {
-    id: "tr-5", name: "August Kranti Rajdhani", number: "12953", origin: "Mumbai Central", destination: "Delhi Jn",
-    departTime: "17:40", arriveTime: "09:55", duration: "16h 15m", rating: 4.5, pantry: true,
-    runningDays: [false, true, true, true, true, true, true],
-    classes: [
-      { code: "SL", fare: 920, status: "RAC 18" },
-      { code: "3A", fare: 2380, status: "WL 8" },
-      { code: "2A", fare: 3420, status: "AVL 3" },
-    ],
-  },
-  {
-    id: "tr-6", name: "Pune Duronto", number: "12297", origin: "Mumbai Central", destination: "Delhi Jn",
-    departTime: "11:10", arriveTime: "05:45", duration: "18h 35m", rating: 4.3, pantry: true,
-    runningDays: [true, true, true, false, true, false, true],
-    classes: [
-      { code: "SL", fare: 870, status: "AVL 75" },
-      { code: "3A", fare: 2190, status: "AVL 40" },
-      { code: "2A", fare: 3140, status: "RAC 6" },
-    ],
-  },
+// Real-world-style operator pool for domestic (Indian Railways) routes
+const DOMESTIC_TRAIN_BRANDS: { name: string; classes: string[] }[] = [
+  { name: "Rajdhani Express", classes: ["3A", "2A", "1A"] },
+  { name: "Duronto Express", classes: ["SL", "3A", "2A"] },
+  { name: "Shatabdi Express", classes: ["CC", "EC"] },
+  { name: "Garib Rath Express", classes: ["3A", "CC"] },
+  { name: "Humsafar Express", classes: ["3A"] },
+  { name: "Tejas Express", classes: ["CC", "EC"] },
+  { name: "Vande Bharat Express", classes: ["CC", "EC"] },
+  { name: "Sampark Kranti Express", classes: ["SL", "3A", "2A"] },
+  { name: "Superfast Express", classes: ["SL", "3A", "2A", "2S"] },
+  { name: "Intercity Express", classes: ["CC", "2S"] },
 ];
+
+// International rail links reachable from this booking flow, keyed by matching keywords in the station name
+function intlOperatorsFor(station: string): { name: string; classes: string[] }[] {
+  if (/Dhaka/.test(station)) return [{ name: "Maitree Express", classes: ["AC Chair", "AC Cabin"] }];
+  if (/Lahore/.test(station)) return [{ name: "Samjhauta Express", classes: ["AC Chair", "Sleeper"] }];
+  if (/Colombo/.test(station)) return [{ name: "Indo-Lanka Intercity", classes: ["AC Chair", "First Class"] }];
+  if (/London|Paris|Amsterdam|Brussels/.test(station)) return [
+    { name: "Eurostar", classes: ["Standard", "Standard Premier", "Business Premier"] },
+    { name: "TGV inOui", classes: ["Standard", "First Class"] },
+  ];
+  if (/Frankfurt|Berlin/.test(station)) return [{ name: "Deutsche Bahn ICE", classes: ["Standard", "First Class"] }];
+  if (/Zurich/.test(station)) return [{ name: "Swiss Rail (SBB)", classes: ["Standard", "First Class"] }];
+  if (/Milan|Rome/.test(station)) return [{ name: "Trenitalia Frecciarossa", classes: ["Standard", "Business", "Executive"] }];
+  if (/Madrid/.test(station)) return [{ name: "Renfe AVE", classes: ["Turista", "Preferente"] }];
+  if (/Tokyo|Osaka/.test(station)) return [{ name: "JR Shinkansen", classes: ["Ordinary", "Green Car"] }];
+  if (/Beijing/.test(station)) return [{ name: "China Railway High-speed (CRH)", classes: ["Second Class", "First Class", "Business"] }];
+  if (/New York|Washington/.test(station)) return [{ name: "Amtrak Acela", classes: ["Business", "First Class"] }];
+  return [];
+}
+
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+const DEP_HOURS_TRAIN = ["04:45", "05:30", "06:15", "07:00", "08:20", "09:45", "11:10", "13:30", "15:35", "16:25", "17:00", "17:40", "19:15", "21:00", "22:30", "23:05", "23:59"];
+const STATUS_POOL = ["AVL", "RAC", "WL"];
+
+function generateTrains(origin: string, destination: string, count = 8): TrainResult[] {
+  if (!origin || !destination) return [];
+  const originIntl = intlOperatorsFor(origin);
+  const destIntl = intlOperatorsFor(destination);
+  const isInternational = originIntl.length > 0 || destIntl.length > 0;
+
+  let pool: { name: string; classes: string[] }[];
+  if (isInternational) {
+    const seen = new Set<string>();
+    pool = [...originIntl, ...destIntl].filter((o) => (seen.has(o.name) ? false : (seen.add(o.name), true)));
+    if (!pool.length) pool = [{ name: "International Rail Link", classes: ["Standard", "First Class"] }];
+  } else {
+    pool = DOMESTIC_TRAIN_BRANDS;
+  }
+
+  const seed = hashCode(`${origin}-${destination}`);
+  const n = Math.min(count, pool.length);
+  const trains: TrainResult[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const brand = pool[(seed + i) % pool.length];
+    const dep = DEP_HOURS_TRAIN[(seed + i * 5) % DEP_HOURS_TRAIN.length];
+    const durHours = isInternational ? 1 + ((seed + i * 3) % 8) : 4 + ((seed + i * 7) % 20);
+    const durMin = ((seed + i * 11) % 4) * 15;
+    const arrH = (parseInt(dep.slice(0, 2), 10) + durHours) % 24;
+    const arrM = (parseInt(dep.slice(3, 5), 10) + durMin) % 60;
+
+    const classes = brand.classes.map((code, ci) => {
+      const isTopClass = ci === brand.classes.length - 1 && brand.classes.length > 1;
+      const baseFare = isInternational
+        ? 6000 + ci * 6000 + ((seed + i * 13) % 3000)
+        : 350 + durHours * (30 + ci * 25) + ((seed + i * 9) % 400);
+      const statusKind = STATUS_POOL[(seed + i * 3 + ci * 7) % STATUS_POOL.length];
+      const statusNum = 2 + ((seed + i + ci) % 60);
+      return { code, fare: Math.round(baseFare / 10) * 10, status: `${statusKind} ${statusNum}` };
+    });
+
+    trains.push({
+      id: `tr-gen-${origin}-${destination}-${i}`,
+      name: brand.name,
+      number: isInternational ? `${brand.name.slice(0, 2).toUpperCase()}${100 + ((seed + i * 17) % 900)}` : `1${2000 + ((seed + i * 41) % 8000)}`,
+      origin,
+      destination,
+      departTime: dep,
+      arriveTime: `${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`,
+      duration: `${durHours}h ${durMin}m`,
+      rating: Number((3.8 + ((seed + i) % 10) / 10).toFixed(1)),
+      pantry: isInternational ? true : durHours >= 6,
+      runningDays: Array.from({ length: 7 }, (_, d) => (seed + i * 3 + d) % 5 !== 0),
+      classes,
+    });
+  }
+
+  return trains.sort((a, b) => a.departTime.localeCompare(b.departTime));
+}
 
 function statusColor(status: string) {
   if (status.startsWith("AVL")) return "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border-0";
   if (status.startsWith("RAC")) return "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 border-0";
   if (status.startsWith("WL")) return "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 border-0";
   return "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300 border-0";
-}
-
-function PaymentModal({
-  amount, open, onClose, onSuccess, title,
-}: {
-  amount: number; open: boolean; onClose: () => void; onSuccess: () => void; title: string;
-}) {
-  const [method, setMethod] = useState("card");
-  const [processing, setProcessing] = useState(false);
-  const { toast } = useToast();
-
-  const handlePay = () => {
-    setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
-      onClose();
-      toast({
-        title: "Ticket Confirmed!",
-        description: `${formatFullINR(amount)} paid. Your train ticket is booked. PNR: ${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-      });
-      onSuccess();
-    }, 1800);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <DialogTitle className="text-base">Razorpay Secure Payment</DialogTitle>
-              <DialogDescription>{title}</DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="rounded-lg bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 border border-teal-200 dark:border-teal-900 p-4 text-center">
-          <p className="text-xs text-muted-foreground">Total Payable</p>
-          <p className="text-3xl font-bold text-teal-700 dark:text-teal-300 mt-1">{formatFullINR(amount)}</p>
-          <p className="text-[11px] text-muted-foreground mt-1 flex items-center justify-center gap-1">
-            <ShieldCheck className="w-3 h-3" /> IRCTC • 256-bit encrypted
-          </p>
-        </div>
-
-        <Tabs value={method} onValueChange={setMethod}>
-          <TabsList className="grid grid-cols-3 w-full">
-            <TabsTrigger value="card"><CreditCard className="w-3.5 h-3.5 mr-1" /> Card</TabsTrigger>
-            <TabsTrigger value="upi"><Wallet className="w-3.5 h-3.5 mr-1" /> UPI</TabsTrigger>
-            <TabsTrigger value="netbanking"><Building2 className="w-3.5 h-3.5 mr-1" /> Net</TabsTrigger>
-          </TabsList>
-          <TabsContent value="card" className="space-y-3 mt-3">
-            <Input placeholder="Card Number • 4111 1111 1111 1111" />
-            <div className="grid grid-cols-2 gap-2"><Input placeholder="MM / YY" /><Input placeholder="CVV" /></div>
-            <Input placeholder="Cardholder Name" />
-          </TabsContent>
-          <TabsContent value="upi" className="space-y-3 mt-3">
-            <Input placeholder="yourname@upi" />
-            <p className="text-xs text-muted-foreground">A collect request will be sent to your UPI app.</p>
-          </TabsContent>
-          <TabsContent value="netbanking" className="space-y-2 mt-3">
-            {["HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank"].map((b) => (
-              <label key={b} className="flex items-center gap-2 p-2 rounded-md border cursor-pointer hover:bg-muted/50 text-sm">
-                <input type="radio" name="nb" defaultChecked={b === "HDFC Bank"} className="accent-teal-600" />
-                {b}
-              </label>
-            ))}
-          </TabsContent>
-        </Tabs>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={processing}>Cancel</Button>
-          <Button onClick={handlePay} disabled={processing} className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
-            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><BadgeIndianRupee className="w-4 h-4" /> Pay {formatFullINR(amount)}</>}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 interface Passenger {
@@ -216,8 +276,8 @@ interface Passenger {
 export function TrainView() {
   const { toast } = useToast();
   const addBooking = useDemoDataStore((s) => s.addBooking);
-  const [fromStation, setFromStation] = useState("Mumbai Central");
-  const [toStation, setToStation] = useState("Delhi Jn");
+  const [fromStation, setFromStation] = useState("");
+  const [toStation, setToStation] = useState("");
   const [date, setDate] = useState("2025-02-20");
   const [trainClass, setTrainClass] = useState("3A");
   const [searched, setSearched] = useState(false);
@@ -231,6 +291,10 @@ export function TrainView() {
   const [pendingPassengerName, setPendingPassengerName] = useState("");
 
   const handleSearch = () => {
+    if (!fromStation || !toStation) {
+      toast({ title: "Select stations", description: "Please choose both From and To stations.", variant: "destructive" });
+      return;
+    }
     if (fromStation === toStation) {
       toast({ title: "Invalid route", description: "From and To stations cannot be the same.", variant: "destructive" });
       return;
@@ -239,7 +303,7 @@ export function TrainView() {
   };
 
   const filteredTrains = useMemo(
-    () => TRAINS.filter((t) => t.origin === fromStation && t.destination === toStation),
+    () => generateTrains(fromStation, toStation, 8),
     [fromStation, toStation]
   );
 
@@ -286,16 +350,15 @@ export function TrainView() {
         <div className="absolute -bottom-16 -left-12 w-56 h-56 rounded-full bg-cyan-300/20 blur-3xl" />
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
           <div className="md:col-span-3">
-            <Label className="text-rose-100 text-xs">From Station</Label>
-            <Select value={fromStation} onValueChange={setFromStation}>
-              <SelectTrigger className="w-full bg-white/95 text-slate-800 border-0 mt-1 h-11">
-                <MapPin className="w-4 h-4 mr-1 text-rose-600" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <CitySearchField
+              icon={MapPin}
+              label="From Station"
+              placeholder="Search station..."
+              value={fromStation}
+              options={STATIONS}
+              excludeValue={toStation}
+              onSelect={setFromStation}
+            />
           </div>
           <div className="hidden md:flex md:col-span-1 items-center justify-center pb-2">
             <button
@@ -307,16 +370,15 @@ export function TrainView() {
             </button>
           </div>
           <div className="md:col-span-3">
-            <Label className="text-rose-100 text-xs">To Station</Label>
-            <Select value={toStation} onValueChange={setToStation}>
-              <SelectTrigger className="w-full bg-white/95 text-slate-800 border-0 mt-1 h-11">
-                <MapPin className="w-4 h-4 mr-1 text-orange-600" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <CitySearchField
+              icon={MapPin}
+              label="To Station"
+              placeholder="Search station..."
+              value={toStation}
+              options={STATIONS}
+              excludeValue={fromStation}
+              onSelect={setToStation}
+            />
           </div>
           <div className="md:col-span-2">
             <Label className="text-rose-100 text-xs">Date</Label>
@@ -365,7 +427,7 @@ export function TrainView() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">{filteredTrains.length}</span> trains found from <span className="font-medium">{fromStation}</span> to <span className="font-medium">{toStation}</span>
+              <span className="font-semibold text-foreground">{filteredTrains.length}</span> train{filteredTrains.length === 1 ? "" : "s"} found from <span className="font-medium">{fromStation}</span> to <span className="font-medium">{toStation}</span>
             </p>
             <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50 dark:bg-amber-950/30">
               {trainClass} — {TRAIN_CLASSES.find((c) => c.code === trainClass)?.name}
@@ -591,8 +653,17 @@ export function TrainView() {
         open={payOpen}
         amount={pendingFare}
         title={pendingTrain ? `${pendingTrain.name} • ${passengers.length} passenger(s)` : "Train Booking"}
-        onClose={() => setPayOpen(false)}
-        onSuccess={() => {
+        description={pendingTrain ? `${pendingTrain.name} (${pendingTrain.number}) • ${pendingTrain.origin} → ${pendingTrain.destination}` : "Train Booking"}
+        shareSubject={pendingTrain ? `Your Train Ticket — ${pendingTrain.name}` : "Train Ticket"}
+        shareText={pendingTrain ? `Train Ticket Confirmed\n${pendingTrain.name} (${pendingTrain.number})\n${pendingTrain.origin} → ${pendingTrain.destination}\nDate: ${date}\nPassenger: ${pendingPassengerName}\nAmount Paid: ${formatFullINR(pendingFare)}` : ""}
+        onClose={() => {
+          setPayOpen(false);
+          setPassengers([{ name: "", age: "", gender: "Male", berth: "No Preference" }]);
+          setPendingTrain(null);
+          setPendingFare(0);
+          setPendingPassengerName("");
+        }}
+        onSuccess={(method: BookingPaymentMethod) => {
           if (pendingTrain) {
             addBooking({
               customerName: pendingPassengerName,
@@ -600,13 +671,9 @@ export function TrainView() {
               route: `${pendingTrain.origin} → ${pendingTrain.destination}`,
               travelDate: date,
               amount: pendingFare,
-              paymentMethod: "Razorpay",
+              paymentMethod: method,
             });
           }
-          setPassengers([{ name: "", age: "", gender: "Male", berth: "No Preference" }]);
-          setPendingTrain(null);
-          setPendingFare(0);
-          setPendingPassengerName("");
         }}
       />
     </div>

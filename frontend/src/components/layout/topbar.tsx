@@ -13,7 +13,6 @@ import {
   Settings,
   MessageSquare,
   Menu,
-  Sparkles,
 } from "lucide-react";
 import { useAppStore, useAuthStore } from "@/store/app-store";
 import { ROLE_LABELS } from "@/lib/nav-config";
@@ -21,7 +20,6 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,22 +27,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   DropdownMenuLabel,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { avatarGradient, initials } from "@/components/shared/ui-helpers";
 import { useDemoDataStore } from "@/store/demo-data-store";
-import type { Role } from "@/types";
-
-const ALL_ROLES: Role[] = ["super_admin", "agency_admin", "branch_manager", "employee", "accountant"];
 
 export function Topbar() {
   const { toggleSidebar, setView } = useAppStore();
-  const { user, logout, switchRole } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const notifications = useDemoDataStore((s) => s.notifications);
   const markNotificationRead = useDemoDataStore((s) => s.markNotificationRead);
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -211,31 +203,6 @@ export function Topbar() {
                 <DropdownMenuItem onClick={() => setView("settings")}>
                   <Settings className="w-4 h-4 mr-2" /> Settings
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>
-                    <Sparkles className="w-4 h-4 mr-2" /> Switch role (demo)
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent>
-                    {ALL_ROLES.map((r) => (
-                      <DropdownMenuItem
-                        key={r}
-                        onClick={() => {
-                          switchRole(r);
-                          setView("dashboard");
-                        }}
-                        className="flex items-center justify-between"
-                      >
-                        {ROLE_LABELS[r]}
-                        {r === user.role && (
-                          <Badge variant="secondary" className="text-[9px] h-4 px-1 ml-2">
-                            current
-                          </Badge>
-                        )}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout} className="text-rose-600 focus:text-rose-600">
                   <LogOut className="w-4 h-4 mr-2" /> Sign out

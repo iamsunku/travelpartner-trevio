@@ -32,17 +32,49 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { formatFullINR, PageHeader } from "@/components/shared/ui-helpers";
+import { CitySearchField, type CityOption } from "@/components/shared/city-search-field";
 import { generateHotels } from "@/lib/mock-data";
 import { api } from "@/lib/api";
 import { mapApiHotel } from "@/lib/api-mappers";
 import { useDemoDataStore } from "@/store/demo-data-store";
+import { payWithRazorpay } from "@/lib/razorpay";
+import { ShareTicket } from "@/components/shared/share-ticket";
 import type { Hotel, RoomType } from "@/types";
 
 /* ----------------------------- Constants ----------------------------- */
 
-const HOTEL_CITIES = [
-  "Mumbai", "New Delhi", "Bangalore", "Chennai", "Hyderabad",
-  "Kolkata", "Goa", "Kochi", "Dubai", "Singapore", "Bangkok", "London",
+const HOTEL_DESTINATIONS: CityOption[] = [
+  { value: "Mumbai", label: "Mumbai", sublabel: "Maharashtra, India" },
+  { value: "New Delhi", label: "New Delhi", sublabel: "Delhi, India" },
+  { value: "Bangalore", label: "Bangalore", sublabel: "Karnataka, India" },
+  { value: "Chennai", label: "Chennai", sublabel: "Tamil Nadu, India" },
+  { value: "Hyderabad", label: "Hyderabad", sublabel: "Telangana, India" },
+  { value: "Kolkata", label: "Kolkata", sublabel: "West Bengal, India" },
+  { value: "Goa", label: "Goa", sublabel: "India" },
+  { value: "Kochi", label: "Kochi", sublabel: "Kerala, India" },
+  { value: "Pune", label: "Pune", sublabel: "Maharashtra, India" },
+  { value: "Jaipur", label: "Jaipur", sublabel: "Rajasthan, India" },
+  { value: "Udaipur", label: "Udaipur", sublabel: "Rajasthan, India" },
+  { value: "Agra", label: "Agra", sublabel: "Uttar Pradesh, India" },
+  { value: "Shimla", label: "Shimla", sublabel: "Himachal Pradesh, India" },
+  { value: "Manali", label: "Manali", sublabel: "Himachal Pradesh, India" },
+  { value: "Rishikesh", label: "Rishikesh", sublabel: "Uttarakhand, India" },
+  { value: "Varanasi", label: "Varanasi", sublabel: "Uttar Pradesh, India" },
+  { value: "Amritsar", label: "Amritsar", sublabel: "Punjab, India" },
+  { value: "Darjeeling", label: "Darjeeling", sublabel: "West Bengal, India" },
+  { value: "Ooty", label: "Ooty", sublabel: "Tamil Nadu, India" },
+  { value: "Munnar", label: "Munnar", sublabel: "Kerala, India" },
+  { value: "Dubai", label: "Dubai", sublabel: "United Arab Emirates" },
+  { value: "Abu Dhabi", label: "Abu Dhabi", sublabel: "United Arab Emirates" },
+  { value: "Singapore", label: "Singapore", sublabel: "Singapore" },
+  { value: "Bangkok", label: "Bangkok", sublabel: "Thailand" },
+  { value: "Phuket", label: "Phuket", sublabel: "Thailand" },
+  { value: "Kuala Lumpur", label: "Kuala Lumpur", sublabel: "Malaysia" },
+  { value: "Bali", label: "Bali", sublabel: "Indonesia" },
+  { value: "London", label: "London", sublabel: "United Kingdom" },
+  { value: "Paris", label: "Paris", sublabel: "France" },
+  { value: "New York", label: "New York", sublabel: "USA" },
+  { value: "Maldives", label: "Maldives", sublabel: "Maldives" },
 ];
 
 const QUICK_DESTINATIONS = [
@@ -96,6 +128,8 @@ type PayMethod = "card" | "upi" | "netbanking" | "wallet";
 export function HotelsView() {
   const { toast } = useToast();
   const addBooking = useDemoDataStore((s) => s.addBooking);
+  const walletBalance = useDemoDataStore((s) => s.walletBalance);
+  const walletTransfer = useDemoDataStore((s) => s.walletTransfer);
 
   /* Search state */
   const [city, setCity] = useState("Mumbai");
@@ -235,7 +269,7 @@ export function HotelsView() {
     setPaying(false);
   }
 
-  function processPayment() {
+  async function processPayment() {
     if (!guestName.trim() || !guestEmail.trim() || !guestPhone.trim()) {
       toast({
         title: "Guest details required",
@@ -244,26 +278,48 @@ export function HotelsView() {
       });
       return;
     }
-    setPaying(true);
-    setTimeout(() => {
-      setPaying(false);
-      setPaySuccess(true);
-      if (selectedHotel && selectedRoom) {
-        addBooking({
-          customerName: guestName,
-          service: "Hotel",
-          route: `${selectedHotel.name}, ${selectedHotel.city} - ${nights}N`,
-          travelDate: checkIn || new Date().toISOString().slice(0, 10),
-          amount: total,
-          paymentMethod: "Razorpay",
+
+    const description = `${selectedHotel?.name ?? "Hotel"} · ${selectedRoom?.name ?? ""}`;
+    let paidMethod: "Wallet" | "Razorpay" = "Razorpay";
+
+    if (payMethod === "wallet") {
+      if (total > walletBalance) {
+        toast({
+          title: "Insufficient wallet balance",
+          description: `Your wallet has ${formatFullINR(walletBalance)}, but this booking costs ${formatFullINR(total)}.`,
+          variant: "destructive",
         });
+        return;
       }
-      toast({
-        title: "Hotel booked!",
-        description: `${selectedHotel?.name} · ${selectedRoom?.name} · ${nights} night(s)`,
+      setPaying(true);
+      walletTransfer(total, description);
+      paidMethod = "Wallet";
+    } else {
+      setPaying(true);
+      const result = await payWithRazorpay({ amount: total, name: "TravelPro", description, prefillEmail: guestEmail, prefillContact: guestPhone });
+      if (!result.success) {
+        setPaying(false);
+        toast({ title: "Payment cancelled or failed", description: "No amount was charged.", variant: "destructive" });
+        return;
+      }
+      if (result.demo) {
+        toast({ title: "Demo payment", description: "Razorpay isn't configured yet — this booking was simulated, no real charge was made." });
+      }
+    }
+
+    setPaying(false);
+    setPaySuccess(true);
+    if (selectedHotel && selectedRoom) {
+      addBooking({
+        customerName: guestName,
+        service: "Hotel",
+        route: `${selectedHotel.name}, ${selectedHotel.city} - ${nights}N`,
+        travelDate: checkIn || new Date().toISOString().slice(0, 10),
+        amount: total,
+        paymentMethod: paidMethod,
       });
-      setTimeout(resetAll, 1800);
-    }, 1900);
+    }
+    setTimeout(resetAll, 6000);
   }
 
   function resetAll() {
@@ -626,6 +682,13 @@ export function HotelsView() {
                   <span className="font-mono text-xs">HT{Math.floor(Math.random() * 900000 + 100000)}</span>
                 </div>
               </div>
+              <div className="mt-4">
+                <p className="text-xs text-muted-foreground mb-2">Share this ticket with the guest</p>
+                <ShareTicket
+                  subject={`Your Hotel Booking — ${selectedHotel?.name ?? ""}`}
+                  text={`Hotel Booking Confirmed\n${selectedHotel?.name ?? ""}, ${selectedHotel?.city ?? ""}\nRoom: ${selectedRoom?.name ?? ""}\nNights: ${nights}\nAmount Paid: ${formatFullINR(total)}`}
+                />
+              </div>
             </div>
           ) : (
             <>
@@ -773,13 +836,20 @@ export function HotelsView() {
 
                 <TabsContent value="wallet" className="space-y-2 mt-2">
                   <div className="rounded-lg border p-2 text-xs flex justify-between">
-                    <span className="text-muted-foreground">Wallet balance</span>
-                    <span className="font-semibold">{formatFullINR(125000)}</span>
+                    <span className="text-muted-foreground">Agency wallet balance</span>
+                    <span className="font-semibold">{formatFullINR(walletBalance)}</span>
                   </div>
+                  {total > walletBalance && (
+                    <p className="text-[11px] text-rose-600">Insufficient balance for this booking.</p>
+                  )}
                 </TabsContent>
               </Tabs>
 
-              <Button className="w-full h-11 text-base" onClick={processPayment} disabled={paying}>
+              <Button
+                className="w-full h-11 text-base"
+                onClick={processPayment}
+                disabled={paying || (payMethod === "wallet" && total > walletBalance)}
+              >
                 {paying ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" /> Processing…
@@ -823,21 +893,14 @@ function HotelSearchPanel(props: {
 
       <CardContent className="relative p-5 sm:p-6 text-white">
         <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_1fr_auto] gap-3 items-end">
-          <div className="rounded-xl bg-white/95 backdrop-blur p-3 text-foreground">
-            <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <MapPin className="w-3 h-3" /> City / Hotel / Area
-            </Label>
-            <Select value={props.city} onValueChange={props.setCity}>
-              <SelectTrigger className="border-0 p-0 h-auto text-base font-bold focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {HOTEL_CITIES.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <CitySearchField
+            icon={MapPin}
+            label="City / Hotel / Area"
+            placeholder="Search destination..."
+            value={props.city}
+            options={HOTEL_DESTINATIONS}
+            onSelect={props.setCity}
+          />
 
           <div className="rounded-xl bg-white/95 backdrop-blur p-3 text-foreground">
             <Label className="text-xs text-muted-foreground flex items-center gap-1">

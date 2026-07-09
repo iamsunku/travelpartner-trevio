@@ -2,17 +2,6 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import {
-  BOOKINGS,
-  CUSTOMERS,
-  LEADS,
-  QUOTATIONS,
-  EMPLOYEES,
-  PAYMENTS,
-  WALLET_TXNS,
-  NOTIFICATIONS,
-  TASKS,
-} from "@/lib/mock-data";
 import type {
   Booking,
   Customer,
@@ -25,6 +14,7 @@ import type {
   Task,
 } from "@/types";
 import { api } from "@/lib/api";
+import { toast } from "@/hooks/use-toast";
 import {
   mapApiBooking,
   mapApiCustomer,
@@ -50,13 +40,7 @@ export interface VisaApplication {
   passport: string;
 }
 
-const INITIAL_VISA: VisaApplication[] = [
-  { id: "VS-2025-0148", country: "Schengen (Multi)", type: "Tourist", applicant: "Karthik Venkat", submittedDate: "2025-01-08", appointmentDate: "2025-01-25", status: "Approved", passport: "P8394721" },
-  { id: "VS-2025-0152", country: "United States", type: "Business", applicant: "Rohit Gupta", submittedDate: "2025-01-12", appointmentDate: "2025-02-04", status: "Under Review", passport: "T5629104" },
-  { id: "VS-2025-0161", country: "UAE", type: "Tourist", applicant: "Anjali Desai", submittedDate: "2025-01-15", appointmentDate: "2025-01-22", status: "Submitted", passport: "R2289104" },
-  { id: "VS-2025-0144", country: "United Kingdom", type: "Student", applicant: "Imran Khan", submittedDate: "2025-01-03", appointmentDate: "2025-01-12", status: "Rejected", passport: "K9910234" },
-  { id: "VS-2025-0158", country: "Singapore", type: "Work", applicant: "Suresh Pillai", submittedDate: "2025-01-14", appointmentDate: "2025-01-30", status: "Approved", passport: "L7720394" },
-];
+const INITIAL_VISA: VisaApplication[] = [];
 
 export interface NewBookingInput {
   customerName: string;
@@ -68,6 +52,8 @@ export interface NewBookingInput {
   paymentMethod?: string;
   agent?: string;
   agency?: string;
+  status?: Booking["status"];
+  paymentStatus?: Booking["paymentStatus"];
 }
 
 interface DemoDataState {
@@ -103,7 +89,7 @@ interface DemoDataState {
   walletTransfer: (amount: number, description: string) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
-  addVisaApplication: (app: Omit<VisaApplication, "id" | "submittedDate" | "status" | "appointmentDate">) => VisaApplication;
+  addVisaApplication: (app: Omit<VisaApplication, "id" | "submittedDate" | "status" | "appointmentDate"> & { fee?: number }) => VisaApplication;
   hydrateFromApi: (agencyId?: string) => Promise<void>;
   resetDemoData: () => void;
 }
@@ -120,20 +106,28 @@ function nextTxnId(seq: number) {
   return `pay_${seq.toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 }
 
+function reportSyncFailure(entityLabel: string) {
+  toast({
+    title: "Sync issue",
+    description: `${entityLabel} saved locally but couldn't reach the server. It may not appear in reports until you're back online.`,
+    variant: "destructive",
+  });
+}
+
 const initialState = {
-  bookings: BOOKINGS,
-  customers: CUSTOMERS,
-  leads: LEADS,
-  quotations: QUOTATIONS,
-  employees: EMPLOYEES,
-  tasks: TASKS,
-  payments: PAYMENTS,
-  walletBalance: 845000,
-  walletTxns: WALLET_TXNS,
-  notifications: NOTIFICATIONS,
+  bookings: [] as Booking[],
+  customers: [] as Customer[],
+  leads: [] as Lead[],
+  quotations: [] as Quotation[],
+  employees: [] as Employee[],
+  tasks: [] as Task[],
+  payments: [] as Payment[],
+  walletBalance: 0,
+  walletTxns: [] as WalletTransaction[],
+  notifications: [] as Notification[],
   visaApplications: INITIAL_VISA,
-  bookingSeq: 8853,
-  paymentSeq: 100,
+  bookingSeq: 1,
+  paymentSeq: 1,
   dashboardStats: null,
   financeStats: null,
   commissionStats: null,
@@ -148,6 +142,9 @@ export const useDemoDataStore = create<DemoDataState>()(
         const seq = get().bookingSeq;
         const bookingRef = nextBookingRef(seq);
         const commission = input.commission ?? Math.round(input.amount * 0.05);
+        const resolvedStatus = input.status ?? "Confirmed";
+        const resolvedPaymentStatus = input.paymentStatus ?? "Paid";
+        const isPaid = resolvedPaymentStatus === "Paid";
         const booking: Booking = {
           id: `bk-${Date.now()}`,
           bookingRef,
@@ -157,14 +154,14 @@ export const useDemoDataStore = create<DemoDataState>()(
           travelDate: input.travelDate,
           amount: input.amount,
           commission,
-          status: "Confirmed",
-          paymentStatus: "Paid",
+          status: resolvedStatus,
+          paymentStatus: resolvedPaymentStatus,
           paymentMethod: input.paymentMethod ?? "Razorpay",
           agent: input.agent ?? "Sneha Reddy",
           agency: input.agency ?? "Wanderlust Travels",
           createdAt: todayISO(),
         };
-        const payment: Payment = {
+        const payment: Payment | null = isPaid ? {
           id: `py-${Date.now()}`,
           txnId: nextTxnId(get().paymentSeq),
           customerName: input.customerName,
@@ -175,11 +172,11 @@ export const useDemoDataStore = create<DemoDataState>()(
           type: "Payment",
           date: todayISO(),
           gateway: "Razorpay",
-        };
+        } : null;
         const notification: Notification = {
           id: `nt-${Date.now()}`,
           type: "booking",
-          title: "New Booking Confirmed",
+          title: isPaid ? "New Booking Confirmed" : "New Booking Submitted",
           message: `${bookingRef} - ${input.customerName} booked ${input.service} for ₹${input.amount.toLocaleString("en-IN")}`,
           time: "Just now",
           read: false,
@@ -187,10 +184,10 @@ export const useDemoDataStore = create<DemoDataState>()(
         };
         set((s) => ({
           bookings: [booking, ...s.bookings],
-          payments: [payment, ...s.payments],
+          payments: payment ? [payment, ...s.payments] : s.payments,
           notifications: [notification, ...s.notifications],
           bookingSeq: seq + 1,
-          paymentSeq: s.paymentSeq + 1,
+          paymentSeq: payment ? s.paymentSeq + 1 : s.paymentSeq,
         }));
 
         api
@@ -201,10 +198,13 @@ export const useDemoDataStore = create<DemoDataState>()(
             travelDate: input.travelDate,
             amount: input.amount,
             commission,
+            status: resolvedStatus,
+            paymentStatus: resolvedPaymentStatus,
+            paymentMethod: input.paymentMethod,
             agentName: input.agent ?? "Sneha Reddy",
             agencyName: input.agency ?? "Wanderlust Travels",
           })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Booking"));
 
         return booking;
       },
@@ -225,7 +225,7 @@ export const useDemoDataStore = create<DemoDataState>()(
           status === "Cancelled" || status === "Refunded" ? "Refunded" : undefined;
         api
           .updateBooking(id, { status, ...(paymentStatus ? { paymentStatus } : {}) })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Booking update"));
       },
 
       addCustomer: (input) => {
@@ -249,7 +249,7 @@ export const useDemoDataStore = create<DemoDataState>()(
             visaStatus: input.visaStatus,
             city: input.city,
           })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Customer"));
         return customer;
       },
 
@@ -273,7 +273,7 @@ export const useDemoDataStore = create<DemoDataState>()(
             expectedClose: input.expectedClose,
             notes: input.notes,
           })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Lead"));
         return lead;
       },
 
@@ -281,7 +281,7 @@ export const useDemoDataStore = create<DemoDataState>()(
         set((s) => ({
           leads: s.leads.map((l) => (l.id === id ? { ...l, stage } : l)),
         }));
-        api.updateLeadStage(id, stage).catch(() => undefined);
+        api.updateLeadStage(id, stage).catch(() => reportSyncFailure("Lead update"));
       },
 
       addQuotation: (input) => {
@@ -306,7 +306,7 @@ export const useDemoDataStore = create<DemoDataState>()(
             createdBy: input.createdBy,
             status: "Draft",
           })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Quotation"));
         return quotation;
       },
 
@@ -333,7 +333,7 @@ export const useDemoDataStore = create<DemoDataState>()(
             salary: input.salary,
             target: input.target,
           })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Employee"));
         return employee;
       },
 
@@ -356,7 +356,7 @@ export const useDemoDataStore = create<DemoDataState>()(
             relatedTo: input.relatedTo,
             status: "To Do",
           })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Task"));
         return task;
       },
 
@@ -364,7 +364,7 @@ export const useDemoDataStore = create<DemoDataState>()(
         set((s) => ({
           tasks: s.tasks.map((t) => (t.id === id ? { ...t, status } : t)),
         }));
-        api.updateTask(id, { status }).catch(() => undefined);
+        api.updateTask(id, { status }).catch(() => reportSyncFailure("Task update"));
       },
 
       addPayment: (input) => {
@@ -388,7 +388,7 @@ export const useDemoDataStore = create<DemoDataState>()(
             type: input.type,
             gateway: input.gateway,
           })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Payment"));
         return payment;
       },
 
@@ -414,7 +414,7 @@ export const useDemoDataStore = create<DemoDataState>()(
             description: `Wallet top-up via ${method}`,
             agencyId: "ag-1",
           })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Wallet top-up"));
       },
 
       walletTransfer: (amount, description) => {
@@ -439,7 +439,7 @@ export const useDemoDataStore = create<DemoDataState>()(
             description,
             agencyId: "ag-1",
           })
-          .catch(() => undefined);
+          .catch(() => reportSyncFailure("Wallet transfer"));
       },
 
       markNotificationRead: (id) => {
@@ -460,14 +460,27 @@ export const useDemoDataStore = create<DemoDataState>()(
         const submitted = todayISO();
         const appointment = new Date();
         appointment.setDate(appointment.getDate() + 14);
+        const { fee, ...rest } = input;
         const app: VisaApplication = {
-          ...input,
+          ...rest,
           id,
           submittedDate: submitted,
           appointmentDate: appointment.toISOString().slice(0, 10),
           status: "Submitted",
         };
         set((s) => ({ visaApplications: [app, ...s.visaApplications] }));
+
+        get().addBooking({
+          customerName: input.applicant,
+          service: "Visa",
+          route: `${input.country} Visa — ${input.type}`,
+          travelDate: appointment.toISOString().slice(0, 10),
+          amount: fee ?? 8500,
+          paymentMethod: "Pay at Embassy",
+          status: "Pending",
+          paymentStatus: "Pending",
+        });
+
         return app;
       },
 

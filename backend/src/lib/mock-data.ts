@@ -3,7 +3,7 @@
 import type {
   Agency, Branch, Flight, Hotel, Bus, HolidayPackage, Customer, Lead,
   Booking, Payment, WalletTransaction, Employee, Task, Quotation, Notification, User,
-} from "@/types";
+} from "./types.js";
 
 export const ROLE_USERS: Record<string, User> = {
   super_admin: {
@@ -58,39 +58,157 @@ const AIRLINES = [
   { name: "Emirates", code: "EK", aircraft: "Airbus A380", rating: 4.7 },
   { name: "Singapore Airlines", code: "SQ", aircraft: "Airbus A350", rating: 4.8 },
   { name: "Qatar Airways", code: "QR", aircraft: "Boeing 777-300ER", rating: 4.6 },
+  { name: "AirAsia", code: "AK", aircraft: "Airbus A320", rating: 3.9 },
+  { name: "Malaysia Airlines", code: "MH", aircraft: "Boeing 737 MAX 8", rating: 4.3 },
+  { name: "Thai Airways", code: "TG", aircraft: "Boeing 777-300ER", rating: 4.3 },
+  { name: "Thai AirAsia", code: "FD", aircraft: "Airbus A320", rating: 3.9 },
+  { name: "VietJet Air", code: "VJ", aircraft: "Airbus A321", rating: 3.8 },
+  { name: "Vietnam Airlines", code: "VN", aircraft: "Airbus A350", rating: 4.4 },
+  { name: "Garuda Indonesia", code: "GA", aircraft: "Boeing 737-800", rating: 4.3 },
+  { name: "Scoot", code: "TR", aircraft: "Boeing 787", rating: 4.0 },
 ];
 
-const CITIES = [
-  { code: "BOM", city: "Mumbai" }, { code: "DEL", city: "New Delhi" },
-  { code: "BLR", city: "Bangalore" }, { code: "MAA", city: "Chennai" },
-  { code: "HYD", city: "Hyderabad" }, { code: "CCU", city: "Kolkata" },
-  { code: "GOI", city: "Goa" }, { code: "COK", city: "Kochi" },
-  { code: "DXB", city: "Dubai" }, { code: "SIN", city: "Singapore" },
-  { code: "BKK", city: "Bangkok" }, { code: "LON", city: "London" },
-];
+function airline(code: string) {
+  return AIRLINES.find((a) => a.code === code)!;
+}
+
+// code -> { city, country } for every airport this app searches
+const AIRPORT_INDEX: Record<string, { city: string; country: string }> = {
+  BOM: { city: "Mumbai", country: "India" }, DEL: { city: "New Delhi", country: "India" },
+  BLR: { city: "Bangalore", country: "India" }, MAA: { city: "Chennai", country: "India" },
+  HYD: { city: "Hyderabad", country: "India" }, CCU: { city: "Kolkata", country: "India" },
+  GOI: { city: "Goa", country: "India" }, GOX: { city: "Goa", country: "India" },
+  COK: { city: "Kochi", country: "India" }, PNQ: { city: "Pune", country: "India" },
+  AMD: { city: "Ahmedabad", country: "India" }, JAI: { city: "Jaipur", country: "India" },
+  LKO: { city: "Lucknow", country: "India" }, IXC: { city: "Chandigarh", country: "India" },
+  GAU: { city: "Guwahati", country: "India" }, PAT: { city: "Patna", country: "India" },
+  BBI: { city: "Bhubaneswar", country: "India" }, IXZ: { city: "Port Blair", country: "India" },
+  SXR: { city: "Srinagar", country: "India" }, IXB: { city: "Bagdogra", country: "India" },
+  TRV: { city: "Thiruvananthapuram", country: "India" }, IXM: { city: "Madurai", country: "India" },
+  VNS: { city: "Varanasi", country: "India" }, NAG: { city: "Nagpur", country: "India" },
+  IDR: { city: "Indore", country: "India" }, RPR: { city: "Raipur", country: "India" },
+  UDR: { city: "Udaipur", country: "India" }, ATQ: { city: "Amritsar", country: "India" },
+  DXB: { city: "Dubai", country: "UAE" }, AUH: { city: "Abu Dhabi", country: "UAE" },
+  SHJ: { city: "Sharjah", country: "UAE" },
+  SIN: { city: "Singapore", country: "Singapore" },
+  BKK: { city: "Bangkok", country: "Thailand" }, DMK: { city: "Bangkok", country: "Thailand" },
+  HKT: { city: "Phuket", country: "Thailand" },
+  KUL: { city: "Kuala Lumpur", country: "Malaysia" },
+  LON: { city: "London", country: "United Kingdom" }, LGW: { city: "London", country: "United Kingdom" },
+  LTN: { city: "London", country: "United Kingdom" }, MAN: { city: "Manchester", country: "United Kingdom" },
+  EDI: { city: "Edinburgh", country: "United Kingdom" }, DUB: { city: "Dublin", country: "Ireland" },
+  JFK: { city: "New York", country: "USA" }, EWR: { city: "New York", country: "USA" },
+  LGA: { city: "New York", country: "USA" }, SFO: { city: "San Francisco", country: "USA" },
+  LAX: { city: "Los Angeles", country: "USA" }, ORD: { city: "Chicago", country: "USA" },
+  SEA: { city: "Seattle", country: "USA" }, IAD: { city: "Washington D.C.", country: "USA" },
+  ATL: { city: "Atlanta", country: "USA" }, MIA: { city: "Miami", country: "USA" },
+  BOS: { city: "Boston", country: "USA" }, IAH: { city: "Houston", country: "USA" },
+  DFW: { city: "Dallas", country: "USA" },
+  YYZ: { city: "Toronto", country: "Canada" }, YVR: { city: "Vancouver", country: "Canada" },
+  YUL: { city: "Montreal", country: "Canada" }, MEX: { city: "Mexico City", country: "Mexico" },
+  GRU: { city: "São Paulo", country: "Brazil" }, GIG: { city: "Rio de Janeiro", country: "Brazil" },
+  EZE: { city: "Buenos Aires", country: "Argentina" }, SCL: { city: "Santiago", country: "Chile" },
+  BOG: { city: "Bogotá", country: "Colombia" },
+  SYD: { city: "Sydney", country: "Australia" }, MEL: { city: "Melbourne", country: "Australia" },
+  BNE: { city: "Brisbane", country: "Australia" }, PER: { city: "Perth", country: "Australia" },
+  AKL: { city: "Auckland", country: "New Zealand" },
+  DOH: { city: "Doha", country: "Qatar" }, KWI: { city: "Kuwait City", country: "Kuwait" },
+  BAH: { city: "Manama", country: "Bahrain" }, MCT: { city: "Muscat", country: "Oman" },
+  RUH: { city: "Riyadh", country: "Saudi Arabia" }, JED: { city: "Jeddah", country: "Saudi Arabia" },
+  IST: { city: "Istanbul", country: "Turkey" }, TLV: { city: "Tel Aviv", country: "Israel" },
+  CAI: { city: "Cairo", country: "Egypt" }, JNB: { city: "Johannesburg", country: "South Africa" },
+  CPT: { city: "Cape Town", country: "South Africa" }, NBO: { city: "Nairobi", country: "Kenya" },
+  ADD: { city: "Addis Ababa", country: "Ethiopia" }, LOS: { city: "Lagos", country: "Nigeria" },
+  CDG: { city: "Paris", country: "France" }, ORY: { city: "Paris", country: "France" },
+  NCE: { city: "Nice", country: "France" }, FRA: { city: "Frankfurt", country: "Germany" },
+  MUC: { city: "Munich", country: "Germany" }, BER: { city: "Berlin", country: "Germany" },
+  AMS: { city: "Amsterdam", country: "Netherlands" }, MAD: { city: "Madrid", country: "Spain" },
+  BCN: { city: "Barcelona", country: "Spain" }, FCO: { city: "Rome", country: "Italy" },
+  MXP: { city: "Milan", country: "Italy" }, ZRH: { city: "Zurich", country: "Switzerland" },
+  VIE: { city: "Vienna", country: "Austria" }, BRU: { city: "Brussels", country: "Belgium" },
+  CPH: { city: "Copenhagen", country: "Denmark" }, OSL: { city: "Oslo", country: "Norway" },
+  ARN: { city: "Stockholm", country: "Sweden" }, HEL: { city: "Helsinki", country: "Finland" },
+  LIS: { city: "Lisbon", country: "Portugal" }, ATH: { city: "Athens", country: "Greece" },
+  WAW: { city: "Warsaw", country: "Poland" }, PRG: { city: "Prague", country: "Czech Republic" },
+  SVO: { city: "Moscow", country: "Russia" },
+  HKG: { city: "Hong Kong", country: "Hong Kong" },
+  NRT: { city: "Tokyo", country: "Japan" }, HND: { city: "Tokyo", country: "Japan" },
+  KIX: { city: "Osaka", country: "Japan" }, ICN: { city: "Seoul", country: "South Korea" },
+  PEK: { city: "Beijing", country: "China" }, PVG: { city: "Shanghai", country: "China" },
+  CAN: { city: "Guangzhou", country: "China" }, TPE: { city: "Taipei", country: "Taiwan" },
+  MNL: { city: "Manila", country: "Philippines" }, CGK: { city: "Jakarta", country: "Indonesia" },
+  DPS: { city: "Bali", country: "Indonesia" },
+  SGN: { city: "Ho Chi Minh City", country: "Vietnam" }, HAN: { city: "Hanoi", country: "Vietnam" },
+  RGN: { city: "Yangon", country: "Myanmar" }, DAC: { city: "Dhaka", country: "Bangladesh" },
+  KTM: { city: "Kathmandu", country: "Nepal" }, CMB: { city: "Colombo", country: "Sri Lanka" },
+  MLE: { city: "Malé", country: "Maldives" }, ISB: { city: "Islamabad", country: "Pakistan" },
+  KHI: { city: "Karachi", country: "Pakistan" },
+};
+
+const INDIA_CODES = new Set(Object.keys(AIRPORT_INDEX).filter((c) => AIRPORT_INDEX[c].country === "India"));
+const NEAR_ASIA_CODES = new Set(["SIN", "BKK", "DMK", "HKT", "KUL", "DPS", "CGK", "SGN", "HAN", "RGN", "DAC", "KTM", "CMB", "MLE", "ISB", "KHI", "HKG", "TPE", "MNL"]);
+const MIDEAST_CODES = new Set(["DXB", "AUH", "SHJ", "DOH", "KWI", "BAH", "MCT", "RUH", "JED", "IST", "TLV"]);
+
+// Which operators plausibly fly a given destination, keyed by airport code
+const ROUTE_AIRLINES: Record<string, string[]> = {
+  SIN: ["SQ", "TR", "6E", "AI"],
+  KUL: ["MH", "AK", "6E", "IX"],
+  BKK: ["TG", "FD", "6E", "IX", "UK"], DMK: ["TG", "FD", "6E", "IX", "UK"], HKT: ["TG", "FD", "6E"],
+  DPS: ["GA", "AK", "SQ", "6E"], CGK: ["GA", "AK", "6E"],
+  SGN: ["VN", "VJ", "6E", "IX"], HAN: ["VN", "VJ", "6E", "IX"],
+};
+
+function airlinesForRoute(destination: string): string[] {
+  if (ROUTE_AIRLINES[destination]) return ROUTE_AIRLINES[destination];
+  if (MIDEAST_CODES.has(destination)) return ["EK", "QR", "AI", "6E", "IX"];
+  if (NEAR_ASIA_CODES.has(destination)) return ["AI", "IX", "6E", "UK"];
+  if (!INDIA_CODES.has(destination)) return ["EK", "QR", "SQ", "AI", "UK"]; // long-haul via hub carriers
+  return ["6E", "AI", "UK", "SG", "QP", "IX"]; // domestic
+}
+
+function routeTier(origin: string, destination: string): "domestic" | "near" | "mideast" | "far" {
+  if (INDIA_CODES.has(origin) && INDIA_CODES.has(destination)) return "domestic";
+  const other = INDIA_CODES.has(origin) ? destination : origin;
+  if (MIDEAST_CODES.has(other)) return "mideast";
+  if (NEAR_ASIA_CODES.has(other)) return "near";
+  return "far";
+}
+
+const TIER_CONFIG = {
+  domestic: { base: 4200, step: 1800, stopFee: 1200, durMin: 2, durSpread: 3.5 },
+  near: { base: 11500, step: 3200, stopFee: 2500, durMin: 4, durSpread: 5 },
+  mideast: { base: 14500, step: 3800, stopFee: 3000, durMin: 3, durSpread: 4.5 },
+  far: { base: 30000, step: 6500, stopFee: 5000, durMin: 7, durSpread: 9 },
+} as const;
 
 function pick<T>(arr: T[], i: number): T { return arr[i % arr.length]; }
 
 export function generateFlights(origin: string, destination: string, count = 8): Flight[] {
   const flights: Flight[] = [];
   const depHours = ["06:00", "07:30", "09:15", "11:00", "13:45", "16:20", "18:30", "20:10", "22:05"];
+  const tier = routeTier(origin, destination);
+  const cfg = TIER_CONFIG[tier];
+  const pool = airlinesForRoute(destination).map(airline).filter(Boolean);
+  const originCity = AIRPORT_INDEX[origin]?.city || origin;
+  const destinationCity = AIRPORT_INDEX[destination]?.city || destination;
+
   for (let i = 0; i < count; i++) {
-    const al = pick(AIRLINES, i);
+    const al = pick(pool.length ? pool : AIRLINES, i);
     const dep = pick(depHours, i);
-    const dur = 2 + (i % 4) + (i % 2) * 0.5;
+    const dur = cfg.durMin + (i % 4) * (cfg.durSpread / 4) + (i % 2) * 0.5;
     const arrH = (parseInt(dep.slice(0, 2)) + Math.floor(dur)) % 24;
     const arrM = (parseInt(dep.slice(3, 5)) + Math.round((dur % 1) * 60)) % 60;
     const stops = i % 5 === 0 ? 1 : 0;
     flights.push({
       id: `fl-${i + 1}`, airline: al.name, airlineCode: al.code,
       flightNumber: `${al.code}${100 + i * 37}`,
-      origin, originCity: pick(CITIES.filter(c => c.code === origin), 0)?.city || "Mumbai",
-      destination, destinationCity: pick(CITIES.filter(c => c.code === destination), 0)?.city || "Delhi",
+      origin, originCity,
+      destination, destinationCity,
       departTime: dep,
       arriveTime: `${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`,
       duration: `${Math.floor(dur)}h ${Math.round((dur % 1) * 60)}m`,
       stops,
-      price: 4200 + (i % 4) * 1800 + (stops ? 1200 : 0),
+      price: cfg.base + (i % 4) * cfg.step + (stops ? cfg.stopFee : 0),
       currency: "INR",
       cabin: i % 6 === 0 ? "Business" : "Economy",
       seatsLeft: 4 + (i % 12),

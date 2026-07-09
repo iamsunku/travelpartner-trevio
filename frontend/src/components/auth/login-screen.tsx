@@ -4,12 +4,13 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plane, Hotel, Bus, Palmtree, Shield, ArrowRight, Mail, Lock, Phone,
-  KeyRound, Building2, UserCog, User, Eye, EyeOff, CheckCircle2, Sparkles,
+  Building2, UserCog, User, Eye, EyeOff, CheckCircle2, Sparkles,
   Globe, TrendingUp,
 } from "lucide-react";
 import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/nav-config";
+import { ROLE_USERS } from "@/lib/mock-data";
 import type { Role } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,9 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-type Mode = "login" | "otp" | "forgot" | "2fa";
+const DEMO_PASSWORD = "Passw0rd@123";
+
+type Mode = "login" | "otp" | "forgot";
 
 const ROLE_CARDS: { role: Role; icon: React.ElementType; gradient: string }[] = [
   { role: "super_admin", icon: Shield, gradient: "from-blue-600 to-indigo-700" },
@@ -42,41 +45,37 @@ export function LoginScreen() {
   const [selectedRole, setSelectedRole] = useState<Role>("agency_admin");
   const [mode, setMode] = useState<Mode>("login");
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState(ROLE_USERS.agency_admin.email);
+  const [password, setPassword] = useState(DEMO_PASSWORD);
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const selectRole = (role: Role) => {
+    setSelectedRole(role);
+    setEmail(ROLE_USERS[role].email);
+    setPassword(DEMO_PASSWORD);
+  };
+
+  const handleLogin = async () => {
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      if (mode === "2fa" || selectedRole === "super_admin" || selectedRole === "agency_admin") {
-        setMode("2fa");
-        toast({ title: "2FA Code Sent", description: "Enter the 6-digit code from your authenticator app" });
-      } else {
-        completeLogin();
-      }
-    }, 700);
+    const result = await loginWithApi(email, password);
+    setLoading(false);
+    if (!result.ok) {
+      toast({ title: "Sign in failed", description: result.error || "Invalid email or password", variant: "destructive" });
+      return;
+    }
+    const user = useAuthStore.getState().user;
+    await hydrateFromApi(user?.agencyId);
+    toast({ title: "Welcome back!", description: `Signed in as ${user ? ROLE_LABELS[user.role] : ""}` });
   };
 
   const handleOtpVerify = () => {
     setLoading(true);
-    setTimeout(() => completeLogin(), 600);
-  };
-
-  const completeLogin = async () => {
-    setLoading(true);
-    const apiOk = await loginWithApi(selectedRole);
-    if (apiOk) {
-      const user = useAuthStore.getState().user;
-      await hydrateFromApi(user?.agencyId);
-    }
-    setLoading(false);
-    toast({
-      title: "Welcome back!",
-      description: apiOk
-        ? `Signed in as ${ROLE_LABELS[selectedRole]} · Live API`
-        : `Signed in as ${ROLE_LABELS[selectedRole]} · Offline demo`,
-    });
+    setTimeout(() => {
+      setLoading(false);
+      toast({ title: "OTP login is a demo-only flow", description: "Please sign in with email and password instead." });
+      setMode("login");
+    }, 600);
   };
 
   return (
@@ -183,7 +182,7 @@ export function LoginScreen() {
                       return (
                         <button
                           key={rc.role}
-                          onClick={() => setSelectedRole(rc.role)}
+                          onClick={() => selectRole(rc.role)}
                           className={cn(
                             "relative flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all",
                             active
@@ -212,15 +211,13 @@ export function LoginScreen() {
 
                   <div className="space-y-3">
                     <div className="space-y-1.5">
-                      <Label className="text-xs">Email or Agency Code</Label>
+                      <Label className="text-xs">Email</Label>
                       <div className="relative">
                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <Input
                           className="pl-9 h-11"
-                          defaultValue={
-                            selectedRole === "super_admin" ? "superadmin@travelpartner.pro" :
-                            "admin@wanderlusttravels.in"
-                          }
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
                           placeholder="you@agency.com"
                         />
                       </div>
@@ -237,7 +234,8 @@ export function LoginScreen() {
                         <Input
                           type={showPassword ? "text" : "password"}
                           className="pl-9 pr-9 h-11"
-                          defaultValue="demo1234"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
                         />
                         <button
                           onClick={() => setShowPassword(!showPassword)}
@@ -322,39 +320,6 @@ export function LoginScreen() {
                   <Button onClick={handleOtpVerify} disabled={otp.length < 6 || loading} className="w-full h-11">
                     {loading ? "Verifying..." : "Verify & Login"}
                   </Button>
-                </div>
-              )}
-
-              {mode === "2fa" && (
-                <div className="space-y-6">
-                  <div>
-                    <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-                      <KeyRound className="w-7 h-7 text-primary" />
-                    </div>
-                    <h2 className="text-2xl font-bold">Two-Factor Authentication</h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Enter the 6-digit code from your authenticator app to continue.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-center block">Authentication Code</Label>
-                    <div className="flex justify-center">
-                      <InputOTP maxLength={6} value={otp} onChange={setOtp}>
-                        <InputOTPGroup>
-                          {[0, 1, 2, 3, 4, 5].map((i) => (
-                            <InputOTPSlot key={i} index={i} />
-                          ))}
-                        </InputOTPGroup>
-                      </InputOTP>
-                    </div>
-                    <p className="text-xs text-center text-muted-foreground">Demo code: 123456</p>
-                  </div>
-                  <Button onClick={handleOtpVerify} disabled={otp.length < 6 || loading} className="w-full h-11">
-                    {loading ? "Verifying..." : "Verify & Continue"}
-                  </Button>
-                  <button onClick={() => setMode("login")} className="text-sm text-muted-foreground hover:text-foreground w-full text-center">
-                    Use a different method
-                  </button>
                 </div>
               )}
 

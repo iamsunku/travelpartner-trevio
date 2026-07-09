@@ -37,8 +37,10 @@ import { MarketingView } from "@/components/views/marketing";
 import { CmsView } from "@/components/views/cms";
 import { FinanceView } from "@/components/views/finance";
 import { AuditLogsView } from "@/components/views/audit-logs";
+import { AnalyticsView } from "@/components/views/analytics";
 import type { ViewKey } from "@/types";
 import { Construction } from "lucide-react";
+import { canAccessView } from "@/lib/nav-config";
 
 const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   dashboard: DashboardView,
@@ -71,6 +73,7 @@ const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   cms: CmsView,
   finance: FinanceView,
   "audit-logs": AuditLogsView,
+  analytics: AnalyticsView,
 };
 
 export function AppShell() {
@@ -84,7 +87,9 @@ export function AppShell() {
   useApiSync();
 
   if (!user) return null;
-  const ViewComponent = VIEW_REGISTRY[activeView] || DashboardView;
+  const ViewComponent = canAccessView(user.role, activeView)
+    ? VIEW_REGISTRY[activeView] || DashboardView
+    : DashboardView;
 
   return (
     <div className="min-h-screen flex bg-background">

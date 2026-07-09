@@ -5,8 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Palmtree, MapPin, Search, Star, Clock, Heart, Users, Building2,
   Mountain, GraduationCap, Landmark, Compass, Plane, CheckCircle2,
-  CreditCard, Wallet, Building2 as BankIcon, Loader2, ShieldCheck,
-  BadgeIndianRupee, ArrowRight, Globe, Calendar, Sparkles, Sun,
+  ArrowRight, Globe, Calendar, Sparkles, Sun,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,10 +13,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Accordion, AccordionItem, AccordionTrigger, AccordionContent,
 } from "@/components/ui/accordion";
@@ -26,6 +25,7 @@ import { HOLIDAY_PACKAGES } from "@/lib/mock-data";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { HolidayPackage } from "@/types";
 import { formatFullINR, PageHeader } from "@/components/shared/ui-helpers";
+import { PaymentModal, type BookingPaymentMethod } from "@/components/shared/payment-modal";
 import { cn } from "@/lib/utils";
 
 const PACKAGE_TYPES = [
@@ -97,87 +97,6 @@ function buildItinerary(pkg: HolidayPackage) {
     ],
   };
   return templates[pkg.id] || [];
-}
-
-function PaymentModal({
-  amount, open, onClose, onSuccess, title,
-}: {
-  amount: number; open: boolean; onClose: () => void; onSuccess: () => void; title: string;
-}) {
-  const [method, setMethod] = useState("card");
-  const [processing, setProcessing] = useState(false);
-  const { toast } = useToast();
-
-  const handlePay = () => {
-    setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
-      onClose();
-      toast({
-        title: "Package Booked!",
-        description: `${formatFullINR(amount)} paid. Your holiday package is confirmed. Booking ID: HL-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-      });
-      onSuccess();
-    }, 1800);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <DialogTitle className="text-base">Razorpay Secure Payment</DialogTitle>
-              <DialogDescription>{title}</DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="rounded-lg bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 border border-teal-200 dark:border-teal-900 p-4 text-center">
-          <p className="text-xs text-muted-foreground">Amount Payable</p>
-          <p className="text-3xl font-bold text-teal-700 dark:text-teal-300 mt-1">{formatFullINR(amount)}</p>
-          <p className="text-[11px] text-muted-foreground mt-1 flex items-center justify-center gap-1">
-            <ShieldCheck className="w-3 h-3" /> 256-bit encrypted • Free cancellation up to 7 days
-          </p>
-        </div>
-
-        <Tabs value={method} onValueChange={setMethod}>
-          <TabsList className="grid grid-cols-3 w-full">
-            <TabsTrigger value="card"><CreditCard className="w-3.5 h-3.5 mr-1" /> Card</TabsTrigger>
-            <TabsTrigger value="upi"><Wallet className="w-3.5 h-3.5 mr-1" /> UPI</TabsTrigger>
-            <TabsTrigger value="netbanking"><BankIcon className="w-3.5 h-3.5 mr-1" /> Net</TabsTrigger>
-          </TabsList>
-          <TabsContent value="card" className="space-y-3 mt-3">
-            <Input placeholder="Card Number • 4111 1111 1111 1111" />
-            <div className="grid grid-cols-2 gap-2"><Input placeholder="MM / YY" /><Input placeholder="CVV" /></div>
-            <Input placeholder="Cardholder Name" />
-          </TabsContent>
-          <TabsContent value="upi" className="space-y-3 mt-3">
-            <Input placeholder="yourname@upi" />
-            <p className="text-xs text-muted-foreground">A collect request will be sent to your UPI app.</p>
-          </TabsContent>
-          <TabsContent value="netbanking" className="space-y-2 mt-3">
-            {["HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank"].map((b) => (
-              <label key={b} className="flex items-center gap-2 p-2 rounded-md border cursor-pointer hover:bg-muted/50 text-sm">
-                <input type="radio" name="nb" defaultChecked={b === "HDFC Bank"} className="accent-teal-600" />
-                {b}
-              </label>
-            ))}
-          </TabsContent>
-        </Tabs>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={processing}>Cancel</Button>
-          <Button onClick={handlePay} disabled={processing} className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
-            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><BadgeIndianRupee className="w-4 h-4" /> Pay {formatFullINR(amount)}</>}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 export function HolidayView() {
@@ -475,8 +394,16 @@ export function HolidayView() {
         open={payOpen}
         amount={payAmount}
         title={payTitle}
-        onClose={() => setPayOpen(false)}
-        onSuccess={() => {
+        description={bookedPkg ? `${bookedPkg.title} — ${bookedPkg.destination}` : "Holiday Package"}
+        shareSubject={bookedPkg ? `Your Holiday Package — ${bookedPkg.title}` : "Holiday Package"}
+        shareText={bookedPkg ? `Holiday Package Booked\n${bookedPkg.title}\nDestination: ${bookedPkg.destination}, ${bookedPkg.country}\nDuration: ${bookedPkg.duration}\nAmount Paid: ${formatFullINR(bookedPkg.price)}` : ""}
+        onClose={() => {
+          setPayOpen(false);
+          setPayAmount(0);
+          setPayTitle("");
+          setBookedPkg(null);
+        }}
+        onSuccess={(method: BookingPaymentMethod) => {
           if (bookedPkg) {
             addBooking({
               customerName: "Holiday Guest",
@@ -484,12 +411,9 @@ export function HolidayView() {
               route: bookedPkg.title,
               travelDate: new Date().toISOString().slice(0, 10),
               amount: bookedPkg.price,
-              paymentMethod: "Razorpay",
+              paymentMethod: method,
             });
           }
-          setPayAmount(0);
-          setPayTitle("");
-          setBookedPkg(null);
         }}
       />
     </div>

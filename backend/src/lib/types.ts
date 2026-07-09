@@ -1,4 +1,6 @@
-// Travel Partner Pro — Core Types
+// Shared shape definitions for backend/src/lib/mock-data.ts (demo/seed data generator only).
+// Mirrors frontend/src/types/index.ts — kept minimal and independent since backend and
+// frontend are separate packages with no shared types module.
 
 export type Role =
   | "super_admin"
@@ -266,36 +268,3 @@ export interface Notification {
   read: boolean;
   priority: "low" | "medium" | "high";
 }
-
-export type ViewKey =
-  | "dashboard"
-  | "flights"
-  | "hotels"
-  | "bus"
-  | "train"
-  | "holiday"
-  | "visa"
-  | "insurance"
-  | "customers"
-  | "crm"
-  | "quotations"
-  | "bookings"
-  | "payments"
-  | "wallet"
-  | "commission"
-  | "reports"
-  | "employees"
-  | "tasks"
-  | "support"
-  | "notifications"
-  | "marketing"
-  | "cms"
-  | "finance"
-  | "api-management"
-  | "settings"
-  | "audit-logs"
-  | "agencies"
-  | "branches"
-  | "api-marketplace"
-  | "monitoring"
-  | "analytics";

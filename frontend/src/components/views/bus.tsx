@@ -4,8 +4,8 @@ import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bus as BusIcon, MapPin, Search, Star, Clock, Users,
-  Armchair, CheckCircle2, CreditCard, Wallet, Building2, Loader2, ShieldCheck,
-  Snowflake, Wifi, Plug, Navigation, ArrowRight, Sparkles, BadgeIndianRupee,
+  Armchair, CheckCircle2,
+  Snowflake, Wifi, Plug, Navigation, ArrowRight, Sparkles,
   Briefcase,
 } from "lucide-react";
 import {
@@ -23,17 +23,44 @@ import { Separator } from "@/components/ui/separator";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { BUSES } from "@/lib/mock-data";
+import { generateBuses } from "@/lib/mock-data";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { Bus } from "@/types";
 import { formatFullINR, PageHeader } from "@/components/shared/ui-helpers";
+import { CitySearchField, type CityOption } from "@/components/shared/city-search-field";
+import { PaymentModal, type BookingPaymentMethod } from "@/components/shared/payment-modal";
 import { cn } from "@/lib/utils";
 
-const CITIES = ["Mumbai", "Pune", "Delhi", "Bangalore", "Chennai", "Hyderabad", "Kolkata", "Ahmedabad", "Jaipur", "Goa", "Surat", "Indore", "Nagpur", "Nashik"];
+const CITIES: CityOption[] = [
+  { value: "Mumbai", label: "Mumbai", sublabel: "Maharashtra" },
+  { value: "Pune", label: "Pune", sublabel: "Maharashtra" },
+  { value: "Delhi", label: "Delhi", sublabel: "Delhi" },
+  { value: "Bangalore", label: "Bangalore", sublabel: "Karnataka" },
+  { value: "Chennai", label: "Chennai", sublabel: "Tamil Nadu" },
+  { value: "Hyderabad", label: "Hyderabad", sublabel: "Telangana" },
+  { value: "Kolkata", label: "Kolkata", sublabel: "West Bengal" },
+  { value: "Ahmedabad", label: "Ahmedabad", sublabel: "Gujarat" },
+  { value: "Jaipur", label: "Jaipur", sublabel: "Rajasthan" },
+  { value: "Goa", label: "Goa", sublabel: "Goa" },
+  { value: "Surat", label: "Surat", sublabel: "Gujarat" },
+  { value: "Indore", label: "Indore", sublabel: "Madhya Pradesh" },
+  { value: "Nagpur", label: "Nagpur", sublabel: "Maharashtra" },
+  { value: "Nashik", label: "Nashik", sublabel: "Maharashtra" },
+  { value: "Kochi", label: "Kochi", sublabel: "Kerala" },
+  { value: "Coimbatore", label: "Coimbatore", sublabel: "Tamil Nadu" },
+  { value: "Lucknow", label: "Lucknow", sublabel: "Uttar Pradesh" },
+  { value: "Chandigarh", label: "Chandigarh", sublabel: "Chandigarh" },
+  { value: "Amritsar", label: "Amritsar", sublabel: "Punjab" },
+  { value: "Bhopal", label: "Bhopal", sublabel: "Madhya Pradesh" },
+  { value: "Vadodara", label: "Vadodara", sublabel: "Gujarat" },
+  { value: "Visakhapatnam", label: "Visakhapatnam", sublabel: "Andhra Pradesh" },
+  { value: "Mysore", label: "Mysore", sublabel: "Karnataka" },
+  { value: "Udaipur", label: "Udaipur", sublabel: "Rajasthan" },
+  { value: "Shirdi", label: "Shirdi", sublabel: "Maharashtra" },
+];
 
-const BUS_TYPE_FILTERS = ["AC Sleeper", "AC Seater", "Volvo Multi-Axle", "Mercedes"];
+const BUS_TYPE_FILTERS = ["AC Sleeper", "AC Seater", "Non-AC Sleeper", "Volvo Multi-Axle", "Mercedes"];
 
 const TIME_SLOTS = [
   { id: "early", label: "Before 6 AM", range: [0, 6] },
@@ -86,90 +113,6 @@ function generateSeats(busId: string, isSleeper: boolean) {
   return seats;
 }
 
-// Razorpay-style payment modal
-function PaymentModal({
-  amount, open, onClose, onSuccess, title,
-}: {
-  amount: number; open: boolean; onClose: () => void; onSuccess: () => void; title: string;
-}) {
-  const [method, setMethod] = useState("card");
-  const [processing, setProcessing] = useState(false);
-  const { toast } = useToast();
-
-  const handlePay = () => {
-    setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
-      onClose();
-      toast({
-        title: "Payment Successful",
-        description: `${formatFullINR(amount)} paid via ${method === "card" ? "Card" : method === "upi" ? "UPI" : "Net Banking"}. Booking confirmed!`,
-      });
-      onSuccess();
-    }, 1800);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <DialogTitle className="text-base">Razorpay Secure Payment</DialogTitle>
-              <DialogDescription>{title}</DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="rounded-lg bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 border border-teal-200 dark:border-teal-900 p-4 text-center">
-          <p className="text-xs text-muted-foreground">Amount Payable</p>
-          <p className="text-3xl font-bold text-teal-700 dark:text-teal-300 mt-1">{formatFullINR(amount)}</p>
-          <p className="text-[11px] text-muted-foreground mt-1 flex items-center justify-center gap-1">
-            <ShieldCheck className="w-3 h-3" /> 256-bit encrypted • PCI-DSS compliant
-          </p>
-        </div>
-
-        <Tabs value={method} onValueChange={setMethod}>
-          <TabsList className="grid grid-cols-3 w-full">
-            <TabsTrigger value="card"><CreditCard className="w-3.5 h-3.5 mr-1" /> Card</TabsTrigger>
-            <TabsTrigger value="upi"><Wallet className="w-3.5 h-3.5 mr-1" /> UPI</TabsTrigger>
-            <TabsTrigger value="netbanking"><Building2 className="w-3.5 h-3.5 mr-1" /> Net</TabsTrigger>
-          </TabsList>
-          <TabsContent value="card" className="space-y-3 mt-3">
-            <Input placeholder="Card Number • 4111 1111 1111 1111" />
-            <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="MM / YY" />
-              <Input placeholder="CVV" />
-            </div>
-            <Input placeholder="Cardholder Name" />
-          </TabsContent>
-          <TabsContent value="upi" className="space-y-3 mt-3">
-            <Input placeholder="yourname@upi" />
-            <p className="text-xs text-muted-foreground">A collect request will be sent to your UPI app.</p>
-          </TabsContent>
-          <TabsContent value="netbanking" className="space-y-2 mt-3">
-            {["HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank"].map((b) => (
-              <label key={b} className="flex items-center gap-2 p-2 rounded-md border cursor-pointer hover:bg-muted/50 text-sm">
-                <input type="radio" name="nb" defaultChecked={b === "HDFC Bank"} className="accent-teal-600" />
-                {b}
-              </label>
-            ))}
-          </TabsContent>
-        </Tabs>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={processing}>Cancel</Button>
-          <Button onClick={handlePay} disabled={processing} className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
-            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><BadgeIndianRupee className="w-4 h-4" /> Pay {formatFullINR(amount)}</>}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 export function BusView() {
   const { toast } = useToast();
@@ -195,16 +138,24 @@ export function BusView() {
   const [pendingBus, setPendingBus] = useState<Bus | null>(null);
   const [pendingAmount, setPendingAmount] = useState(0);
 
+  const routeBuses = useMemo(() => generateBuses(fromCity, toCity, 10), [fromCity, toCity]);
+  const routeMinPrice = useMemo(() => Math.min(300, ...routeBuses.map((b) => b.price)), [routeBuses]);
+  const routeMaxPrice = useMemo(() => Math.max(1200, ...routeBuses.map((b) => b.price)), [routeBuses]);
+
   const handleSearch = () => {
     if (fromCity === toCity) {
       toast({ title: "Invalid route", description: "From and To cannot be the same city.", variant: "destructive" });
       return;
     }
+    setPriceRange([routeMinPrice, routeMaxPrice]);
+    setSelectedTypes([]);
+    setMinRating(0);
+    setTimeSlots([]);
     setSearched(true);
   };
 
   const filteredBuses = useMemo(() => {
-    let list = BUSES.filter((b) => b.origin === fromCity && b.destination === toCity);
+    let list = routeBuses;
     if (selectedTypes.length) list = list.filter((b) => selectedTypes.includes(b.busType));
     list = list.filter((b) => b.price >= priceRange[0] && b.price <= priceRange[1]);
     if (minRating > 0) list = list.filter((b) => b.rating >= minRating);
@@ -218,7 +169,7 @@ export function BusView() {
       });
     }
     return list;
-  }, [fromCity, toCity, selectedTypes, priceRange, minRating, timeSlots]);
+  }, [routeBuses, selectedTypes, priceRange, minRating, timeSlots]);
 
   const isSleeper = (busType: string) => busType.toLowerCase().includes("sleeper");
   const seats = useMemo(() => (seatDialogBus ? generateSeats(seatDialogBus.id, isSleeper(seatDialogBus.busType)) : []), [seatDialogBus]);
@@ -260,7 +211,7 @@ export function BusView() {
     setPendingAmount(0);
   };
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = (method: BookingPaymentMethod) => {
     if (pendingBus) {
       addBooking({
         customerName: "Walk-in Customer",
@@ -268,10 +219,9 @@ export function BusView() {
         route: `${pendingBus.origin} → ${pendingBus.destination}`,
         travelDate: date,
         amount: pendingAmount,
-        paymentMethod: "Razorpay",
+        paymentMethod: method,
       });
     }
-    resetSelections();
   };
 
   return (
@@ -288,16 +238,15 @@ export function BusView() {
         <div className="absolute -bottom-16 -left-12 w-56 h-56 rounded-full bg-cyan-300/20 blur-3xl" />
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
           <div className="md:col-span-3">
-            <Label className="text-teal-100 text-xs">From City</Label>
-            <Select value={fromCity} onValueChange={setFromCity}>
-              <SelectTrigger className="w-full bg-white/95 text-slate-800 border-0 mt-1 h-11">
-                <MapPin className="w-4 h-4 mr-1 text-teal-600" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <CitySearchField
+              icon={MapPin}
+              label="From City"
+              placeholder="Search city..."
+              value={fromCity}
+              options={CITIES}
+              excludeValue={toCity}
+              onSelect={setFromCity}
+            />
           </div>
           <div className="hidden md:flex md:col-span-1 items-center justify-center pb-2">
             <button
@@ -309,16 +258,15 @@ export function BusView() {
             </button>
           </div>
           <div className="md:col-span-3">
-            <Label className="text-teal-100 text-xs">To City</Label>
-            <Select value={toCity} onValueChange={setToCity}>
-              <SelectTrigger className="w-full bg-white/95 text-slate-800 border-0 mt-1 h-11">
-                <MapPin className="w-4 h-4 mr-1 text-rose-500" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CITIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <CitySearchField
+              icon={MapPin}
+              label="To City"
+              placeholder="Search city..."
+              value={toCity}
+              options={CITIES}
+              excludeValue={fromCity}
+              onSelect={setToCity}
+            />
           </div>
           <div className="md:col-span-3">
             <Label className="text-teal-100 text-xs">Date of Journey</Label>
@@ -357,7 +305,7 @@ export function BusView() {
                   </h3>
                   <Button
                     variant="ghost" size="sm"
-                    onClick={() => { setSelectedTypes([]); setPriceRange([400, 1000]); setMinRating(0); setTimeSlots([]); }}
+                    onClick={() => { setSelectedTypes([]); setPriceRange([routeMinPrice, routeMaxPrice]); setMinRating(0); setTimeSlots([]); }}
                     className="text-xs h-7 text-teal-600 hover:text-teal-700"
                   >
                     Reset
@@ -386,9 +334,9 @@ export function BusView() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Max Price</p>
                     <span className="text-xs font-medium text-teal-700 dark:text-teal-300">{formatFullINR(priceRange[1])}</span>
                   </div>
-                  <Slider value={priceRange} min={300} max={1200} step={50} onValueChange={setPriceRange} />
+                  <Slider value={priceRange} min={routeMinPrice} max={routeMaxPrice} step={50} onValueChange={setPriceRange} />
                   <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                    <span>₹300</span><span>₹1,200</span>
+                    <span>{formatFullINR(routeMinPrice)}</span><span>{formatFullINR(routeMaxPrice)}</span>
                   </div>
                 </div>
 
@@ -683,7 +631,10 @@ export function BusView() {
         open={payOpen}
         amount={pendingAmount}
         title={pendingBus ? `${selectedSeats.length} seat(s) • ${pendingBus.operator}` : "Bus Booking"}
-        onClose={() => setPayOpen(false)}
+        description={pendingBus ? `${pendingBus.operator} • ${pendingBus.origin} → ${pendingBus.destination}` : "Bus Booking"}
+        shareSubject={pendingBus ? `Your Bus Ticket — ${pendingBus.operator}` : "Bus Ticket"}
+        shareText={pendingBus ? `Bus Ticket Confirmed\n${pendingBus.operator} (${pendingBus.busType})\n${pendingBus.origin} → ${pendingBus.destination}\nDate: ${date}\nSeats: ${selectedSeats.join(", ")}\nAmount Paid: ${formatFullINR(pendingAmount)}` : ""}
+        onClose={() => { setPayOpen(false); resetSelections(); }}
         onSuccess={handlePaymentSuccess}
       />
     </div>

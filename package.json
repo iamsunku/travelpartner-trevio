@@ -11,9 +11,12 @@
     "dev:frontend": "npm run dev --workspace=travelpro-frontend",
     "dev:backend": "npm run dev --workspace=travelpro-backend",
     "build:frontend": "npm run build --workspace=travelpro-frontend",
+    "build:backend": "npm run build --workspace=travelpro-backend",
     "start:backend": "npm run start --workspace=travelpro-backend",
+    "test:backend": "npm run test --workspace=travelpro-backend",
     "db:generate": "npm run db:generate --workspace=travelpro-backend",
     "db:push": "npm run db:push --workspace=travelpro-backend",
+    "db:migrate": "npm run db:migrate --workspace=travelpro-backend",
     "db:seed": "npm run db:seed --workspace=travelpro-backend"
   }
 }

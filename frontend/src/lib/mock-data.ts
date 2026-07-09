@@ -58,39 +58,157 @@ const AIRLINES = [
   { name: "Emirates", code: "EK", aircraft: "Airbus A380", rating: 4.7 },
   { name: "Singapore Airlines", code: "SQ", aircraft: "Airbus A350", rating: 4.8 },
   { name: "Qatar Airways", code: "QR", aircraft: "Boeing 777-300ER", rating: 4.6 },
+  { name: "AirAsia", code: "AK", aircraft: "Airbus A320", rating: 3.9 },
+  { name: "Malaysia Airlines", code: "MH", aircraft: "Boeing 737 MAX 8", rating: 4.3 },
+  { name: "Thai Airways", code: "TG", aircraft: "Boeing 777-300ER", rating: 4.3 },
+  { name: "Thai AirAsia", code: "FD", aircraft: "Airbus A320", rating: 3.9 },
+  { name: "VietJet Air", code: "VJ", aircraft: "Airbus A321", rating: 3.8 },
+  { name: "Vietnam Airlines", code: "VN", aircraft: "Airbus A350", rating: 4.4 },
+  { name: "Garuda Indonesia", code: "GA", aircraft: "Boeing 737-800", rating: 4.3 },
+  { name: "Scoot", code: "TR", aircraft: "Boeing 787", rating: 4.0 },
 ];
 
-const CITIES = [
-  { code: "BOM", city: "Mumbai" }, { code: "DEL", city: "New Delhi" },
-  { code: "BLR", city: "Bangalore" }, { code: "MAA", city: "Chennai" },
-  { code: "HYD", city: "Hyderabad" }, { code: "CCU", city: "Kolkata" },
-  { code: "GOI", city: "Goa" }, { code: "COK", city: "Kochi" },
-  { code: "DXB", city: "Dubai" }, { code: "SIN", city: "Singapore" },
-  { code: "BKK", city: "Bangkok" }, { code: "LON", city: "London" },
-];
+function airline(code: string) {
+  return AIRLINES.find((a) => a.code === code)!;
+}
+
+// code -> { city, country } for every airport this app searches
+const AIRPORT_INDEX: Record<string, { city: string; country: string }> = {
+  BOM: { city: "Mumbai", country: "India" }, DEL: { city: "New Delhi", country: "India" },
+  BLR: { city: "Bangalore", country: "India" }, MAA: { city: "Chennai", country: "India" },
+  HYD: { city: "Hyderabad", country: "India" }, CCU: { city: "Kolkata", country: "India" },
+  GOI: { city: "Goa", country: "India" }, GOX: { city: "Goa", country: "India" },
+  COK: { city: "Kochi", country: "India" }, PNQ: { city: "Pune", country: "India" },
+  AMD: { city: "Ahmedabad", country: "India" }, JAI: { city: "Jaipur", country: "India" },
+  LKO: { city: "Lucknow", country: "India" }, IXC: { city: "Chandigarh", country: "India" },
+  GAU: { city: "Guwahati", country: "India" }, PAT: { city: "Patna", country: "India" },
+  BBI: { city: "Bhubaneswar", country: "India" }, IXZ: { city: "Port Blair", country: "India" },
+  SXR: { city: "Srinagar", country: "India" }, IXB: { city: "Bagdogra", country: "India" },
+  TRV: { city: "Thiruvananthapuram", country: "India" }, IXM: { city: "Madurai", country: "India" },
+  VNS: { city: "Varanasi", country: "India" }, NAG: { city: "Nagpur", country: "India" },
+  IDR: { city: "Indore", country: "India" }, RPR: { city: "Raipur", country: "India" },
+  UDR: { city: "Udaipur", country: "India" }, ATQ: { city: "Amritsar", country: "India" },
+  DXB: { city: "Dubai", country: "UAE" }, AUH: { city: "Abu Dhabi", country: "UAE" },
+  SHJ: { city: "Sharjah", country: "UAE" },
+  SIN: { city: "Singapore", country: "Singapore" },
+  BKK: { city: "Bangkok", country: "Thailand" }, DMK: { city: "Bangkok", country: "Thailand" },
+  HKT: { city: "Phuket", country: "Thailand" },
+  KUL: { city: "Kuala Lumpur", country: "Malaysia" },
+  LON: { city: "London", country: "United Kingdom" }, LGW: { city: "London", country: "United Kingdom" },
+  LTN: { city: "London", country: "United Kingdom" }, MAN: { city: "Manchester", country: "United Kingdom" },
+  EDI: { city: "Edinburgh", country: "United Kingdom" }, DUB: { city: "Dublin", country: "Ireland" },
+  JFK: { city: "New York", country: "USA" }, EWR: { city: "New York", country: "USA" },
+  LGA: { city: "New York", country: "USA" }, SFO: { city: "San Francisco", country: "USA" },
+  LAX: { city: "Los Angeles", country: "USA" }, ORD: { city: "Chicago", country: "USA" },
+  SEA: { city: "Seattle", country: "USA" }, IAD: { city: "Washington D.C.", country: "USA" },
+  ATL: { city: "Atlanta", country: "USA" }, MIA: { city: "Miami", country: "USA" },
+  BOS: { city: "Boston", country: "USA" }, IAH: { city: "Houston", country: "USA" },
+  DFW: { city: "Dallas", country: "USA" },
+  YYZ: { city: "Toronto", country: "Canada" }, YVR: { city: "Vancouver", country: "Canada" },
+  YUL: { city: "Montreal", country: "Canada" }, MEX: { city: "Mexico City", country: "Mexico" },
+  GRU: { city: "São Paulo", country: "Brazil" }, GIG: { city: "Rio de Janeiro", country: "Brazil" },
+  EZE: { city: "Buenos Aires", country: "Argentina" }, SCL: { city: "Santiago", country: "Chile" },
+  BOG: { city: "Bogotá", country: "Colombia" },
+  SYD: { city: "Sydney", country: "Australia" }, MEL: { city: "Melbourne", country: "Australia" },
+  BNE: { city: "Brisbane", country: "Australia" }, PER: { city: "Perth", country: "Australia" },
+  AKL: { city: "Auckland", country: "New Zealand" },
+  DOH: { city: "Doha", country: "Qatar" }, KWI: { city: "Kuwait City", country: "Kuwait" },
+  BAH: { city: "Manama", country: "Bahrain" }, MCT: { city: "Muscat", country: "Oman" },
+  RUH: { city: "Riyadh", country: "Saudi Arabia" }, JED: { city: "Jeddah", country: "Saudi Arabia" },
+  IST: { city: "Istanbul", country: "Turkey" }, TLV: { city: "Tel Aviv", country: "Israel" },
+  CAI: { city: "Cairo", country: "Egypt" }, JNB: { city: "Johannesburg", country: "South Africa" },
+  CPT: { city: "Cape Town", country: "South Africa" }, NBO: { city: "Nairobi", country: "Kenya" },
+  ADD: { city: "Addis Ababa", country: "Ethiopia" }, LOS: { city: "Lagos", country: "Nigeria" },
+  CDG: { city: "Paris", country: "France" }, ORY: { city: "Paris", country: "France" },
+  NCE: { city: "Nice", country: "France" }, FRA: { city: "Frankfurt", country: "Germany" },
+  MUC: { city: "Munich", country: "Germany" }, BER: { city: "Berlin", country: "Germany" },
+  AMS: { city: "Amsterdam", country: "Netherlands" }, MAD: { city: "Madrid", country: "Spain" },
+  BCN: { city: "Barcelona", country: "Spain" }, FCO: { city: "Rome", country: "Italy" },
+  MXP: { city: "Milan", country: "Italy" }, ZRH: { city: "Zurich", country: "Switzerland" },
+  VIE: { city: "Vienna", country: "Austria" }, BRU: { city: "Brussels", country: "Belgium" },
+  CPH: { city: "Copenhagen", country: "Denmark" }, OSL: { city: "Oslo", country: "Norway" },
+  ARN: { city: "Stockholm", country: "Sweden" }, HEL: { city: "Helsinki", country: "Finland" },
+  LIS: { city: "Lisbon", country: "Portugal" }, ATH: { city: "Athens", country: "Greece" },
+  WAW: { city: "Warsaw", country: "Poland" }, PRG: { city: "Prague", country: "Czech Republic" },
+  SVO: { city: "Moscow", country: "Russia" },
+  HKG: { city: "Hong Kong", country: "Hong Kong" },
+  NRT: { city: "Tokyo", country: "Japan" }, HND: { city: "Tokyo", country: "Japan" },
+  KIX: { city: "Osaka", country: "Japan" }, ICN: { city: "Seoul", country: "South Korea" },
+  PEK: { city: "Beijing", country: "China" }, PVG: { city: "Shanghai", country: "China" },
+  CAN: { city: "Guangzhou", country: "China" }, TPE: { city: "Taipei", country: "Taiwan" },
+  MNL: { city: "Manila", country: "Philippines" }, CGK: { city: "Jakarta", country: "Indonesia" },
+  DPS: { city: "Bali", country: "Indonesia" },
+  SGN: { city: "Ho Chi Minh City", country: "Vietnam" }, HAN: { city: "Hanoi", country: "Vietnam" },
+  RGN: { city: "Yangon", country: "Myanmar" }, DAC: { city: "Dhaka", country: "Bangladesh" },
+  KTM: { city: "Kathmandu", country: "Nepal" }, CMB: { city: "Colombo", country: "Sri Lanka" },
+  MLE: { city: "Malé", country: "Maldives" }, ISB: { city: "Islamabad", country: "Pakistan" },
+  KHI: { city: "Karachi", country: "Pakistan" },
+};
+
+const INDIA_CODES = new Set(Object.keys(AIRPORT_INDEX).filter((c) => AIRPORT_INDEX[c].country === "India"));
+const NEAR_ASIA_CODES = new Set(["SIN", "BKK", "DMK", "HKT", "KUL", "DPS", "CGK", "SGN", "HAN", "RGN", "DAC", "KTM", "CMB", "MLE", "ISB", "KHI", "HKG", "TPE", "MNL"]);
+const MIDEAST_CODES = new Set(["DXB", "AUH", "SHJ", "DOH", "KWI", "BAH", "MCT", "RUH", "JED", "IST", "TLV"]);
+
+// Which operators plausibly fly a given destination, keyed by airport code
+const ROUTE_AIRLINES: Record<string, string[]> = {
+  SIN: ["SQ", "TR", "6E", "AI"],
+  KUL: ["MH", "AK", "6E", "IX"],
+  BKK: ["TG", "FD", "6E", "IX", "UK"], DMK: ["TG", "FD", "6E", "IX", "UK"], HKT: ["TG", "FD", "6E"],
+  DPS: ["GA", "AK", "SQ", "6E"], CGK: ["GA", "AK", "6E"],
+  SGN: ["VN", "VJ", "6E", "IX"], HAN: ["VN", "VJ", "6E", "IX"],
+};
+
+function airlinesForRoute(destination: string): string[] {
+  if (ROUTE_AIRLINES[destination]) return ROUTE_AIRLINES[destination];
+  if (MIDEAST_CODES.has(destination)) return ["EK", "QR", "AI", "6E", "IX"];
+  if (NEAR_ASIA_CODES.has(destination)) return ["AI", "IX", "6E", "UK"];
+  if (!INDIA_CODES.has(destination)) return ["EK", "QR", "SQ", "AI", "UK"]; // long-haul via hub carriers
+  return ["6E", "AI", "UK", "SG", "QP", "IX"]; // domestic
+}
+
+function routeTier(origin: string, destination: string): "domestic" | "near" | "mideast" | "far" {
+  if (INDIA_CODES.has(origin) && INDIA_CODES.has(destination)) return "domestic";
+  const other = INDIA_CODES.has(origin) ? destination : origin;
+  if (MIDEAST_CODES.has(other)) return "mideast";
+  if (NEAR_ASIA_CODES.has(other)) return "near";
+  return "far";
+}
+
+const TIER_CONFIG = {
+  domestic: { base: 4200, step: 1800, stopFee: 1200, durMin: 2, durSpread: 3.5 },
+  near: { base: 11500, step: 3200, stopFee: 2500, durMin: 4, durSpread: 5 },
+  mideast: { base: 14500, step: 3800, stopFee: 3000, durMin: 3, durSpread: 4.5 },
+  far: { base: 30000, step: 6500, stopFee: 5000, durMin: 7, durSpread: 9 },
+} as const;
 
 function pick<T>(arr: T[], i: number): T { return arr[i % arr.length]; }
 
 export function generateFlights(origin: string, destination: string, count = 8): Flight[] {
   const flights: Flight[] = [];
   const depHours = ["06:00", "07:30", "09:15", "11:00", "13:45", "16:20", "18:30", "20:10", "22:05"];
+  const tier = routeTier(origin, destination);
+  const cfg = TIER_CONFIG[tier];
+  const pool = airlinesForRoute(destination).map(airline).filter(Boolean);
+  const originCity = AIRPORT_INDEX[origin]?.city || origin;
+  const destinationCity = AIRPORT_INDEX[destination]?.city || destination;
+
   for (let i = 0; i < count; i++) {
-    const al = pick(AIRLINES, i);
+    const al = pick(pool.length ? pool : AIRLINES, i);
     const dep = pick(depHours, i);
-    const dur = 2 + (i % 4) + (i % 2) * 0.5;
+    const dur = cfg.durMin + (i % 4) * (cfg.durSpread / 4) + (i % 2) * 0.5;
     const arrH = (parseInt(dep.slice(0, 2)) + Math.floor(dur)) % 24;
     const arrM = (parseInt(dep.slice(3, 5)) + Math.round((dur % 1) * 60)) % 60;
     const stops = i % 5 === 0 ? 1 : 0;
     flights.push({
       id: `fl-${i + 1}`, airline: al.name, airlineCode: al.code,
       flightNumber: `${al.code}${100 + i * 37}`,
-      origin, originCity: pick(CITIES.filter(c => c.code === origin), 0)?.city || "Mumbai",
-      destination, destinationCity: pick(CITIES.filter(c => c.code === destination), 0)?.city || "Delhi",
+      origin, originCity,
+      destination, destinationCity,
       departTime: dep,
       arriveTime: `${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`,
       duration: `${Math.floor(dur)}h ${Math.round((dur % 1) * 60)}m`,
       stops,
-      price: 4200 + (i % 4) * 1800 + (stops ? 1200 : 0),
+      price: cfg.base + (i % 4) * cfg.step + (stops ? cfg.stopFee : 0),
       currency: "INR",
       cabin: i % 6 === 0 ? "Business" : "Economy",
       seatsLeft: 4 + (i % 12),
@@ -139,13 +257,161 @@ export function generateHotels(city: string, count = 8): Hotel[] {
 
 export const POPULAR_HOTELS = generateHotels("Mumbai", 8);
 
-export const BUSES: Bus[] = [
-  { id: "bs-1", operator: "VRL Travels", busType: "AC Sleeper", origin: "Mumbai", destination: "Pune", departTime: "22:30", arriveTime: "02:15", duration: "3h 45m", price: 850, seatsLeft: 24, rating: 4.2, amenities: ["Charging Point", "Blanket", "Water Bottle", "Reading Light"], boardingPoints: ["Borivali - 21:30", "Andheri - 22:00", "Dadar - 22:30"], droppingPoints: ["Wakad - 01:45", "Hinjewadi - 02:00", "Pune Station - 02:15"] },
-  { id: "bs-2", operator: "Neeta Travels", busType: "Volvo Multi-Axle", origin: "Mumbai", destination: "Pune", departTime: "07:00", arriveTime: "10:30", duration: "3h 30m", price: 650, seatsLeft: 18, rating: 4.0, amenities: ["AC", "Charging Point", "Water Bottle"], boardingPoints: ["Bandra - 06:30", "Sion - 06:45", "Chembur - 07:00"], droppingPoints: ["Lonavala - 09:30", "Pune Station - 10:30"] },
-  { id: "bs-3", operator: "Orange Tours", busType: "AC Sleeper", origin: "Mumbai", destination: "Pune", departTime: "23:59", arriveTime: "03:45", duration: "3h 46m", price: 780, seatsLeft: 31, rating: 4.4, amenities: ["Charging Point", "Blanket", "Water Bottle", "Reading Light", "Live Tracking"], boardingPoints: ["Vashi - 23:00", "Kharghar - 23:30", "Panvel - 23:59"], droppingPoints: ["Nigdi - 03:00", "Pimpri - 03:15", "Pune Station - 03:45"] },
-  { id: "bs-4", operator: "MSRTC Shivshahi", busType: "AC Seater", origin: "Mumbai", destination: "Pune", departTime: "05:30", arriveTime: "09:00", duration: "3h 30m", price: 420, seatsLeft: 42, rating: 3.6, amenities: ["AC", "Charging Point"], boardingPoints: ["Mumbai Central - 05:00", "Dadar - 05:30"], droppingPoints: ["Swargate - 08:30", "Pune Station - 09:00"] },
-  { id: "bs-5", operator: "Patel Travels", busType: "Mercedes", origin: "Mumbai", destination: "Pune", departTime: "14:30", arriveTime: "18:00", duration: "3h 30m", price: 950, seatsLeft: 12, rating: 4.6, amenities: ["AC", "Charging Point", "Snacks", "Water Bottle", "Live Tracking"], boardingPoints: ["Borivali - 13:30", "Andheri - 14:00", "Dadar - 14:30"], droppingPoints: ["Wakad - 17:00", "Pune Station - 18:00"] },
+// State-run transport corporations, picked by the state of the origin/destination city
+const CITY_STATE: Record<string, string> = {
+  Mumbai: "Maharashtra", Pune: "Maharashtra", Nagpur: "Maharashtra", Nashik: "Maharashtra", Shirdi: "Maharashtra",
+  Delhi: "Delhi",
+  Bangalore: "Karnataka", Mysore: "Karnataka",
+  Chennai: "Tamil Nadu", Coimbatore: "Tamil Nadu",
+  Hyderabad: "Telangana",
+  Kolkata: "West Bengal",
+  Ahmedabad: "Gujarat", Surat: "Gujarat", Vadodara: "Gujarat",
+  Jaipur: "Rajasthan", Udaipur: "Rajasthan",
+  Goa: "Goa",
+  Indore: "Madhya Pradesh", Bhopal: "Madhya Pradesh",
+  Kochi: "Kerala",
+  Lucknow: "Uttar Pradesh",
+  Chandigarh: "Chandigarh",
+  Amritsar: "Punjab",
+  Visakhapatnam: "Andhra Pradesh",
+};
+
+type BusOperator = { operator: string; busType: Bus["busType"] };
+
+const STATE_RTC: Record<string, BusOperator[]> = {
+  Maharashtra: [
+    { operator: "MSRTC Shivneri", busType: "AC Seater" },
+    { operator: "MSRTC Shivshahi Volvo", busType: "Volvo Multi-Axle" },
+  ],
+  Karnataka: [
+    { operator: "KSRTC Airavat Club Class", busType: "AC Sleeper" },
+    { operator: "KSRTC Rajahamsa", busType: "AC Seater" },
+  ],
+  Telangana: [
+    { operator: "TSRTC Garuda Plus", busType: "AC Sleeper" },
+    { operator: "TSRTC Indra AC", busType: "AC Seater" },
+  ],
+  "Andhra Pradesh": [
+    { operator: "APSRTC Amaravathi", busType: "AC Sleeper" },
+    { operator: "APSRTC Super Luxury", busType: "AC Seater" },
+  ],
+  "Tamil Nadu": [
+    { operator: "TNSTC Ultra Deluxe", busType: "Non-AC Sleeper" },
+    { operator: "SETC AC Sleeper", busType: "AC Sleeper" },
+  ],
+  Kerala: [
+    { operator: "KSRTC (Kerala) Garuda Maharaja", busType: "AC Sleeper" },
+    { operator: "KSRTC (Kerala) Swift", busType: "AC Seater" },
+  ],
+  Gujarat: [
+    { operator: "GSRTC ExpressWay", busType: "AC Seater" },
+  ],
+  Rajasthan: [
+    { operator: "RSRTC Silver Line Volvo", busType: "Volvo Multi-Axle" },
+    { operator: "RSRTC Deluxe", busType: "Non-AC Sleeper" },
+  ],
+  Punjab: [
+    { operator: "PUNBUS AC", busType: "AC Seater" },
+    { operator: "PRTC Deluxe", busType: "Non-AC Sleeper" },
+  ],
+  "West Bengal": [
+    { operator: "WBTC Volvo AC", busType: "Volvo Multi-Axle" },
+  ],
+  "Uttar Pradesh": [
+    { operator: "UPSRTC Janrath", busType: "AC Seater" },
+    { operator: "UPSRTC Shatabdi", busType: "Non-AC Sleeper" },
+  ],
+  Delhi: [
+    { operator: "DTC Interstate AC", busType: "AC Seater" },
+  ],
+  Goa: [
+    { operator: "Kadamba Transport (KTC)", busType: "AC Seater" },
+  ],
+  Chandigarh: [
+    { operator: "CTU Interstate", busType: "AC Seater" },
+  ],
+};
+
+const PRIVATE_OPERATORS: BusOperator[] = [
+  { operator: "VRL Travels", busType: "AC Sleeper" },
+  { operator: "SRS Travels", busType: "AC Sleeper" },
+  { operator: "Orange Tours & Travels", busType: "AC Sleeper" },
+  { operator: "Neeta Travels", busType: "Volvo Multi-Axle" },
+  { operator: "Patel Tours & Travels", busType: "Mercedes" },
+  { operator: "Kallada Travels", busType: "AC Sleeper" },
+  { operator: "National Travels", busType: "Volvo Multi-Axle" },
+  { operator: "Sharma Transport", busType: "AC Seater" },
+  { operator: "Parveen Travels", busType: "AC Sleeper" },
+  { operator: "Kaveri Travels", busType: "AC Seater" },
+  { operator: "Durgamba Motors", busType: "AC Sleeper" },
+  { operator: "Jabbar Travels", busType: "Mercedes" },
+  { operator: "KPN Travels", busType: "AC Sleeper" },
+  { operator: "IntrCity SmartBus", busType: "AC Sleeper" },
+  { operator: "Zingbus", busType: "AC Seater" },
+  { operator: "Yolo Bus", busType: "Volvo Multi-Axle" },
+  { operator: "Rajdhani Travels", busType: "Non-AC Sleeper" },
 ];
+
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+
+const AMENITIES_POOL_BUS = ["Charging Point", "Blanket", "Water Bottle", "Reading Light", "Live Tracking", "AC", "Wifi", "Snacks", "CCTV"];
+const DEP_HOURS_BUS = ["05:30", "06:00", "07:15", "08:30", "09:45", "11:00", "13:30", "14:15", "16:00", "17:30", "19:00", "20:30", "21:45", "22:30", "23:15", "23:59"];
+
+// Picks operators serving a route based on the state RTCs of the origin/destination plus pan-India private operators
+export function generateBuses(origin: string, destination: string, count = 10): Bus[] {
+  const originState = CITY_STATE[origin];
+  const destState = CITY_STATE[destination];
+
+  const pool: BusOperator[] = [];
+  if (originState && STATE_RTC[originState]) pool.push(...STATE_RTC[originState]);
+  if (destState && destState !== originState && STATE_RTC[destState]) pool.push(...STATE_RTC[destState]);
+  pool.push(...PRIVATE_OPERATORS);
+
+  const seen = new Set<string>();
+  const uniquePool = pool.filter((p) => (seen.has(p.operator) ? false : (seen.add(p.operator), true)));
+
+  const seed = hashCode(`${origin}-${destination}`);
+  const n = Math.min(count, uniquePool.length);
+  const buses: Bus[] = [];
+
+  for (let i = 0; i < n; i++) {
+    const op = uniquePool[(seed + i) % uniquePool.length];
+    const dep = DEP_HOURS_BUS[(seed + i * 3) % DEP_HOURS_BUS.length];
+    const durHours = 3 + ((seed + i * 5) % 9);
+    const durMin = ((seed + i * 13) % 4) * 15;
+    const arrH = (parseInt(dep.slice(0, 2), 10) + durHours) % 24;
+    const arrM = (parseInt(dep.slice(3, 5), 10) + durMin) % 60;
+    const isRtc = /RTC|STC|SETC|PUNBUS|PRTC|WBTC|DTC|KTC|CTU/.test(op.operator);
+    const basePrice = 350 + durHours * 65 + (isRtc ? 0 : 150);
+    const price = basePrice + ((seed + i * 7) % 5) * 40;
+    const rating = Number((isRtc ? 3.4 + ((seed + i) % 6) * 0.15 : 3.9 + ((seed + i) % 6) * 0.15).toFixed(1));
+    const seatsLeft = 6 + ((seed + i * 11) % 40);
+    const amenities = AMENITIES_POOL_BUS.filter((_, ai) => (seed + i + ai) % 3 !== 0);
+
+    buses.push({
+      id: `bs-gen-${origin}-${destination}-${i}`,
+      operator: op.operator,
+      busType: op.busType,
+      origin,
+      destination,
+      departTime: dep,
+      arriveTime: `${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`,
+      duration: `${durHours}h ${durMin}m`,
+      price,
+      seatsLeft,
+      rating,
+      amenities: amenities.length ? amenities : ["AC"],
+      boardingPoints: [`${origin} Central Bus Stand`, `${origin} Bypass`, `${origin} Outskirts`],
+      droppingPoints: [`${destination} Outskirts`, `${destination} Bypass`, `${destination} Central Bus Stand`],
+    });
+  }
+
+  return buses.sort((a, b) => a.departTime.localeCompare(b.departTime));
+}
 
 export const HOLIDAY_PACKAGES: HolidayPackage[] = [
   { id: "pk-1", title: "Bali Bliss - 6N/7D", destination: "Bali", country: "Indonesia", type: "Honeymoon", duration: "6 Nights 7 Days", nights: 6, days: 7, price: 49999, originalPrice: 65000, rating: 4.7, reviews: 234, image: "", highlights: ["Private Pool Villa", "Sunset Dinner Cruise", "Uluwatu Temple Tour", "Kintamani Volcano"], inclusions: ["Return Flights", "6N Villa Stay", "Daily Breakfast", "All Transfers", "Tour Passes"], isInternational: true },

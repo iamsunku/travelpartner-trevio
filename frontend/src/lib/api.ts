@@ -61,10 +61,10 @@ export async function checkApiHealth(): Promise<boolean> {
 }
 
 export const api = {
-  login: (email: string, role: string) =>
+  login: (email: string, password: string) =>
     apiFetch<{ user: ApiUser; token: string }>("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, role }),
+      body: JSON.stringify({ email, password }),
     }),
 
   getBookings: (params?: Record<string, string>) => {
@@ -199,6 +199,24 @@ export const api = {
   getFinance: () =>
     apiFetch<ApiFinanceResponse>("/api/finance"),
 
+  getAnalyticsPlatform: (range: "monthly" | "yearly") =>
+    apiFetch<ApiPlatformAnalytics>(`/api/analytics/platform?range=${range}`),
+
+  getAnalyticsEmployees: (range: "monthly" | "yearly") =>
+    apiFetch<ApiEmployeeAnalytics>(`/api/analytics/employees?range=${range}`),
+
+  createRazorpayOrder: (amount: number) =>
+    apiFetch<{ configured: boolean; orderId?: string; amount?: number; currency?: string; keyId?: string }>(
+      "/api/payments/razorpay/order",
+      { method: "POST", body: JSON.stringify({ amount }) }
+    ),
+
+  verifyRazorpayPayment: (orderId: string, paymentId: string, signature: string) =>
+    apiFetch<{ verified: boolean }>("/api/payments/razorpay/verify", {
+      method: "POST",
+      body: JSON.stringify({ orderId, paymentId, signature }),
+    }),
+
   // Phase 3 Endpoints
 
   getMarketingCampaigns: () => apiFetch<{ campaigns: any[] }>("/api/marketing/campaigns"),
@@ -217,27 +235,6 @@ export const api = {
   updateSettings: (body: any) => apiFetch<any>("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
 
   getMonitoringMetrics: () => apiFetch<any>("/api/monitoring/metrics"),
-
-  searchBus: (params?: any) => {
-    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
-    return apiFetch<{ results: any[] }>(`/api/bus/search${q}`);
-  },
-  searchTrain: (params?: any) => {
-    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
-    return apiFetch<{ results: any[] }>(`/api/train/search${q}`);
-  },
-  searchHoliday: (params?: any) => {
-    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
-    return apiFetch<{ results: any[] }>(`/api/holiday/search${q}`);
-  },
-  searchVisa: (params?: any) => {
-    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
-    return apiFetch<{ results: any[] }>(`/api/visa/search${q}`);
-  },
-  searchInsurance: (params?: any) => {
-    const q = params ? `?${new URLSearchParams(params).toString()}` : "";
-    return apiFetch<{ results: any[] }>(`/api/insurance/search${q}`);
-  },
 };
 
 
@@ -508,4 +505,44 @@ export interface ApiFinanceResponse {
   byService: { service: string; revenue: number }[];
   invoices: ApiFinanceInvoice[];
   paymentMethods: Record<string, number>;
+}
+
+export interface ApiAnalyticsTrendPoint {
+  period: string;
+  revenue: number;
+  commission: number;
+  bookings: number;
+}
+
+export interface ApiPlatformAnalytics {
+  summary: {
+    totalRevenue: number;
+    totalCommission: number;
+    totalBookings: number;
+    activeAgencies: number;
+    totalUsers: number;
+  };
+  trend: ApiAnalyticsTrendPoint[];
+  byAgency: { agency: string; bookings: number; revenue: number; commission: number }[];
+}
+
+export interface ApiEmployeePerformance {
+  id: string;
+  name: string;
+  designation: string;
+  department: string;
+  branch: string;
+  status: string;
+  target: number;
+  achieved: number;
+  attendance: number;
+  bookings: number;
+  revenue: number;
+  commission: number;
+  trend: ApiAnalyticsTrendPoint[];
+}
+
+export interface ApiEmployeeAnalytics {
+  employees: ApiEmployeePerformance[];
+  topPerformers: ApiEmployeePerformance[];
 }

@@ -5,6 +5,9 @@ node_modules/
 frontend/.next/
 frontend/out/
 
+# backend build output
+backend/dist/
+
 # env (keep examples only)
 .env
 .env.*

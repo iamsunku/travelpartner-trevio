@@ -5,7 +5,7 @@ import {
   Users, Target, FileSpreadsheet, Ticket, CreditCard, Wallet, Percent,
   BarChart3, UserCog, CheckSquare, LifeBuoy, Bell, Megaphone, LayoutGrid,
   Receipt, KeyRound, Settings, History, Building2, GitBranch, Store,
-  Activity, type LucideIcon,
+  Activity, LineChart, type LucideIcon,
 } from "lucide-react";
 import type { Role, ViewKey } from "@/types";
 
@@ -65,6 +65,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: "Insights",
     items: [
       { key: "reports", label: "Reports & Analytics", icon: BarChart3, roles: ["super_admin", "agency_admin", "branch_manager", "employee", "accountant"] },
+      { key: "analytics", label: "Platform Analytics", icon: LineChart, roles: ["super_admin"] },
     ],
   },
   {
@@ -97,6 +98,12 @@ export function getNavForRole(role: Role): NavSection[] {
     ...section,
     items: section.items.filter((item) => item.roles.includes(role)),
   })).filter((section) => section.items.length > 0);
+}
+
+export function canAccessView(role: Role, view: ViewKey): boolean {
+  return NAV_SECTIONS.some((section) =>
+    section.items.some((item) => item.key === view && item.roles.includes(role))
+  );
 }
 
 export const ROLE_LABELS: Record<Role, string> = {

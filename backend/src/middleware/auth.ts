@@ -30,3 +30,13 @@ export function optionalAuth(req: AuthRequest, _res: Response, next: NextFunctio
   }
   next();
 }
+
+export function requireRole(...roles: string[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.auth || !roles.includes(req.auth.role)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    next();
+  };
+}

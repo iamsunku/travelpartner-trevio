@@ -1,7 +1,7 @@
 import jwt from "jsonwebtoken";
 
-const SECRET = process.env.JWT_SECRET || "trevio-dev-secret-change-in-production";
-const EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+const SECRET = process.env.JWT_SECRET as string;
+const EXPIRES_IN = process.env.JWT_EXPIRES_IN || "1d";
 
 export interface JwtPayload {
   userId: string;
@@ -11,7 +11,7 @@ export interface JwtPayload {
 }
 
 export function signToken(payload: JwtPayload): string {
-  return jwt.sign(payload, SECRET, { expiresIn: EXPIRES_IN });
+  return jwt.sign(payload, SECRET, { expiresIn: EXPIRES_IN as jwt.SignOptions["expiresIn"] });
 }
 
 export function verifyToken(token: string): JwtPayload {

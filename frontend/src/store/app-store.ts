@@ -2,9 +2,8 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Role, User, ViewKey } from "@/types";
-import { ROLE_USERS } from "@/lib/mock-data";
-import { api } from "@/lib/api";
+import type { User, ViewKey } from "@/types";
+import { api, ApiError } from "@/lib/api";
 import { mapApiUser } from "@/lib/api-mappers";
 
 interface AuthState {
@@ -12,10 +11,8 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
   apiConnected: boolean;
-  login: (role: Role) => void;
-  loginWithApi: (role: Role) => Promise<boolean>;
+  loginWithApi: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
-  switchRole: (role: Role) => void;
   setApiConnected: (connected: boolean) => void;
 }
 
@@ -26,31 +23,19 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isAuthenticated: false,
       apiConnected: false,
-      login: (role) =>
-        set({
-          user: ROLE_USERS[role],
-          token: null,
-          isAuthenticated: true,
-        }),
-      loginWithApi: async (role) => {
-        const fallback = ROLE_USERS[role];
+      loginWithApi: async (email, password) => {
         try {
-          const { user, token } = await api.login(fallback.email, role);
+          const { user, token } = await api.login(email, password);
           set({
             user: mapApiUser(user),
             token,
             isAuthenticated: true,
             apiConnected: true,
           });
-          return true;
-        } catch {
-          set({
-            user: fallback,
-            token: null,
-            isAuthenticated: true,
-            apiConnected: false,
-          });
-          return false;
+          return { ok: true };
+        } catch (e) {
+          const message = e instanceof ApiError ? e.message : "Unable to reach the server. Please try again.";
+          return { ok: false, error: message };
         }
       },
       logout: () =>
@@ -59,11 +44,6 @@ export const useAuthStore = create<AuthState>()(
           token: null,
           isAuthenticated: false,
           apiConnected: false,
-        }),
-      switchRole: (role) =>
-        set({
-          user: ROLE_USERS[role],
-          isAuthenticated: true,
         }),
       setApiConnected: (connected) => set({ apiConnected: connected }),
     }),

@@ -1,11 +1,11 @@
-// Travel Partner Pro — Prisma Schema (SQLite)
+// Travel Partner Pro — Prisma Schema (PostgreSQL)
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -32,6 +32,9 @@ model User {
   tasks        Task[]   @relation("TaskAssignee")
   quotations   Quotation[]
   auditLogs    AuditLog[]
+
+  @@index([agencyId])
+  @@index([branchId])
 }
 
 model Agency {
@@ -46,7 +49,7 @@ model Agency {
   commissionEarned Int     @default(0)
   totalBookings   Int      @default(0)
   monthlyRevenue  Int      @default(0)
-  apiAllocation   String   @default("{}") // JSON: {flights,hotels,bus,train}
+  apiAllocation   Json     @default("{}") // {flights,hotels,bus,train}
   gstNumber       String?
   panNumber       String?
   address         String?
@@ -70,6 +73,8 @@ model Branch {
 
   agency    Agency   @relation(fields: [agencyId], references: [id])
   users     User[]
+
+  @@index([agencyId])
 }
 
 model Customer {
@@ -117,6 +122,10 @@ model Booking {
   agency        Agency?   @relation(fields: [agencyId], references: [id])
   agent         User?     @relation(fields: [agentId], references: [id])
   payments      Payment[]
+
+  @@index([agencyId])
+  @@index([customerId])
+  @@index([agentId])
 }
 
 model Payment {
@@ -199,6 +208,8 @@ model WalletTransaction {
   balance     Int
   description String
   date        DateTime @default(now())
+
+  @@index([agencyId])
 }
 
 model Employee {
@@ -219,6 +230,8 @@ model Employee {
   attendance   Int      @default(95)
   joinDate     String
   createdAt    DateTime @default(now())
+
+  @@index([agencyId])
 }
 
 model AuditLog {
@@ -232,6 +245,8 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model Notification {
@@ -243,6 +258,8 @@ model Notification {
   read      Boolean  @default(false)
   userId    String?
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model MarketingCampaign {

@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import {
   Plane, Hotel, Bus, Palmtree, TrendingUp, TrendingDown, Wallet,
   Users, Target, Receipt, DollarSign, Calendar, ArrowUpRight, ArrowRight,
@@ -13,15 +14,14 @@ import {
 } from "recharts";
 import { useAuthStore, useAppStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
-import type { ViewKey } from "@/types";
+import { api } from "@/lib/api";
+import { mapApiAgency } from "@/lib/api-mappers";
+import type { Agency, ViewKey } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  TOP_DESTINATIONS, RECENT_ACTIVITIES,
-  AGENCIES,
-} from "@/lib/mock-data";
+import { TOP_DESTINATIONS, RECENT_ACTIVITIES } from "@/lib/mock-data";
 import { formatINR, formatFullINR, StatusBadge, avatarGradient, initials } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
@@ -81,15 +81,20 @@ function AgencyDashboard() {
   const tasks = useDemoDataStore((s) => s.tasks);
   const dashboardStats = useDemoDataStore((s) => s.dashboardStats);
   const financeStats = useDemoDataStore((s) => s.financeStats);
+  const walletBalance = useDemoDataStore((s) => s.walletBalance);
+  const payments = useDemoDataStore((s) => s.payments);
+  const userName = useAuthStore((s) => s.user?.name);
   const recentBookings = bookings.slice(0, 6);
-  const myTasks = tasks.filter((t) => t.assignedTo === "Sneha Reddy").slice(0, 4);
+  const myTasks = tasks.filter((t) => t.assignedTo === userName).slice(0, 4);
+  const pendingPayments = payments.filter((p) => p.status === "Pending");
+  const pendingPaymentsTotal = pendingPayments.reduce((s, p) => s + p.amount, 0);
 
   const stats = [
     { icon: Plane, label: "Total Bookings", value: dashboardStats?.bookings?.toLocaleString() || "0", change: 12.5, trend: "up" as const, color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", subtitle: "All time" },
     { icon: Calendar, label: "Today's Bookings", value: String(Math.floor((dashboardStats?.bookings || 0) / 10)), change: 8.2, trend: "up" as const, color: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400", subtitle: "vs yesterday" },
-    { icon: DollarSign, label: "Today's Revenue", value: formatINR((financeStats?.summary?.totalRevenue || 0) / 10), change: 15.3, trend: "up" as const, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "₹2.85L today" },
-    { icon: Receipt, label: "Pending Payments", value: formatINR(184000), change: 5.1, trend: "down" as const, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400", subtitle: "12 invoices" },
-    { icon: Wallet, label: "Wallet Balance", value: formatINR(845000), change: 22.4, trend: "up" as const, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400", subtitle: "Available" },
+    { icon: DollarSign, label: "Today's Revenue", value: formatINR((financeStats?.summary?.totalRevenue || 0) / 10), change: 15.3, trend: "up" as const, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "Estimated" },
+    { icon: Receipt, label: "Pending Payments", value: formatINR(pendingPaymentsTotal), change: 5.1, trend: "down" as const, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400", subtitle: `${pendingPayments.length} invoices` },
+    { icon: Wallet, label: "Wallet Balance", value: formatINR(walletBalance), change: 22.4, trend: "up" as const, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400", subtitle: "Available" },
     { icon: TrendingUp, label: "Commission Earned", value: formatINR(financeStats?.summary?.totalCommission || 0), change: 18.7, trend: "up" as const, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400", subtitle: "This month" },
     { icon: Users, label: "Total Customers", value: dashboardStats?.customers?.toLocaleString() || "0", change: 6.4, trend: "up" as const, color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400", subtitle: "Active" },
     { icon: Target, label: "New Enquiries", value: dashboardStats?.leads?.toLocaleString() || "0", change: 11.2, trend: "up" as const, color: "bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400", subtitle: "This week" },
@@ -321,10 +326,22 @@ function AgencyDashboard() {
 }
 
 function SuperAdminDashboard() {
-  const totalRevenue = AGENCIES.reduce((s, a) => s + a.monthlyRevenue, 0);
-  const totalWallet = AGENCIES.reduce((s, a) => s + a.walletBalance, 0);
-  const totalCommission = AGENCIES.reduce((s, a) => s + a.commissionEarned, 0);
-  const totalBookings = AGENCIES.reduce((s, a) => s + a.totalBookings, 0);
+  const monthlyRevenue = useDemoDataStore((s) => s.financeStats?.monthly) || [];
+  const platformNotifications = useDemoDataStore((s) => s.notifications);
+  const [agencies, setAgencies] = useState<Agency[]>([]);
+
+  useEffect(() => {
+    api.getAgencies()
+      .then((res) => {
+        if (res.agencies) setAgencies(res.agencies.map(mapApiAgency));
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const totalRevenue = agencies.reduce((s, a) => s + a.monthlyRevenue, 0);
+  const totalWallet = agencies.reduce((s, a) => s + a.walletBalance, 0);
+  const totalCommission = agencies.reduce((s, a) => s + a.commissionEarned, 0);
+  const totalBookings = agencies.reduce((s, a) => s + a.totalBookings, 0);
 
   return (
     <div className="space-y-5">
@@ -341,7 +358,7 @@ function SuperAdminDashboard() {
             </p>
             <h1 className="text-2xl font-bold">Super Admin Console</h1>
             <p className="text-white/80 text-sm mt-1">
-              Managing <span className="font-semibold text-white">{AGENCIES.length} agencies</span> · {formatINR(totalRevenue)} monthly revenue
+              Managing <span className="font-semibold text-white">{agencies.length} agencies</span> · {formatINR(totalRevenue)} monthly revenue
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -356,7 +373,7 @@ function SuperAdminDashboard() {
       </motion.div>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        <StatCard icon={Building2} label="Active Agencies" value={String(AGENCIES.filter((a) => a.status === "Active").length)} change={9.1} trend="up" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle="6 total onboarded" />
+        <StatCard icon={Building2} label="Active Agencies" value={String(agencies.filter((a) => a.status === "Active").length)} change={9.1} trend="up" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle={`${agencies.length} total onboarded`} />
         <StatCard icon={DollarSign} label="Platform Revenue" value={formatINR(totalRevenue)} change={14.2} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="This month" />
         <StatCard icon={Wallet} label="Agency Wallets" value={formatINR(totalWallet)} change={7.8} trend="up" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" subtitle="Total balance" />
         <StatCard icon={TrendingUp} label="Commission Earned" value={formatINR(totalCommission)} change={19.4} trend="up" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All agencies" />
@@ -374,7 +391,7 @@ function SuperAdminDashboard() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={REVENUE_DATA} margin={{ left: -16, right: 8, top: 8 }}>
+              <AreaChart data={monthlyRevenue} margin={{ left: -16, right: 8, top: 8 }}>
                 <defs>
                   <linearGradient id="platGrad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.4} />
@@ -434,7 +451,7 @@ function SuperAdminDashboard() {
         </CardHeader>
         <CardContent className="p-0">
           <div className="divide-y divide-border max-h-80 overflow-y-auto scroll-thin">
-            {AGENCIES.map((a) => (
+            {agencies.map((a) => (
               <div key={a.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/40 transition-colors">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
                   {initials(a.name)}
@@ -491,7 +508,7 @@ function SuperAdminDashboard() {
             <CardTitle className="text-base flex items-center gap-2"><Bell className="w-4 h-4 text-rose-500" /> Platform Alerts</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {NOTIFICATIONS.slice(0, 5).map((n) => (
+            {platformNotifications.slice(0, 5).map((n) => (
               <div key={n.id} className="flex gap-2.5 p-2 rounded-lg hover:bg-muted/50">
                 <div className={cn("w-2 h-2 rounded-full mt-1.5 shrink-0", n.priority === "high" ? "bg-rose-500" : n.priority === "medium" ? "bg-amber-500" : "bg-slate-400")} />
                 <div className="flex-1 min-w-0">
@@ -509,9 +526,16 @@ function SuperAdminDashboard() {
 }
 
 function EmployeeDashboard() {
-  const myTasks = TASKS.filter((t) => t.assignedTo === "Sneha Reddy");
-  const myLeads = LEADS.filter((l) => l.assignedTo === "Sneha Reddy");
-  const myBookings = BOOKINGS.filter((b) => b.agent === "Sneha Reddy").slice(0, 5);
+  const { user } = useAuthStore();
+  const tasks = useDemoDataStore((s) => s.tasks);
+  const leads = useDemoDataStore((s) => s.leads);
+  const bookings = useDemoDataStore((s) => s.bookings);
+  const myTasks = tasks.filter((t) => t.assignedTo === user?.name);
+  const myLeads = leads.filter((l) => l.assignedTo === user?.name);
+  const allMyBookings = bookings.filter((b) => b.agent === user?.name);
+  const myBookings = allMyBookings.slice(0, 5);
+  const myCommission = allMyBookings.reduce((s, b) => s + b.commission, 0);
+  const myCustomerCount = new Set(allMyBookings.map((b) => b.customerName)).size;
 
   return (
     <div className="space-y-5">
@@ -524,9 +548,9 @@ function EmployeeDashboard() {
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <p className="text-white/80 text-sm">Good morning,</p>
-            <h1 className="text-2xl font-bold">Sneha Reddy 🌟</h1>
+            <h1 className="text-2xl font-bold">{user?.name} 🌟</h1>
             <p className="text-white/80 text-sm mt-1">
-              You&apos;ve achieved <span className="font-semibold text-white">122% of your target</span> · Top performer this month!
+              You have <span className="font-semibold text-white">{myBookings.length} recent bookings</span> and <span className="font-semibold text-white">{myLeads.length} active leads</span>.
             </p>
           </div>
           <Button className="bg-white text-[#2A7BBD] hover:bg-white/90">
@@ -536,32 +560,11 @@ function EmployeeDashboard() {
       </motion.div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard icon={Target} label="My Target" value={formatINR(500000)} color="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" subtitle="This month" />
-        <StatCard icon={TrendingUp} label="Achieved" value={formatINR(612000)} change={22.4} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="122% achieved" />
-        <StatCard icon={Wallet} label="My Commission" value={formatINR(18000)} change={14.2} trend="up" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="This month" />
-        <StatCard icon={Users} label="My Customers" value="48" change={6.4} trend="up" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle="Active" />
+        <StatCard icon={Target} label="My Bookings" value={String(allMyBookings.length)} color="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" subtitle="All time" />
+        <StatCard icon={TrendingUp} label="My Tasks" value={String(myTasks.length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="Assigned to you" />
+        <StatCard icon={Wallet} label="My Commission" value={formatINR(myCommission)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All time" />
+        <StatCard icon={Users} label="My Customers" value={String(myCustomerCount)} color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle="From your bookings" />
       </div>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Monthly Target Progress</CardTitle>
-          <CardDescription className="text-xs">You&apos;re at 122% of your monthly goal 🎉</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="font-medium">Sales Achievement</span>
-            <span className="text-emerald-600 font-semibold">₹6.12L / ₹5.00L</span>
-          </div>
-          <div className="h-3 rounded-full bg-muted overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: "100%" }}
-              transition={{ duration: 1, delay: 0.3 }}
-              className="h-full rounded-full bg-gradient-to-r from-[#2A7BBD] to-[#00A79D]"
-            />
-          </div>
-        </CardContent>
-      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">

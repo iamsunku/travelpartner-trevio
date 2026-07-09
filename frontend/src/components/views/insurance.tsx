@@ -4,22 +4,18 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   Shield, ShieldCheck, Plane, HeartPulse, XCircle, PlaneTakeoff,
-  CreditCard, Wallet, Building2, Loader2, BadgeIndianRupee,
   CheckCircle2, X, Clock, FileText, AlertCircle,
   Sparkles, BriefcaseMedical, Activity, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useToast } from "@/hooks/use-toast";
+import { useDemoDataStore } from "@/store/demo-data-store";
 import { PageHeader, StatusBadge, formatFullINR } from "@/components/shared/ui-helpers";
+import { PaymentModal, type BookingPaymentMethod } from "@/components/shared/payment-modal";
 import { cn } from "@/lib/utils";
 
 interface Plan {
@@ -132,88 +128,8 @@ function stepIndex(status: Claim["status"]) {
   return 0;
 }
 
-function PaymentModal({
-  amount, planName, open, onClose, onSuccess,
-}: {
-  amount: number; planName: string; open: boolean; onClose: () => void; onSuccess: () => void;
-}) {
-  const [method, setMethod] = useState("card");
-  const [processing, setProcessing] = useState(false);
-  const { toast } = useToast();
-
-  const handlePay = () => {
-    setProcessing(true);
-    setTimeout(() => {
-      setProcessing(false);
-      onClose();
-      toast({
-        title: "Policy Activated!",
-        description: `${formatFullINR(amount)} paid for ${planName}. Policy document sent to your email. Coverage starts immediately.`,
-      });
-      onSuccess();
-    }, 1800);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <DialogTitle className="text-base">Razorpay Secure Payment</DialogTitle>
-              <DialogDescription>{planName} • Annual Policy</DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        <div className="rounded-lg bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 border border-teal-200 dark:border-teal-900 p-4 text-center">
-          <p className="text-xs text-muted-foreground">Annual Premium</p>
-          <p className="text-3xl font-bold text-teal-700 dark:text-teal-300 mt-1">{formatFullINR(amount)}</p>
-          <p className="text-[11px] text-muted-foreground mt-1 flex items-center justify-center gap-1">
-            <ShieldCheck className="w-3 h-3" /> 256-bit encrypted • Instant policy activation
-          </p>
-        </div>
-
-        <Tabs value={method} onValueChange={setMethod}>
-          <TabsList className="grid grid-cols-3 w-full">
-            <TabsTrigger value="card"><CreditCard className="w-3.5 h-3.5 mr-1" /> Card</TabsTrigger>
-            <TabsTrigger value="upi"><Wallet className="w-3.5 h-3.5 mr-1" /> UPI</TabsTrigger>
-            <TabsTrigger value="netbanking"><Building2 className="w-3.5 h-3.5 mr-1" /> Net</TabsTrigger>
-          </TabsList>
-          <TabsContent value="card" className="space-y-3 mt-3">
-            <Input placeholder="Card Number • 4111 1111 1111 1111" />
-            <div className="grid grid-cols-2 gap-2"><Input placeholder="MM / YY" /><Input placeholder="CVV" /></div>
-            <Input placeholder="Cardholder Name" />
-          </TabsContent>
-          <TabsContent value="upi" className="space-y-3 mt-3">
-            <Input placeholder="yourname@upi" />
-            <p className="text-xs text-muted-foreground">A collect request will be sent to your UPI app.</p>
-          </TabsContent>
-          <TabsContent value="netbanking" className="space-y-2 mt-3">
-            {["HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank"].map((b) => (
-              <label key={b} className="flex items-center gap-2 p-2 rounded-md border cursor-pointer hover:bg-muted/50 text-sm">
-                <input type="radio" name="nb-ins" defaultChecked={b === "HDFC Bank"} className="accent-teal-600" />
-                {b}
-              </label>
-            ))}
-          </TabsContent>
-        </Tabs>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={processing}>Cancel</Button>
-          <Button onClick={handlePay} disabled={processing} className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
-            {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Processing…</> : <><BadgeIndianRupee className="w-4 h-4" /> Pay {formatFullINR(amount)}</>}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function InsuranceView() {
+  const addBooking = useDemoDataStore((s) => s.addBooking);
   const [payPlan, setPayPlan] = useState<Plan | null>(null);
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
 
@@ -540,10 +456,24 @@ export function InsuranceView() {
 
       <PaymentModal
         amount={payPlan?.premium || 0}
-        planName={payPlan?.name || ""}
+        title={payPlan ? `${payPlan.name} • Annual Policy` : "Travel Insurance"}
+        description={payPlan ? `${payPlan.name} — Annual Policy` : "Travel Insurance"}
+        shareSubject={payPlan ? `Your Insurance Policy — ${payPlan.name}` : "Insurance Policy"}
+        shareText={payPlan ? `Insurance Policy Activated\n${payPlan.name}\nCoverage: ${formatFullINR(payPlan.coverage)}\nAnnual Premium Paid: ${formatFullINR(payPlan.premium)}` : ""}
         open={!!payPlan}
         onClose={() => setPayPlan(null)}
-        onSuccess={() => setPayPlan(null)}
+        onSuccess={(method: BookingPaymentMethod) => {
+          if (payPlan) {
+            addBooking({
+              customerName: "Walk-in Customer",
+              service: "Insurance",
+              route: `${payPlan.name} — Annual Policy`,
+              travelDate: new Date().toISOString().slice(0, 10),
+              amount: payPlan.premium,
+              paymentMethod: method,
+            });
+          }
+        }}
       />
     </div>
   );

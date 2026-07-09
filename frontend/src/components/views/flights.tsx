@@ -7,7 +7,7 @@ import {
   Clock, Star, Sparkles, Filter, Loader2,
   CreditCard, Smartphone, Building2, Wallet, ShieldCheck,
   Plus, Minus, ArrowRight, PlaneTakeoff, PlaneLanding, Tag,
-  CheckCircle2, RefreshCw, Crown,
+  CheckCircle2, RefreshCw, Crown, MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,24 +37,173 @@ import { generateFlights } from "@/lib/mock-data";
 import { api } from "@/lib/api";
 import { mapApiFlight } from "@/lib/api-mappers";
 import { useDemoDataStore } from "@/store/demo-data-store";
+import { payWithRazorpay } from "@/lib/razorpay";
+import { ShareTicket } from "@/components/shared/share-ticket";
 import type { Flight } from "@/types";
 
 /* ----------------------------- Constants ----------------------------- */
 
-const CITIES = [
-  { code: "BOM", city: "Mumbai" },
-  { code: "DEL", city: "New Delhi" },
-  { code: "BLR", city: "Bangalore" },
-  { code: "MAA", city: "Chennai" },
-  { code: "HYD", city: "Hyderabad" },
-  { code: "CCU", city: "Kolkata" },
-  { code: "GOI", city: "Goa" },
-  { code: "COK", city: "Kochi" },
-  { code: "DXB", city: "Dubai" },
-  { code: "SIN", city: "Singapore" },
-  { code: "BKK", city: "Bangkok" },
-  { code: "LON", city: "London" },
+interface Airport {
+  code: string;
+  city: string;
+  name: string;
+  country: string;
+  popular?: boolean;
+}
+
+const AIRPORTS: Airport[] = [
+  { code: "BOM", city: "Mumbai", name: "Chhatrapati Shivaji Maharaj Intl", country: "India", popular: true },
+  { code: "DEL", city: "New Delhi", name: "Indira Gandhi Intl", country: "India", popular: true },
+  { code: "BLR", city: "Bangalore", name: "Kempegowda Intl", country: "India", popular: true },
+  { code: "MAA", city: "Chennai", name: "Chennai Intl", country: "India", popular: true },
+  { code: "HYD", city: "Hyderabad", name: "Rajiv Gandhi Intl", country: "India", popular: true },
+  { code: "CCU", city: "Kolkata", name: "Netaji Subhas Chandra Bose Intl", country: "India", popular: true },
+  { code: "GOI", city: "Goa", name: "Dabolim Airport", country: "India", popular: true },
+  { code: "GOX", city: "Goa", name: "Manohar Intl (Mopa)", country: "India" },
+  { code: "COK", city: "Kochi", name: "Cochin Intl", country: "India" },
+  { code: "PNQ", city: "Pune", name: "Pune Airport", country: "India" },
+  { code: "AMD", city: "Ahmedabad", name: "Sardar Vallabhbhai Patel Intl", country: "India" },
+  { code: "JAI", city: "Jaipur", name: "Jaipur Intl", country: "India" },
+  { code: "LKO", city: "Lucknow", name: "Chaudhary Charan Singh Intl", country: "India" },
+  { code: "IXC", city: "Chandigarh", name: "Chandigarh Airport", country: "India" },
+  { code: "GAU", city: "Guwahati", name: "Lokpriya Gopinath Bordoloi Intl", country: "India" },
+  { code: "PAT", city: "Patna", name: "Jay Prakash Narayan Airport", country: "India" },
+  { code: "BBI", city: "Bhubaneswar", name: "Biju Patnaik Intl", country: "India" },
+  { code: "IXZ", city: "Port Blair", name: "Veer Savarkar Intl", country: "India" },
+  { code: "SXR", city: "Srinagar", name: "Sheikh ul-Alam Intl", country: "India" },
+  { code: "IXB", city: "Bagdogra", name: "Bagdogra Airport", country: "India" },
+  { code: "TRV", city: "Thiruvananthapuram", name: "Trivandrum Intl", country: "India" },
+  { code: "IXM", city: "Madurai", name: "Madurai Airport", country: "India" },
+  { code: "VNS", city: "Varanasi", name: "Lal Bahadur Shastri Airport", country: "India" },
+  { code: "NAG", city: "Nagpur", name: "Dr. Babasaheb Ambedkar Intl", country: "India" },
+  { code: "IDR", city: "Indore", name: "Devi Ahilyabai Holkar Airport", country: "India" },
+  { code: "RPR", city: "Raipur", name: "Swami Vivekananda Airport", country: "India" },
+  { code: "UDR", city: "Udaipur", name: "Maharana Pratap Airport", country: "India" },
+  { code: "ATQ", city: "Amritsar", name: "Sri Guru Ram Dass Jee Intl", country: "India" },
+  { code: "DXB", city: "Dubai", name: "Dubai Intl", country: "UAE", popular: true },
+  { code: "AUH", city: "Abu Dhabi", name: "Zayed Intl", country: "UAE" },
+  { code: "SHJ", city: "Sharjah", name: "Sharjah Intl", country: "UAE" },
+  { code: "SIN", city: "Singapore", name: "Changi Airport", country: "Singapore", popular: true },
+  { code: "BKK", city: "Bangkok", name: "Suvarnabhumi Airport", country: "Thailand", popular: true },
+  { code: "DMK", city: "Bangkok", name: "Don Mueang Intl", country: "Thailand" },
+  { code: "HKT", city: "Phuket", name: "Phuket Intl", country: "Thailand" },
+  { code: "KUL", city: "Kuala Lumpur", name: "Kuala Lumpur Intl", country: "Malaysia" },
+  { code: "LON", city: "London", name: "Heathrow Airport", country: "United Kingdom", popular: true },
+  { code: "LGW", city: "London", name: "Gatwick Airport", country: "United Kingdom" },
+  { code: "LTN", city: "London", name: "Luton Airport", country: "United Kingdom" },
+  { code: "MAN", city: "Manchester", name: "Manchester Airport", country: "United Kingdom" },
+  { code: "EDI", city: "Edinburgh", name: "Edinburgh Airport", country: "United Kingdom" },
+  { code: "DUB", city: "Dublin", name: "Dublin Airport", country: "Ireland" },
+  { code: "JFK", city: "New York", name: "John F. Kennedy Intl", country: "USA", popular: true },
+  { code: "EWR", city: "New York", name: "Newark Liberty Intl", country: "USA" },
+  { code: "LGA", city: "New York", name: "LaGuardia Airport", country: "USA" },
+  { code: "SFO", city: "San Francisco", name: "San Francisco Intl", country: "USA" },
+  { code: "LAX", city: "Los Angeles", name: "Los Angeles Intl", country: "USA", popular: true },
+  { code: "ORD", city: "Chicago", name: "O'Hare Intl", country: "USA" },
+  { code: "SEA", city: "Seattle", name: "Seattle-Tacoma Intl", country: "USA" },
+  { code: "IAD", city: "Washington D.C.", name: "Dulles Intl", country: "USA" },
+  { code: "ATL", city: "Atlanta", name: "Hartsfield-Jackson Intl", country: "USA" },
+  { code: "MIA", city: "Miami", name: "Miami Intl", country: "USA" },
+  { code: "BOS", city: "Boston", name: "Logan Intl", country: "USA" },
+  { code: "IAH", city: "Houston", name: "George Bush Intercontinental", country: "USA" },
+  { code: "DFW", city: "Dallas", name: "Dallas/Fort Worth Intl", country: "USA" },
+  { code: "YYZ", city: "Toronto", name: "Toronto Pearson Intl", country: "Canada" },
+  { code: "YVR", city: "Vancouver", name: "Vancouver Intl", country: "Canada" },
+  { code: "YUL", city: "Montreal", name: "Montréal-Trudeau Intl", country: "Canada" },
+  { code: "MEX", city: "Mexico City", name: "Mexico City Intl", country: "Mexico" },
+  { code: "GRU", city: "São Paulo", name: "Guarulhos Intl", country: "Brazil" },
+  { code: "GIG", city: "Rio de Janeiro", name: "Galeão Intl", country: "Brazil" },
+  { code: "EZE", city: "Buenos Aires", name: "Ministro Pistarini Intl", country: "Argentina" },
+  { code: "SCL", city: "Santiago", name: "Arturo Merino Benítez Intl", country: "Chile" },
+  { code: "BOG", city: "Bogotá", name: "El Dorado Intl", country: "Colombia" },
+  { code: "SYD", city: "Sydney", name: "Kingsford Smith Airport", country: "Australia", popular: true },
+  { code: "MEL", city: "Melbourne", name: "Melbourne Airport", country: "Australia" },
+  { code: "BNE", city: "Brisbane", name: "Brisbane Airport", country: "Australia" },
+  { code: "PER", city: "Perth", name: "Perth Airport", country: "Australia" },
+  { code: "AKL", city: "Auckland", name: "Auckland Airport", country: "New Zealand" },
+  { code: "DOH", city: "Doha", name: "Hamad Intl", country: "Qatar", popular: true },
+  { code: "KWI", city: "Kuwait City", name: "Kuwait Intl", country: "Kuwait" },
+  { code: "BAH", city: "Manama", name: "Bahrain Intl", country: "Bahrain" },
+  { code: "MCT", city: "Muscat", name: "Muscat Intl", country: "Oman" },
+  { code: "RUH", city: "Riyadh", name: "King Khalid Intl", country: "Saudi Arabia" },
+  { code: "JED", city: "Jeddah", name: "King Abdulaziz Intl", country: "Saudi Arabia" },
+  { code: "IST", city: "Istanbul", name: "Istanbul Airport", country: "Turkey", popular: true },
+  { code: "TLV", city: "Tel Aviv", name: "Ben Gurion Airport", country: "Israel" },
+  { code: "CAI", city: "Cairo", name: "Cairo Intl", country: "Egypt" },
+  { code: "JNB", city: "Johannesburg", name: "O.R. Tambo Intl", country: "South Africa" },
+  { code: "CPT", city: "Cape Town", name: "Cape Town Intl", country: "South Africa" },
+  { code: "NBO", city: "Nairobi", name: "Jomo Kenyatta Intl", country: "Kenya" },
+  { code: "ADD", city: "Addis Ababa", name: "Bole Intl", country: "Ethiopia" },
+  { code: "LOS", city: "Lagos", name: "Murtala Muhammed Intl", country: "Nigeria" },
+  { code: "CDG", city: "Paris", name: "Charles de Gaulle Airport", country: "France", popular: true },
+  { code: "ORY", city: "Paris", name: "Orly Airport", country: "France" },
+  { code: "NCE", city: "Nice", name: "Côte d'Azur Airport", country: "France" },
+  { code: "FRA", city: "Frankfurt", name: "Frankfurt Airport", country: "Germany", popular: true },
+  { code: "MUC", city: "Munich", name: "Munich Airport", country: "Germany" },
+  { code: "BER", city: "Berlin", name: "Berlin Brandenburg Airport", country: "Germany" },
+  { code: "AMS", city: "Amsterdam", name: "Schiphol Airport", country: "Netherlands", popular: true },
+  { code: "MAD", city: "Madrid", name: "Adolfo Suárez Madrid-Barajas", country: "Spain" },
+  { code: "BCN", city: "Barcelona", name: "Barcelona-El Prat Airport", country: "Spain" },
+  { code: "FCO", city: "Rome", name: "Leonardo da Vinci Intl", country: "Italy" },
+  { code: "MXP", city: "Milan", name: "Malpensa Airport", country: "Italy" },
+  { code: "ZRH", city: "Zurich", name: "Zurich Airport", country: "Switzerland" },
+  { code: "VIE", city: "Vienna", name: "Vienna Intl", country: "Austria" },
+  { code: "BRU", city: "Brussels", name: "Brussels Airport", country: "Belgium" },
+  { code: "CPH", city: "Copenhagen", name: "Copenhagen Airport", country: "Denmark" },
+  { code: "OSL", city: "Oslo", name: "Oslo Airport", country: "Norway" },
+  { code: "ARN", city: "Stockholm", name: "Stockholm Arlanda", country: "Sweden" },
+  { code: "HEL", city: "Helsinki", name: "Helsinki-Vantaa Airport", country: "Finland" },
+  { code: "LIS", city: "Lisbon", name: "Humberto Delgado Airport", country: "Portugal" },
+  { code: "ATH", city: "Athens", name: "Athens Intl", country: "Greece" },
+  { code: "WAW", city: "Warsaw", name: "Warsaw Chopin Airport", country: "Poland" },
+  { code: "PRG", city: "Prague", name: "Václav Havel Airport", country: "Czech Republic" },
+  { code: "SVO", city: "Moscow", name: "Sheremetyevo Intl", country: "Russia" },
+  { code: "HKG", city: "Hong Kong", name: "Hong Kong Intl", country: "Hong Kong", popular: true },
+  { code: "NRT", city: "Tokyo", name: "Narita Intl", country: "Japan", popular: true },
+  { code: "HND", city: "Tokyo", name: "Haneda Airport", country: "Japan" },
+  { code: "KIX", city: "Osaka", name: "Kansai Intl", country: "Japan" },
+  { code: "ICN", city: "Seoul", name: "Incheon Intl", country: "South Korea", popular: true },
+  { code: "PEK", city: "Beijing", name: "Beijing Capital Intl", country: "China" },
+  { code: "PVG", city: "Shanghai", name: "Shanghai Pudong Intl", country: "China" },
+  { code: "CAN", city: "Guangzhou", name: "Baiyun Intl", country: "China" },
+  { code: "TPE", city: "Taipei", name: "Taoyuan Intl", country: "Taiwan" },
+  { code: "MNL", city: "Manila", name: "Ninoy Aquino Intl", country: "Philippines" },
+  { code: "CGK", city: "Jakarta", name: "Soekarno-Hatta Intl", country: "Indonesia" },
+  { code: "DPS", city: "Bali", name: "Ngurah Rai Intl", country: "Indonesia", popular: true },
+  { code: "SGN", city: "Ho Chi Minh City", name: "Tan Son Nhat Intl", country: "Vietnam" },
+  { code: "HAN", city: "Hanoi", name: "Noi Bai Intl", country: "Vietnam" },
+  { code: "RGN", city: "Yangon", name: "Yangon Intl", country: "Myanmar" },
+  { code: "DAC", city: "Dhaka", name: "Hazrat Shahjalal Intl", country: "Bangladesh" },
+  { code: "KTM", city: "Kathmandu", name: "Tribhuvan Intl", country: "Nepal" },
+  { code: "CMB", city: "Colombo", name: "Bandaranaike Intl", country: "Sri Lanka" },
+  { code: "MLE", city: "Malé", name: "Velana Intl", country: "Maldives", popular: true },
+  { code: "ISB", city: "Islamabad", name: "Islamabad Intl", country: "Pakistan" },
+  { code: "KHI", city: "Karachi", name: "Jinnah Intl", country: "Pakistan" },
 ];
+
+function airportByCode(code: string): Airport | undefined {
+  return AIRPORTS.find((a) => a.code === code);
+}
+
+function searchAirports(query: string, excludeCode?: string): Airport[] {
+  const pool = AIRPORTS.filter((a) => a.code !== excludeCode);
+  const q = query.trim().toLowerCase();
+  if (!q) return pool.filter((a) => a.popular).slice(0, 8);
+  return pool
+    .filter(
+      (a) =>
+        a.code.toLowerCase().includes(q) ||
+        a.city.toLowerCase().includes(q) ||
+        a.name.toLowerCase().includes(q)
+    )
+    .sort((a, b) => {
+      const aStarts = a.code.toLowerCase() === q || a.city.toLowerCase().startsWith(q);
+      const bStarts = b.code.toLowerCase() === q || b.city.toLowerCase().startsWith(q);
+      if (aStarts !== bStarts) return aStarts ? -1 : 1;
+      return a.city.localeCompare(b.city);
+    })
+    .slice(0, 8);
+}
 
 const CABIN_CLASSES = ["Economy", "Premium Economy", "Business", "First"] as const;
 
@@ -62,9 +211,12 @@ const QUICK_ROUTES = [
   { from: "BOM", to: "DEL", label: "Mumbai → Delhi" },
   { from: "DEL", to: "GOI", label: "Delhi → Goa" },
   { from: "BLR", to: "BOM", label: "Bengaluru → Mumbai" },
-  { from: "MAA", to: "SIN", label: "Chennai → Singapore" },
+  { from: "DEL", to: "SIN", label: "Delhi → Singapore" },
+  { from: "BOM", to: "KUL", label: "Mumbai → Kuala Lumpur" },
+  { from: "MAA", to: "BKK", label: "Chennai → Bangkok" },
+  { from: "BLR", to: "DPS", label: "Bengaluru → Bali" },
+  { from: "DEL", to: "SGN", label: "Delhi → Ho Chi Minh City" },
   { from: "HYD", to: "DXB", label: "Hyderabad → Dubai" },
-  { from: "BOM", to: "BKK", label: "Mumbai → Bangkok" },
 ];
 
 const AIRLINE_GRADIENTS: Record<string, string> = {
@@ -77,6 +229,14 @@ const AIRLINE_GRADIENTS: Record<string, string> = {
   EK: "from-red-400 to-rose-600",
   SQ: "from-teal-400 to-emerald-500",
   QR: "from-violet-400 to-fuchsia-500",
+  AK: "from-red-400 to-orange-500",
+  MH: "from-blue-400 to-red-500",
+  TG: "from-purple-400 to-violet-600",
+  FD: "from-red-400 to-pink-500",
+  VJ: "from-red-500 to-yellow-500",
+  VN: "from-blue-400 to-emerald-500",
+  GA: "from-teal-400 to-blue-500",
+  TR: "from-yellow-400 to-orange-500",
 };
 
 const SEAT_LETTERS = ["A", "B", "C", "D", "E", "F"];
@@ -103,10 +263,6 @@ type PayMethod = "card" | "upi" | "netbanking" | "wallet";
 
 /* ----------------------------- Helpers ----------------------------- */
 
-function cityByCode(code: string) {
-  return CITIES.find((c) => c.code === code)?.city ?? code;
-}
-
 function durationToMinutes(dur: string): number {
   const m = dur.match(/(\d+)h\s*(\d+)?m?/);
   if (!m) return 0;
@@ -126,6 +282,8 @@ function airlineGradient(code: string): string {
 export function FlightsView() {
   const { toast } = useToast();
   const addBooking = useDemoDataStore((s) => s.addBooking);
+  const walletBalance = useDemoDataStore((s) => s.walletBalance);
+  const walletTransfer = useDemoDataStore((s) => s.walletTransfer);
 
   /* Search state */
   const [tripType, setTripType] = useState<"oneway" | "round" | "multi">("oneway");
@@ -297,29 +455,50 @@ export function FlightsView() {
     setPaying(false);
   }
 
-  function processPayment() {
-    setPaying(true);
-    setTimeout(() => {
-      setPaying(false);
-      setPaySuccess(true);
-      if (selectedFlight) {
-        addBooking({
-          customerName: travellerName,
-          service: "Flight",
-          route: `${selectedFlight.originCity} → ${selectedFlight.destinationCity}`,
-          travelDate: departDate,
-          amount: totalFare,
-          paymentMethod: "Razorpay",
+  async function processPayment() {
+    const description = `Flight ${selectedFlight?.flightNumber ?? ""} • ${selectedSeats.length} seat(s)`;
+    let paidMethod: "Wallet" | "Razorpay" = "Razorpay";
+
+    if (payMethod === "wallet") {
+      if (totalFare > walletBalance) {
+        toast({
+          title: "Insufficient wallet balance",
+          description: `Your wallet has ${formatFullINR(walletBalance)}, but this booking costs ${formatFullINR(totalFare)}.`,
+          variant: "destructive",
         });
+        return;
       }
-      toast({
-        title: "Booking confirmed!",
-        description: `Flight ${selectedFlight?.flightNumber} • ${selectedSeats.length} seat(s) • ${formatFullINR(totalFare)}`,
+      setPaying(true);
+      walletTransfer(totalFare, description);
+      paidMethod = "Wallet";
+    } else {
+      setPaying(true);
+      const result = await payWithRazorpay({ amount: totalFare, name: "TravelPro", description, prefillEmail: contactEmail, prefillContact: contactPhone });
+      if (!result.success) {
+        setPaying(false);
+        toast({ title: "Payment cancelled or failed", description: "No amount was charged.", variant: "destructive" });
+        return;
+      }
+      if (result.demo) {
+        toast({ title: "Demo payment", description: "Razorpay isn't configured yet — this booking was simulated, no real charge was made." });
+      }
+    }
+
+    setPaying(false);
+    setPaySuccess(true);
+    if (selectedFlight) {
+      addBooking({
+        customerName: travellerName,
+        service: "Flight",
+        route: `${selectedFlight.originCity} → ${selectedFlight.destinationCity}`,
+        travelDate: departDate,
+        amount: totalFare,
+        paymentMethod: paidMethod,
       });
-      setTimeout(() => {
-        resetAll();
-      }, 1800);
-    }, 1900);
+    }
+    setTimeout(() => {
+      resetAll();
+    }, 6000);
   }
 
   function resetAll() {
@@ -836,6 +1015,13 @@ export function FlightsView() {
                   <span className="font-mono text-xs">TP{Math.floor(Math.random() * 900000 + 100000)}</span>
                 </div>
               </div>
+              <div className="mt-4">
+                <p className="text-xs text-muted-foreground mb-2">Share this ticket with the traveller</p>
+                <ShareTicket
+                  subject={`Your Flight Ticket — ${selectedFlight?.flightNumber ?? ""}`}
+                  text={`Flight Ticket Confirmed\n${selectedFlight?.airline ?? ""} ${selectedFlight?.flightNumber ?? ""}\n${selectedFlight?.originCity ?? ""} → ${selectedFlight?.destinationCity ?? ""}\nDate: ${departDate}\nPassenger: ${travellerName}\nAmount Paid: ${formatFullINR(totalFare)}`}
+                />
+              </div>
             </div>
           ) : (
             <>
@@ -924,24 +1110,20 @@ export function FlightsView() {
                 <TabsContent value="wallet" className="space-y-2 mt-3">
                   <div className="rounded-lg border p-3 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Wallet balance</span>
-                      <span className="font-semibold">{formatFullINR(125000)}</span>
+                      <span className="text-muted-foreground">Agency wallet balance</span>
+                      <span className="font-semibold">{formatFullINR(walletBalance)}</span>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["Amazon Pay", "Mobikwik", "Freecharge"].map((w) => (
-                      <Badge key={w} variant="secondary" className="cursor-pointer hover:bg-primary/10">
-                        {w}
-                      </Badge>
-                    ))}
-                  </div>
+                  {totalFare > walletBalance && (
+                    <p className="text-[11px] text-rose-600">Insufficient balance for this booking.</p>
+                  )}
                 </TabsContent>
               </Tabs>
 
               <Button
                 className="w-full h-11 text-base"
                 onClick={processPayment}
-                disabled={paying}
+                disabled={paying || (payMethod === "wallet" && totalFare > walletBalance)}
               >
                 {paying ? (
                   <>
@@ -1017,24 +1199,13 @@ function SearchPanel(props: {
 
         {/* Main inputs */}
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
-          <div className="rounded-xl bg-white/95 backdrop-blur p-3 text-foreground">
-            <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <PlaneTakeoff className="w-3 h-3" /> From
-            </Label>
-            <Select value={props.from} onValueChange={props.setFrom}>
-              <SelectTrigger className="border-0 p-0 h-auto text-lg font-bold focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CITIES.map((c) => (
-                  <SelectItem key={c.code} value={c.code} disabled={c.code === props.to}>
-                    {c.code} · {c.city}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-0.5">{cityByCode(props.from)}</p>
-          </div>
+          <AirportField
+            icon={PlaneTakeoff}
+            label="From"
+            value={props.from}
+            onSelect={props.setFrom}
+            excludeCode={props.to}
+          />
 
           <button
             onClick={props.swapCities}
@@ -1044,24 +1215,13 @@ function SearchPanel(props: {
             <ArrowLeftRight className="w-4 h-4" />
           </button>
 
-          <div className="rounded-xl bg-white/95 backdrop-blur p-3 text-foreground">
-            <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <PlaneLanding className="w-3 h-3" /> To
-            </Label>
-            <Select value={props.to} onValueChange={props.setTo}>
-              <SelectTrigger className="border-0 p-0 h-auto text-lg font-bold focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CITIES.map((c) => (
-                  <SelectItem key={c.code} value={c.code} disabled={c.code === props.from}>
-                    {c.code} · {c.city}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-0.5">{cityByCode(props.to)}</p>
-          </div>
+          <AirportField
+            icon={PlaneLanding}
+            label="To"
+            value={props.to}
+            onSelect={props.setTo}
+            excludeCode={props.from}
+          />
         </div>
 
         {/* Date + pax row */}
@@ -1156,6 +1316,116 @@ function SearchPanel(props: {
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function AirportField({ icon: Icon, label, value, onSelect, excludeCode }: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  onSelect: (code: string) => void;
+  excludeCode?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selected = airportByCode(value);
+  const results = useMemo(() => searchAirports(query, excludeCode), [query, excludeCode]);
+
+  function pick(code: string) {
+    onSelect(code);
+    setOpen(false);
+    setQuery("");
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o) {
+          setQuery("");
+          setActiveIndex(0);
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="w-full text-left rounded-xl bg-white/95 backdrop-blur p-3 text-foreground hover:bg-white transition"
+        >
+          <Label className="text-xs text-muted-foreground flex items-center gap-1 pointer-events-none">
+            <Icon className="w-3 h-3" /> {label}
+          </Label>
+          <p className="text-lg font-bold leading-tight">{value}</p>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+            {selected ? `${selected.city} · ${selected.name}` : value}
+          </p>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-0" align="start">
+        <div className="p-2 border-b border-border">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              autoFocus
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActiveIndex(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setActiveIndex((i) => Math.min(i + 1, results.length - 1));
+                } else if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setActiveIndex((i) => Math.max(i - 1, 0));
+                } else if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (results[activeIndex]) pick(results[activeIndex].code);
+                } else if (e.key === "Escape") {
+                  setOpen(false);
+                }
+              }}
+              placeholder="City, airport or code (e.g. Goa, DEL)"
+              className="pl-8 h-9"
+            />
+          </div>
+        </div>
+        <div className="max-h-72 overflow-y-auto scroll-thin py-1">
+          {!query && (
+            <p className="px-3 pt-1.5 pb-1 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+              Popular airports
+            </p>
+          )}
+          {results.length === 0 && (
+            <p className="px-3 py-6 text-sm text-center text-muted-foreground">No airports match &quot;{query}&quot;</p>
+          )}
+          {results.map((a, idx) => (
+            <button
+              key={a.code}
+              type="button"
+              onClick={() => pick(a.code)}
+              onMouseEnter={() => setActiveIndex(idx)}
+              className={cn(
+                "w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors",
+                idx === activeIndex ? "bg-primary/10" : "hover:bg-muted/60"
+              )}
+            >
+              <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium truncate">
+                  {a.city} <span className="text-muted-foreground font-normal">· {a.name}</span>
+                </p>
+                <p className="text-[11px] text-muted-foreground">{a.country}</p>
+              </div>
+              <span className="text-xs font-bold text-primary shrink-0">{a.code}</span>
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
