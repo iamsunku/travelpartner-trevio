@@ -102,7 +102,7 @@ export const api = {
   },
 
   createEmployee: (body: Record<string, unknown>) =>
-    apiFetch<{ employee: ApiEmployee }>("/api/employees", { method: "POST", body: JSON.stringify(body) }),
+    apiFetch<{ employee: ApiEmployee; tempPassword?: string }>("/api/employees", { method: "POST", body: JSON.stringify(body) }),
 
   getTasks: () => apiFetch<{ tasks: ApiTask[]; total: number }>("/api/tasks"),
 
@@ -188,7 +188,7 @@ export const api = {
     apiFetch<{ branch: ApiBranch }>(`/api/branches/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   createAgency: (body: Record<string, unknown>) =>
-    apiFetch<{ agency: ApiAgency }>("/api/agencies", { method: "POST", body: JSON.stringify(body) }),
+    apiFetch<{ agency: ApiAgency; tempPassword?: string }>("/api/agencies", { method: "POST", body: JSON.stringify(body) }),
 
   updateAgency: (id: string, body: Record<string, unknown>) =>
     apiFetch<{ agency: ApiAgency }>(`/api/agencies/${id}`, { method: "PATCH", body: JSON.stringify(body) }),

@@ -81,7 +81,7 @@ interface DemoDataState {
   addLead: (lead: Omit<Lead, "id" | "stage" | "createdAt">) => Lead;
   updateLeadStage: (id: string, stage: Lead["stage"]) => void;
   addQuotation: (q: Omit<Quotation, "id" | "quoteNo" | "createdAt" | "status">) => Quotation;
-  addEmployee: (e: Omit<Employee, "id" | "joinDate" | "status" | "incentives" | "achieved" | "attendance">) => Employee;
+  addEmployee: (e: Omit<Employee, "id" | "joinDate" | "status" | "incentives" | "achieved" | "attendance">) => Promise<Employee & { tempPassword?: string }>;
   addTask: (t: Omit<Task, "id" | "createdAt" | "status">) => Task;
   updateTaskStatus: (id: string, status: Task["status"]) => void;
   addPayment: (p: Omit<Payment, "id" | "txnId" | "date" | "status">) => Payment;
@@ -310,7 +310,7 @@ export const useDemoDataStore = create<DemoDataState>()(
         return quotation;
       },
 
-      addEmployee: (input) => {
+      addEmployee: async (input) => {
         const employee: Employee = {
           ...input,
           id: `em-${Date.now()}`,
@@ -321,8 +321,8 @@ export const useDemoDataStore = create<DemoDataState>()(
           joinDate: todayISO(),
         };
         set((s) => ({ employees: [employee, ...s.employees] }));
-        api
-          .createEmployee({
+        try {
+          const res = await api.createEmployee({
             name: input.name,
             email: input.email,
             phone: input.phone,
@@ -332,9 +332,12 @@ export const useDemoDataStore = create<DemoDataState>()(
             role: input.role,
             salary: input.salary,
             target: input.target,
-          })
-          .catch(() => reportSyncFailure("Employee"));
-        return employee;
+          });
+          return { ...employee, tempPassword: res.tempPassword };
+        } catch {
+          reportSyncFailure("Employee");
+          return employee;
+        }
       },
 
       addTask: (input) => {

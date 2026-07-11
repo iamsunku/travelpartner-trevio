@@ -134,6 +134,7 @@ model Payment {
   customerName String
   bookingRef  String
   bookingId   String?
+  agencyId    String?
   amount      Int
   method      String   // Razorpay|UPI|Card|Net Banking|Cash|Bank Transfer|Wallet
   status      String   @default("Success") // Success|Pending|Failed|Refunded
@@ -142,10 +143,13 @@ model Payment {
   date        DateTime @default(now())
 
   booking     Booking? @relation(fields: [bookingId], references: [id])
+
+  @@index([agencyId])
 }
 
 model Lead {
   id           String   @id @default(cuid())
+  agencyId     String?
   customerName String
   email        String
   phone        String
@@ -163,10 +167,13 @@ model Lead {
   assignedToUser User?  @relation(fields: [assignedToId], references: [id])
   customer       Customer? @relation(fields: [customerId], references: [id])
   customerId     String?
+
+  @@index([agencyId])
 }
 
 model Quotation {
   id         String   @id @default(cuid())
+  agencyId   String?
   quoteNo    String   @unique
   customerName String
   service    String   // Flight|Hotel|Holiday|Visa|Insurance
@@ -181,10 +188,13 @@ model Quotation {
   createdAt  DateTime @default(now())
 
   createdByUser User? @relation(fields: [createdById], references: [id])
+
+  @@index([agencyId])
 }
 
 model Task {
   id          String   @id @default(cuid())
+  agencyId    String?
   title       String
   description String?
   assignedToId String?
@@ -197,6 +207,8 @@ model Task {
   createdAt   DateTime @default(now())
 
   assignee    User?    @relation("TaskAssignee", fields: [assignedToId], references: [id])
+
+  @@index([agencyId])
 }
 
 model WalletTransaction {
@@ -237,6 +249,7 @@ model Employee {
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String?
+  agencyId  String?
   userName  String
   action    String
   module    String
@@ -247,6 +260,7 @@ model AuditLog {
   user      User?    @relation(fields: [userId], references: [id])
 
   @@index([userId])
+  @@index([agencyId])
 }
 
 model Notification {
@@ -257,9 +271,11 @@ model Notification {
   priority  String   @default("low") // low|medium|high
   read      Boolean  @default(false)
   userId    String?
+  agencyId  String?
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([agencyId])
 }
 
 model MarketingCampaign {

@@ -152,7 +152,12 @@ export function AgenciesView() {
         setAgencies([mapApiAgency(res.agency), ...agencies]);
         setAddOpen(false);
         setForm({ name: "", owner: "", email: "", phone: "", plan: "Growth", flights: 20000, hotels: 15000, bus: 8000, train: 5000 });
-        toast({ title: "Agency created", description: `${res.agency.name} onboarded successfully.` });
+        toast({
+          title: "Agency created",
+          description: res.tempPassword
+            ? `${res.agency.name} onboarded. Login: ${res.agency.email} · Temp password: ${res.tempPassword} (share this once — it won't be shown again).`
+            : `${res.agency.name} onboarded successfully.`,
+        });
       })
       .catch(() => {
         const newAgency: Agency = {

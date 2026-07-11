@@ -19,6 +19,28 @@ import {
 
 validateEnv();
 
+// Every role except super_admin only ever sees rows from its own agency.
+// A missing agencyId on a non-super_admin token resolves to a sentinel that
+// matches nothing, rather than silently falling through to "see everything".
+function agencyScope(req: AuthRequest): Record<string, unknown> {
+  if (req.auth?.role === "super_admin") return {};
+  return { agencyId: req.auth?.agencyId ?? "__no_agency__" };
+}
+
+// The agencyId a create/write should be stamped with — always the caller's own
+// agency for non-super_admin roles, ignoring whatever the client body claims.
+function ownAgencyId(req: AuthRequest, fallback?: string): string | undefined {
+  if (req.auth?.role === "super_admin") return fallback ?? req.auth?.agencyId ?? undefined;
+  return req.auth?.agencyId ?? undefined;
+}
+
+// A readable one-time password for freshly created logins (e.g. "Rk4-Wmp2-Tq9x").
+function generateTempPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const group = () => Array.from({ length: 4 }, () => chars[crypto.randomInt(chars.length)]).join("");
+  return `${group()}-${group()}-${group()}`;
+}
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -108,7 +130,7 @@ app.post("/api/auth/login", authLimiter, validate(loginSchema), async (req, res)
     }
     await db.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
     await db.auditLog.create({
-      data: { userId: user.id, userName: user.name, action: "Login", module: "Auth", ip: req.ip || "0.0.0.0" },
+      data: { userId: user.id, agencyId: user.agencyId, userName: user.name, action: "Login", module: "Auth", ip: req.ip || "0.0.0.0" },
     });
     const token = signToken({
       userId: user.id,
@@ -142,12 +164,12 @@ app.get("/api/auth/me", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.get("/api/bookings", optionalAuth, async (req, res) => {
+app.get("/api/bookings", requireAuth, async (req: AuthRequest, res) => {
   try {
     const status = req.query.status as string | undefined;
     const service = req.query.service as string | undefined;
     const search = req.query.q as string | undefined;
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { ...agencyScope(req) };
     if (status && status !== "All") where.status = status;
     if (service && service !== "All") where.service = service;
     if (search) where.customerName = { contains: search };
@@ -175,7 +197,7 @@ app.post("/api/bookings", requireAuth, validate(bookingSchema), async (req: Auth
         paymentStatus: body.paymentStatus || "Paid",
         paymentMethod: body.paymentMethod || "Razorpay",
         agentName: body.agentName || "System",
-        agencyId: body.agencyId || req.auth?.agencyId,
+        agencyId: ownAgencyId(req, body.agencyId),
         agencyName: body.agencyName || "",
       },
     });
@@ -200,9 +222,9 @@ app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/customers", optionalAuth, async (_req, res) => {
+app.get("/api/customers", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const customers = await db.customer.findMany({ orderBy: { createdAt: "desc" }, take: 200 });
+    const customers = await db.customer.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 200 });
     res.json({ customers, total: customers.length });
   } catch (e) {
     logger.error(e);
@@ -223,7 +245,7 @@ app.post("/api/customers", requireAuth, validate(customerSchema), async (req: Au
         passportNo: body.passportNo,
         visaStatus: body.visaStatus,
         city: body.city || "",
-        agencyId: body.agencyId || req.auth?.agencyId,
+        agencyId: ownAgencyId(req, body.agencyId),
       },
     });
     res.status(201).json({ customer });
@@ -233,9 +255,9 @@ app.post("/api/customers", requireAuth, validate(customerSchema), async (req: Au
   }
 });
 
-app.get("/api/leads", optionalAuth, async (_req, res) => {
+app.get("/api/leads", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const leads = await db.lead.findMany({ orderBy: { createdAt: "desc" }, take: 200 });
+    const leads = await db.lead.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 200 });
     res.json({ leads, total: leads.length });
   } catch (e) {
     logger.error(e);
@@ -243,7 +265,7 @@ app.get("/api/leads", optionalAuth, async (_req, res) => {
   }
 });
 
-app.post("/api/leads", requireAuth, validate(leadSchema), async (req, res) => {
+app.post("/api/leads", requireAuth, validate(leadSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
     const lead = await db.lead.create({
@@ -258,6 +280,7 @@ app.post("/api/leads", requireAuth, validate(leadSchema), async (req, res) => {
         assignedTo: body.assignedTo || "Unassigned",
         expectedClose: body.expectedClose || new Date().toISOString().slice(0, 10),
         notes: body.notes || "",
+        agencyId: ownAgencyId(req),
       },
     });
     res.status(201).json({ lead });
@@ -281,9 +304,9 @@ app.patch("/api/leads/:id", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/quotations", optionalAuth, async (_req, res) => {
+app.get("/api/quotations", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const quotations = await db.quotation.findMany({ orderBy: { createdAt: "desc" }, take: 200 });
+    const quotations = await db.quotation.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 200 });
     res.json({ quotations, total: quotations.length });
   } catch (e) {
     logger.error(e);
@@ -308,6 +331,7 @@ app.post("/api/quotations", requireAuth, validate(quotationSchema), async (req: 
         status: body.status || "Draft",
         validTill: body.validTill,
         createdBy: body.createdBy || req.auth?.email || "System",
+        agencyId: ownAgencyId(req),
       },
     });
     res.status(201).json({ quotation });
@@ -317,9 +341,9 @@ app.post("/api/quotations", requireAuth, validate(quotationSchema), async (req: 
   }
 });
 
-app.get("/api/payments", optionalAuth, async (_req, res) => {
+app.get("/api/payments", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const payments = await db.payment.findMany({ orderBy: { date: "desc" }, take: 200 });
+    const payments = await db.payment.findMany({ where: agencyScope(req), orderBy: { date: "desc" }, take: 200 });
     res.json({ payments, total: payments.length });
   } catch (e) {
     logger.error(e);
@@ -327,7 +351,7 @@ app.get("/api/payments", optionalAuth, async (_req, res) => {
   }
 });
 
-app.post("/api/payments", requireAuth, validate(paymentSchema), async (req, res) => {
+app.post("/api/payments", requireAuth, validate(paymentSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
     const txnId = `pay_${Date.now().toString(36).toUpperCase()}`;
@@ -341,6 +365,7 @@ app.post("/api/payments", requireAuth, validate(paymentSchema), async (req, res)
         status: body.status || "Success",
         type: body.type || "Payment",
         gateway: body.gateway || "Razorpay",
+        agencyId: ownAgencyId(req),
       },
     });
     res.status(201).json({ payment });
@@ -407,7 +432,7 @@ app.post("/api/payments/razorpay/verify", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/agencies", optionalAuth, async (_req, res) => {
+app.get("/api/agencies", requireAuth, requireRole("super_admin"), async (_req, res) => {
   try {
     const agencies = await db.agency.findMany({ orderBy: { createdAt: "desc" } });
     const enriched = await Promise.all(
@@ -429,10 +454,12 @@ app.get("/api/agencies", optionalAuth, async (_req, res) => {
   }
 });
 
-app.get("/api/branches", optionalAuth, async (req, res) => {
+app.get("/api/branches", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const agencyId = req.query.agencyId as string | undefined;
-    const where = agencyId ? { agencyId } : {};
+    const requestedAgencyId = req.query.agencyId as string | undefined;
+    const where = req.auth?.role === "super_admin"
+      ? (requestedAgencyId ? { agencyId: requestedAgencyId } : {})
+      : agencyScope(req);
     const branches = await db.branch.findMany({ where, orderBy: { createdAt: "desc" } });
     const enriched = await Promise.all(
       branches.map(async (b) => {
@@ -449,10 +476,12 @@ app.get("/api/branches", optionalAuth, async (req, res) => {
   }
 });
 
-app.get("/api/employees", optionalAuth, async (req, res) => {
+app.get("/api/employees", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const agencyId = req.query.agencyId as string | undefined;
-    const where = agencyId ? { agencyId } : {};
+    const requestedAgencyId = req.query.agencyId as string | undefined;
+    const where = req.auth?.role === "super_admin"
+      ? (requestedAgencyId ? { agencyId: requestedAgencyId } : {})
+      : agencyScope(req);
     const employees = await db.employee.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 });
     res.json({ employees, total: employees.length });
   } catch (e) {
@@ -464,32 +493,58 @@ app.get("/api/employees", optionalAuth, async (req, res) => {
 app.post("/api/employees", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager"), validate(employeeSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
+    // branch managers may only onboard rank-and-file employees, not peers/accountants
+    const role = req.auth?.role === "branch_manager" ? "employee" : body.role || "employee";
+    const agencyId = ownAgencyId(req, body.agencyId);
+
     const employee = await db.employee.create({
       data: {
-        agencyId: body.agencyId || req.auth?.agencyId,
+        agencyId,
         name: body.name,
         email: body.email,
         phone: body.phone,
         designation: body.designation,
         department: body.department || "Sales",
         branch: body.branch || "",
-        role: body.role || "employee",
+        role,
         status: "Active",
         salary: body.salary || 0,
         target: body.target || 0,
         joinDate: body.joinDate || new Date().toISOString().slice(0, 10),
       },
     });
-    res.status(201).json({ employee });
+
+    let tempPassword: string | undefined;
+    try {
+      tempPassword = generateTempPassword();
+      const passwordHash = await bcrypt.hash(tempPassword, 10);
+      await db.user.create({
+        data: {
+          name: body.name,
+          email: body.email,
+          phone: body.phone,
+          password: passwordHash,
+          role,
+          designation: body.designation,
+          agencyId,
+        },
+      });
+    } catch {
+      // Email already has a login (or another conflict) — the Employee record
+      // above still succeeds; no new/duplicate login is created.
+      tempPassword = undefined;
+    }
+
+    res.status(201).json({ employee, tempPassword });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.get("/api/tasks", optionalAuth, async (_req, res) => {
+app.get("/api/tasks", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const tasks = await db.task.findMany({ orderBy: { createdAt: "desc" }, take: 200 });
+    const tasks = await db.task.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 200 });
     res.json({ tasks, total: tasks.length });
   } catch (e) {
     logger.error(e);
@@ -497,7 +552,7 @@ app.get("/api/tasks", optionalAuth, async (_req, res) => {
   }
 });
 
-app.post("/api/tasks", requireAuth, validate(taskSchema), async (req, res) => {
+app.post("/api/tasks", requireAuth, validate(taskSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
     const task = await db.task.create({
@@ -510,6 +565,7 @@ app.post("/api/tasks", requireAuth, validate(taskSchema), async (req, res) => {
         status: body.status || "To Do",
         dueDate: body.dueDate,
         relatedTo: body.relatedTo,
+        agencyId: ownAgencyId(req),
       },
     });
     res.status(201).json({ task });
@@ -533,9 +589,9 @@ app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/audit-logs", requireAuth, requireRole("super_admin", "agency_admin"), async (_req, res) => {
+app.get("/api/audit-logs", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
-    const logs = await db.auditLog.findMany({ orderBy: { createdAt: "desc" }, take: 100 });
+    const logs = await db.auditLog.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 100 });
     res.json({ logs, total: logs.length });
   } catch (e) {
     logger.error(e);
@@ -543,11 +599,12 @@ app.get("/api/audit-logs", requireAuth, requireRole("super_admin", "agency_admin
   }
 });
 
-app.get("/api/reports", optionalAuth, async (_req, res) => {
+app.get("/api/reports", requireAuth, async (req: AuthRequest, res) => {
   try {
+    const scope = agencyScope(req);
     const [bookings, payments] = await Promise.all([
-      db.booking.findMany({ select: { service: true, amount: true, commission: true, createdAt: true, status: true } }),
-      db.payment.findMany({ select: { method: true, amount: true, status: true, type: true } }),
+      db.booking.findMany({ where: scope, select: { service: true, amount: true, commission: true, createdAt: true, status: true } }),
+      db.payment.findMany({ where: scope, select: { method: true, amount: true, status: true, type: true } }),
     ]);
 
     const byService: Record<string, { bookings: number; revenue: number }> = {};
@@ -596,14 +653,16 @@ app.get("/api/hotels/search", optionalAuth, async (req, res) => {
   res.json({ hotels: generateHotels(city, count) });
 });
 
-app.get("/api/dashboard", optionalAuth, async (_req, res) => {
+app.get("/api/dashboard", requireAuth, async (req: AuthRequest, res) => {
   try {
+    const scope = agencyScope(req);
+    const isSuperAdmin = req.auth?.role === "super_admin";
     const [bookings, agencies, customers, leads, payments] = await Promise.all([
-      db.booking.count(),
-      db.agency.count({ where: { status: "Active" } }),
-      db.customer.count(),
-      db.lead.count(),
-      db.payment.count({ where: { status: "Success" } }),
+      db.booking.count({ where: scope }),
+      isSuperAdmin ? db.agency.count({ where: { status: "Active" } }) : Promise.resolve(1),
+      db.customer.count({ where: scope }),
+      db.lead.count({ where: scope }),
+      db.payment.count({ where: { ...scope, status: "Success" } }),
     ]);
     res.json({ stats: { bookings, agencies, customers, leads, payments } });
   } catch (e) {
@@ -612,9 +671,9 @@ app.get("/api/dashboard", optionalAuth, async (_req, res) => {
   }
 });
 
-app.get("/api/notifications", optionalAuth, async (_req, res) => {
+app.get("/api/notifications", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const notifications = await db.notification.findMany({ orderBy: { createdAt: "desc" }, take: 50 });
+    const notifications = await db.notification.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 50 });
     res.json({ notifications });
   } catch (e) {
     logger.error(e);
@@ -635,11 +694,15 @@ app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/wallet", optionalAuth, async (req, res) => {
+app.get("/api/wallet", requireAuth, async (req: AuthRequest, res) => {
   try {
     const agencyId = req.query.agencyId as string | undefined;
     if (!agencyId) {
       res.status(400).json({ error: "agencyId required" });
+      return;
+    }
+    if (req.auth?.role !== "super_admin" && agencyId !== req.auth?.agencyId) {
+      res.status(403).json({ error: "Forbidden" });
       return;
     }
     const agency = await db.agency.findUnique({ where: { id: agencyId } });
@@ -848,7 +911,27 @@ app.post("/api/agencies", requireAuth, requireRole("super_admin"), validate(agen
         address: body.address,
       },
     });
-    res.status(201).json({ agency });
+
+    let tempPassword: string | undefined;
+    try {
+      tempPassword = generateTempPassword();
+      const passwordHash = await bcrypt.hash(tempPassword, 10);
+      await db.user.create({
+        data: {
+          name: body.owner,
+          email: body.email,
+          phone: body.phone,
+          password: passwordHash,
+          role: "agency_admin",
+          designation: "Agency Owner",
+          agencyId: agency.id,
+        },
+      });
+    } catch {
+      tempPassword = undefined;
+    }
+
+    res.status(201).json({ agency, tempPassword });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -880,9 +963,10 @@ app.patch("/api/agencies/:id", requireAuth, requireRole("super_admin"), validate
 });
 
 // ── GET /api/commission ───────────────────────────────────────────────────────
-app.get("/api/commission", optionalAuth, async (_req, res) => {
+app.get("/api/commission", requireAuth, async (req: AuthRequest, res) => {
   try {
     const bookings = await db.booking.findMany({
+      where: agencyScope(req),
       select: { agencyId: true, agencyName: true, agentName: true, commission: true, amount: true, status: true, createdAt: true },
     });
 
@@ -938,13 +1022,16 @@ app.get("/api/commission", optionalAuth, async (_req, res) => {
 });
 
 // ── GET /api/finance ──────────────────────────────────────────────────────────
-app.get("/api/finance", optionalAuth, async (_req, res) => {
+app.get("/api/finance", requireAuth, async (req: AuthRequest, res) => {
   try {
+    const scope = agencyScope(req);
     const [bookings, payments] = await Promise.all([
       db.booking.findMany({
+        where: scope,
         select: { amount: true, commission: true, status: true, service: true, createdAt: true, bookingRef: true, customerName: true, agencyName: true },
       }),
       db.payment.findMany({
+        where: scope,
         select: { amount: true, method: true, status: true, type: true, date: true, txnId: true, customerName: true, bookingRef: true },
       }),
     ]);

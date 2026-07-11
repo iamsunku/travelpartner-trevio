@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils";
 const DEPARTMENTS = ["All", "Sales", "Management", "Accounts", "Operations", "Support"];
 const BRANCHES = ["All", "Mumbai - Andheri", "Delhi - CP", "Bangalore - Indiranagar", "Chennai - T. Nagar"];
 const STATUSES = ["All", "Active", "On Leave", "Inactive"];
-const ROLES = ["employee", "branch_manager", "accountant", "agency_admin"];
+const ROLES = ["employee", "branch_manager", "accountant"];
 
 const PERFORMANCE_TREND = [
   { month: "Aug", value: 320000 },
@@ -258,30 +258,40 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
   const [designation, setDesignation] = useState("Travel Consultant");
   const [department, setDepartment] = useState<Employee["department"]>("Sales");
   const [branch, setBranch] = useState("Mumbai - Andheri");
+  const [role, setRole] = useState("employee");
   const [salary, setSalary] = useState("40000");
   const [target, setTarget] = useState("500000");
 
-  const handleSubmit = () => {
+  const resetForm = () => {
+    setName(""); setEmail(""); setPhone(""); setDesignation("Travel Consultant");
+    setDepartment("Sales"); setBranch("Mumbai - Andheri"); setRole("employee");
+    setSalary("40000"); setTarget("500000");
+  };
+
+  const handleSubmit = async () => {
     if (!name.trim() || !email.trim()) {
       toast({ title: "Missing fields", description: "Name and email are required", variant: "destructive" });
       return;
     }
-    addEmployee({
+    const result = await addEmployee({
       name,
       email,
       phone: phone || "+91 98000 00000",
       designation,
       department,
       branch,
-      role: "employee",
+      role: role as Employee["role"],
       salary: Number(salary) || 40000,
       target: Number(target) || 500000,
     });
-    toast({ title: "Employee added", description: "New employee onboarded successfully." });
+    toast({
+      title: "Employee added",
+      description: result?.tempPassword
+        ? `${name} onboarded. Login: ${email} · Temp password: ${result.tempPassword} (share this once — it won't be shown again).`
+        : "New employee onboarded successfully.",
+    });
     onOpenChange(false);
-    setName("");
-    setEmail("");
-    setPhone("");
+    resetForm();
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -301,15 +311,15 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </div>
           <div className="space-y-1.5">
             <Label>Phone</Label>
-            <Input placeholder="+91 98xxx xxxxx" />
+            <Input placeholder="+91 98xxx xxxxx" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>Designation</Label>
-            <Input placeholder="Travel Consultant" />
+            <Input placeholder="Travel Consultant" value={designation} onChange={(e) => setDesignation(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>Department</Label>
-            <Select defaultValue="Sales">
+            <Select value={department} onValueChange={(v) => setDepartment(v as Employee["department"])}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {DEPARTMENTS.filter((d) => d !== "All").map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
@@ -318,7 +328,7 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </div>
           <div className="space-y-1.5">
             <Label>Branch</Label>
-            <Select defaultValue="Mumbai - Andheri">
+            <Select value={branch} onValueChange={setBranch}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {BRANCHES.filter((b) => b !== "All").map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
@@ -327,7 +337,7 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </div>
           <div className="space-y-1.5">
             <Label>Role</Label>
-            <Select defaultValue="employee">
+            <Select value={role} onValueChange={setRole}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {ROLES.map((r) => <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>)}
@@ -336,11 +346,11 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </div>
           <div className="space-y-1.5">
             <Label>Salary (₹/month)</Label>
-            <Input type="number" placeholder="40000" />
+            <Input type="number" placeholder="40000" value={salary} onChange={(e) => setSalary(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label>Target (₹/month)</Label>
-            <Input type="number" placeholder="500000" />
+            <Input type="number" placeholder="500000" value={target} onChange={(e) => setTarget(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
