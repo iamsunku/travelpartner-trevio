@@ -191,7 +191,7 @@ model Quotation {
   branchId   String?
   quoteNo    String   @unique
   customerName String
-  service    String   // Flight|Hotel|Holiday
+  service    String   // Flight|Hotel|Holiday|International|Activity|Transfer
   items      Int
   amount     Int
   gst        Int
@@ -200,6 +200,25 @@ model Quotation {
   validTill  String
   createdById String?
   createdBy  String
+  isInternational Boolean @default(false)
+  contactPerson String?
+  contactEmail  String?
+  contactPhone  String?
+  destination   String?
+  travelDates   String?
+  adults        Int?
+  children      Int?
+  infants       Int?
+  hotelStarPreference String?
+  location      String?
+  budget        Int?
+  currency      String   @default("INR")
+  packageIncludes Json   @default("[]")
+  packageExcludes Json   @default("[]")
+  paymentTerms    String?
+  cancellationPolicy String?
+  approvalStatus  String  @default("Draft") // Draft|Pending|Approved|Rejected
+  lineItems       Json    @default("[]")
   createdAt  DateTime @default(now())
 
   createdByUser User? @relation(fields: [createdById], references: [id])
@@ -425,7 +444,165 @@ model Settings {
   currency    String   @default("INR")
   timezone    String   @default("Asia/Kolkata")
   notifications Boolean @default(true)
+  rolePermissions Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// ── Product Catalog ──────────────────────────────────────────────────────────
+
+model Supplier {
+  id          String   @id @default(cuid())
+  agencyId    String?
+  name        String
+  contactPerson String?
+  email       String?
+  phone       String?
+  type        String   // Hotel|Activity|Transfer|General
+  status      String   @default("Active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  hotels      HotelProduct[]
+  activities  ActivityProduct[]
+  transfers   TransferProduct[]
+
+  @@index([agencyId])
+}
+
+model HotelProduct {
+  id              String   @id @default(cuid())
+  agencyId        String?
+  supplierId      String?
+  name            String
+  description     String?
+  starCategory    Int      @default(3)
+  address         String?
+  city            String
+  country         String   @default("India")
+  mapsUrl         String?
+  amenities       Json     @default("[]")
+  policies        Json     @default("{}")
+  checkInTime     String   @default("14:00")
+  checkOutTime    String   @default("11:00")
+  contactPerson   String?
+  contactPhone    String?
+  contactEmail    String?
+  website         String?
+  images          Json     @default("[]")
+  roomCategories  Json     @default("[]")
+  contractStart   String?
+  contractEnd     String?
+  currency        String   @default("INR")
+  cancellationPolicy String?
+  blackoutDates   Json     @default("[]")
+  inventory       Json     @default("[]")
+  status          String   @default("Active") // Active|Archived|Draft
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([agencyId])
+  @@index([city])
+  @@index([status])
+}
+
+model ActivityProduct {
+  id              String   @id @default(cuid())
+  agencyId        String?
+  supplierId      String?
+  name            String
+  description     String?
+  images          Json     @default("[]")
+  duration        String?
+  location        String?
+  meetingPoint    String?
+  inclusions      Json     @default("[]")
+  exclusions      Json     @default("[]")
+  operatingHours  String?
+  minChildAge     Int?
+  adultPrice      Int      @default(0)
+  childPrice      Int      @default(0)
+  currency        String   @default("INR")
+  blackoutDates   Json     @default("[]")
+  rateValidFrom   String?
+  rateValidTo     String?
+  cancellationPolicy String?
+  status          String   @default("Active")
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([agencyId])
+  @@index([status])
+}
+
+model TransferProduct {
+  id              String   @id @default(cuid())
+  agencyId        String?
+  supplierId      String?
+  name            String
+  transferType    String   // Private|Shared
+  vehicleType     String?
+  pickupLocation  String
+  dropLocation    String
+  pickupTime      String?
+  privatePrice    Int?
+  sharedPrice     Int?
+  currency        String   @default("INR")
+  rateValidFrom   String?
+  rateValidTo     String?
+  blackoutDates   Json     @default("[]")
+  cancellationPolicy String?
+  status          String   @default("Active")
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  supplier        Supplier? @relation(fields: [supplierId], references: [id])
+
+  @@index([agencyId])
+  @@index([status])
+}
+
+model CustomerDocument {
+  id          String   @id @default(cuid())
+  customerId  String
+  agencyId    String?
+  name        String
+  type        String   // Passport|PAN|Aadhaar|Visa|Other
+  url         String
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+
+  @@index([customerId])
+  @@index([agencyId])
+}
+
+model EmployeeActivitySnapshot {
+  id                String   @id @default(cuid())
+  userId            String
+  agencyId          String?
+  date              String   // YYYY-MM-DD
+  loginAt           DateTime?
+  logoutAt          DateTime?
+  workingMinutes    Int      @default(0)
+  customersAdded    Int      @default(0)
+  quotationsCreated Int      @default(0)
+  productsUpdated   Int      @default(0)
+  revenueGenerated  Int      @default(0)
+  lastActivity      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([agencyId])
 }
 

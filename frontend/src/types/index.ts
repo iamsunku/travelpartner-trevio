@@ -5,15 +5,17 @@ export type Role =
   | "agency_admin"
   | "branch_manager"
   | "employee"
-  | "accountant";
+  | "accountant"
+  | "sales_executive"
+  | "product_executive";
 
 export type Module =
-  | "flights" | "hotels" | "holiday" | "bookings" | "crm" | "customers"
+  | "flights" | "hotels" | "activities" | "transfers" | "holiday" | "bookings" | "crm" | "customers"
   | "quotations" | "payments" | "wallet" | "commission" | "finance"
   | "reports" | "analytics" | "employees" | "attendance" | "leaves" | "tasks"
   | "support" | "notifications" | "marketing" | "cms" | "api-management"
   | "settings" | "audit-logs" | "agencies" | "branches" | "api-marketplace"
-  | "monitoring";
+  | "monitoring" | "suppliers";
 
 export interface User {
   id: string;
@@ -240,7 +242,7 @@ export interface Quotation {
   id: string;
   quoteNo: string;
   customerName: string;
-  service: "Flight" | "Hotel" | "Holiday";
+  service: "Flight" | "Hotel" | "Holiday" | "International" | "Activity" | "Transfer";
   items: number;
   amount: number;
   gst: number;
@@ -249,6 +251,37 @@ export interface Quotation {
   validTill: string;
   createdBy: string;
   createdAt: string;
+  isInternational?: boolean;
+  contactPerson?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  destination?: string;
+  travelDates?: string;
+  adults?: number;
+  children?: number;
+  infants?: number;
+  hotelStarPreference?: string;
+  location?: string;
+  budget?: number;
+  currency?: string;
+  packageIncludes?: string[];
+  packageExcludes?: string[];
+  paymentTerms?: string;
+  cancellationPolicy?: string;
+  approvalStatus?: "Draft" | "Pending" | "Approved" | "Rejected";
+  lineItems?: { description: string; qty: number; price: number }[];
+}
+
+export interface ProductRecord {
+  id: string;
+  name: string;
+  status: "Active" | "Archived" | "Draft";
+  city?: string;
+  location?: string;
+  currency?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
 }
 
 export interface Notification {
@@ -288,6 +321,9 @@ export type ViewKey =
   | "dashboard"
   | "flights"
   | "hotels"
+  | "hotel-products"
+  | "activities"
+  | "transfers"
   | "holiday"
   | "attendance"
   | "customers"

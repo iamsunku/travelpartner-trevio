@@ -1,34 +1,41 @@
 export const MODULES = [
-  "flights", "hotels", "holiday", "bookings", "crm", "customers",
+  "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
   "quotations", "payments", "wallet", "commission", "finance",
   "reports", "analytics", "employees", "attendance", "leaves", "tasks",
   "support", "notifications", "marketing", "cms", "api-management",
   "settings", "audit-logs", "agencies", "branches", "api-marketplace",
-  "monitoring",
+  "monitoring", "suppliers",
 ] as const;
 
 export type Module = typeof MODULES[number];
 
-export type Role = "super_admin" | "agency_admin" | "branch_manager" | "employee" | "accountant";
+export type Role =
+  | "super_admin"
+  | "agency_admin"
+  | "branch_manager"
+  | "employee"
+  | "accountant"
+  | "sales_executive"
+  | "product_executive";
 
-// What a role gets by default — an individual user's `permissions` column
-// (set at creation/edit time) overrides this entirely when present.
+export type CrudAction = "view" | "add" | "edit" | "delete";
+
 export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
   super_admin: [...MODULES],
   agency_admin: [
-    "flights", "hotels", "holiday", "bookings", "crm", "customers",
+    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
     "quotations", "payments", "wallet", "commission", "finance",
-    "reports", "employees", "attendance", "leaves", "tasks", "support",
+    "reports", "analytics", "employees", "attendance", "leaves", "tasks", "support",
     "notifications", "marketing", "cms", "api-management", "settings",
-    "audit-logs", "branches",
+    "audit-logs", "branches", "suppliers",
   ],
   branch_manager: [
-    "flights", "hotels", "holiday", "bookings", "crm", "customers",
+    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
     "quotations", "payments", "reports", "employees", "attendance",
     "leaves", "tasks", "support", "notifications",
   ],
   employee: [
-    "flights", "hotels", "holiday", "bookings", "crm", "customers",
+    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
     "quotations", "payments", "reports", "tasks", "support",
     "notifications", "attendance", "leaves",
   ],
@@ -36,6 +43,27 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
     "payments", "wallet", "commission", "finance", "reports",
     "attendance", "leaves", "support", "notifications",
   ],
+  sales_executive: [
+    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
+    "quotations", "payments", "reports", "tasks", "support", "notifications", "attendance", "leaves",
+  ],
+  product_executive: [
+    "hotels", "activities", "transfers", "holiday", "suppliers", "reports", "notifications",
+  ],
+};
+
+const FULL_CRUD: CrudAction[] = ["view", "add", "edit", "delete"];
+const SALES_CRUD: CrudAction[] = ["view", "add", "edit"];
+const READ_ONLY: CrudAction[] = ["view"];
+
+export const ROLE_CRUD: Record<Role, Record<string, CrudAction[]>> = {
+  super_admin: Object.fromEntries(MODULES.map((m) => [m, FULL_CRUD])),
+  agency_admin: Object.fromEntries(MODULES.map((m) => [m, FULL_CRUD])),
+  branch_manager: Object.fromEntries(MODULES.map((m) => [m, SALES_CRUD])),
+  employee: Object.fromEntries(MODULES.map((m) => [m, SALES_CRUD])),
+  accountant: Object.fromEntries(MODULES.map((m) => [m, ["payments", "wallet", "commission", "finance", "reports"].includes(m) ? SALES_CRUD : READ_ONLY])),
+  sales_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "suppliers"].includes(m) ? READ_ONLY : SALES_CRUD])),
+  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "suppliers"].includes(m) ? FULL_CRUD : READ_ONLY])),
 };
 
 export interface PermissionSubject {
@@ -56,4 +84,10 @@ export function effectivePermissions(subject: PermissionSubject): Module[] {
 
 export function hasPermission(subject: PermissionSubject, module: Module): boolean {
   return effectivePermissions(subject).includes(module);
+}
+
+export function hasCrudPermission(subject: PermissionSubject, module: Module, action: CrudAction): boolean {
+  if (!hasPermission(subject, module)) return false;
+  const roleCrud = ROLE_CRUD[subject.role as Role]?.[module] ?? READ_ONLY;
+  return roleCrud.includes(action);
 }

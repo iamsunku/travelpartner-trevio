@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken, type JwtPayload } from "../lib/jwt.js";
-import { hasPermission, type Module } from "../lib/permissions.js";
+import { hasPermission, hasCrudPermission, type Module, type CrudAction } from "../lib/permissions.js";
 import { db } from "../lib/db.js";
 
 export interface AuthRequest extends Request {
@@ -76,6 +76,49 @@ export function requirePermission(module: Module) {
     try {
       const user = await currentPermissionSubject(req.auth.userId);
       if (!user || user.status !== "Active" || !hasPermission(user, module)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      next();
+    } catch {
+      res.status(500).json({ error: "Server error" });
+    }
+  };
+}
+
+export function requireCrudPermission(module: Module, action: CrudAction) {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.auth) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    try {
+      const user = await currentPermissionSubject(req.auth.userId);
+      if (!user || user.status !== "Active") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+
+      // Agency-level role CRUD overrides from Settings (if configured)
+      let subject = user;
+      if (req.auth.agencyId) {
+        const settings = await db.settings.findUnique({
+          where: { agencyId: req.auth.agencyId },
+          select: { rolePermissions: true },
+        });
+        const overrides = settings?.rolePermissions as Record<string, Record<string, CrudAction[]>> | null;
+        if (overrides?.[user.role]?.[module]) {
+          const allowed = overrides[user.role][module];
+          if (!hasPermission(user, module) || !allowed.includes(action)) {
+            res.status(403).json({ error: "Forbidden" });
+            return;
+          }
+          next();
+          return;
+        }
+      }
+
+      if (!hasCrudPermission(subject, module, action)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }

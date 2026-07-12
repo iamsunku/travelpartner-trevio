@@ -168,7 +168,7 @@ export function ApiMarketplaceView() {
     <div className="space-y-5">
       <PageHeader
         title="API Marketplace"
-        subtitle="Connect third-party travel APIs across flights, hotels, buses and trains"
+        subtitle="Connect third-party travel APIs across flights, hotels, activities and transfers"
       />
 
       {/* Summary card */}

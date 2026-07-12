@@ -1,32 +1,32 @@
 import type { Module, Role, User } from "@/types";
 
 export const MODULES: Module[] = [
-  "flights", "hotels", "holiday", "bookings", "crm", "customers",
+  "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
   "quotations", "payments", "wallet", "commission", "finance",
   "reports", "analytics", "employees", "attendance", "leaves", "tasks",
   "support", "notifications", "marketing", "cms", "api-management",
   "settings", "audit-logs", "agencies", "branches", "api-marketplace",
-  "monitoring",
+  "monitoring", "suppliers",
 ];
 
-// What a role gets access to by default — an individual user's `permissions`
-// array (set at creation/edit time) overrides this entirely when present.
+export type CrudAction = "view" | "add" | "edit" | "delete";
+
 export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
   super_admin: [...MODULES],
   agency_admin: [
-    "flights", "hotels", "holiday", "bookings", "crm", "customers",
+    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
     "quotations", "payments", "wallet", "commission", "finance",
-    "reports", "employees", "attendance", "leaves", "tasks", "support",
+    "reports", "analytics", "employees", "attendance", "leaves", "tasks", "support",
     "notifications", "marketing", "cms", "api-management", "settings",
-    "audit-logs", "branches",
+    "audit-logs", "branches", "suppliers",
   ],
   branch_manager: [
-    "flights", "hotels", "holiday", "bookings", "crm", "customers",
+    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
     "quotations", "payments", "reports", "employees", "attendance",
     "leaves", "tasks", "support", "notifications",
   ],
   employee: [
-    "flights", "hotels", "holiday", "bookings", "crm", "customers",
+    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
     "quotations", "payments", "reports", "tasks", "support",
     "notifications", "attendance", "leaves",
   ],
@@ -34,6 +34,27 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
     "payments", "wallet", "commission", "finance", "reports",
     "attendance", "leaves", "support", "notifications",
   ],
+  sales_executive: [
+    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
+    "quotations", "payments", "reports", "tasks", "support", "notifications", "attendance", "leaves",
+  ],
+  product_executive: [
+    "hotels", "activities", "transfers", "holiday", "suppliers", "reports", "notifications",
+  ],
+};
+
+const FULL: CrudAction[] = ["view", "add", "edit", "delete"];
+const SALES: CrudAction[] = ["view", "add", "edit"];
+const READ: CrudAction[] = ["view"];
+
+export const ROLE_CRUD: Record<Role, Record<string, CrudAction[]>> = {
+  super_admin: Object.fromEntries(MODULES.map((m) => [m, FULL])),
+  agency_admin: Object.fromEntries(MODULES.map((m) => [m, FULL])),
+  branch_manager: Object.fromEntries(MODULES.map((m) => [m, SALES])),
+  employee: Object.fromEntries(MODULES.map((m) => [m, SALES])),
+  accountant: Object.fromEntries(MODULES.map((m) => [m, ["payments", "wallet", "commission", "finance", "reports"].includes(m) ? SALES : READ])),
+  sales_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "suppliers"].includes(m) ? READ : SALES])),
+  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "suppliers"].includes(m) ? FULL : READ])),
 };
 
 export function effectivePermissions(user: Pick<User, "role" | "permissions">): Module[] {
@@ -44,9 +65,14 @@ export function hasPermission(user: Pick<User, "role" | "permissions">, module: 
   return effectivePermissions(user).includes(module);
 }
 
+export function hasCrudPermission(user: Pick<User, "role" | "permissions">, module: Module, action: CrudAction): boolean {
+  if (!hasPermission(user, module)) return false;
+  return (ROLE_CRUD[user.role]?.[module] ?? READ).includes(action);
+}
+
 export const MODULE_LABELS: Record<Module, string> = {
-  flights: "Flights", hotels: "Hotels", holiday: "Holiday Packages",
-  bookings: "Booking Management", crm: "CRM / Leads", customers: "Customers",
+  flights: "Flights", hotels: "Hotels", activities: "Activities", transfers: "Transfers",
+  holiday: "Holiday Packages", bookings: "Booking Management", crm: "CRM / Leads", customers: "Customers",
   quotations: "Quotations", payments: "Payments", wallet: "Wallet",
   commission: "Commission", finance: "Finance / GST", reports: "Reports & Analytics",
   analytics: "Platform Analytics", employees: "Employees", attendance: "Attendance",
@@ -54,5 +80,5 @@ export const MODULE_LABELS: Record<Module, string> = {
   notifications: "Notifications", marketing: "Marketing", cms: "CMS",
   "api-management": "API Management", settings: "Settings", "audit-logs": "Audit Logs",
   agencies: "Agency Management", branches: "Branches", "api-marketplace": "API Marketplace",
-  monitoring: "Monitoring",
+  monitoring: "Monitoring", suppliers: "Supplier Management",
 };

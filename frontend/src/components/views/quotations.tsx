@@ -32,11 +32,15 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { InternationalQuotationDialog } from "@/components/views/international-quotation";
 
 const SERVICE_COLORS: Record<string, string> = {
   Flight: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400",
   Hotel: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
   Holiday: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
+  International: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400",
+  Activity: "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-400",
+  Transfer: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400",
 };
 
 interface QuoteItem { id: string; description: string; qty: number; price: number; }
@@ -373,7 +377,12 @@ export function QuotationsView() {
       <PageHeader
         title="Quotations"
         subtitle="Create, send and track quotations with GST, approvals and customer responses."
-        action={<CreateQuotationDialog />}
+        action={
+          <div className="flex gap-2">
+            <InternationalQuotationDialog />
+            <CreateQuotationDialog />
+          </div>
+        }
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">

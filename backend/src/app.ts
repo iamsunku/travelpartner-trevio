@@ -12,6 +12,7 @@ import { signToken } from "./lib/jwt.js";
 import { requireAuth, optionalAuth, requireRole, requirePermission, requireAnyPermission, type AuthRequest } from "./middleware/auth.js";
 import { generateFlights, generateHotels } from "./lib/mock-data.js";
 import { effectivePermissions } from "./lib/permissions.js";
+import { mountProductRoutes } from "./routes/products.js";
 import {
   validate, loginSchema, bookingSchema, customerSchema, leadSchema, quotationSchema,
   paymentSchema, employeeSchema, employeeUpdateSchema, taskSchema, agencySchema,
@@ -170,6 +171,12 @@ app.post("/api/auth/login", authLimiter, validate(loginSchema), async (req, res)
     await db.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
     await db.auditLog.create({
       data: { userId: user.id, agencyId: user.agencyId, userName: user.name, action: "Login", module: "Auth", ip: req.ip || "0.0.0.0" },
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    await db.employeeActivitySnapshot.upsert({
+      where: { userId_date: { userId: user.id, date: today } },
+      create: { userId: user.id, agencyId: user.agencyId, date: today, loginAt: new Date(), lastActivity: "Login" },
+      update: { loginAt: new Date(), lastActivity: "Login" },
     });
     const token = signToken({
       userId: user.id,
@@ -416,7 +423,32 @@ app.post("/api/quotations", requireAuth, requirePermission("quotations"), valida
         createdById: req.auth?.userId,
         agencyId: ownAgencyId(req),
         branchId: ownBranchId(req),
+        isInternational: body.isInternational ?? false,
+        contactPerson: body.contactPerson,
+        contactEmail: body.contactEmail,
+        contactPhone: body.contactPhone,
+        destination: body.destination,
+        travelDates: body.travelDates,
+        adults: body.adults,
+        children: body.children,
+        infants: body.infants,
+        hotelStarPreference: body.hotelStarPreference,
+        location: body.location,
+        budget: body.budget,
+        currency: body.currency ?? "INR",
+        packageIncludes: body.packageIncludes ?? [],
+        packageExcludes: body.packageExcludes ?? [],
+        paymentTerms: body.paymentTerms,
+        cancellationPolicy: body.cancellationPolicy,
+        approvalStatus: body.approvalStatus ?? "Draft",
+        lineItems: body.lineItems ?? [],
       },
+    });
+    const date = new Date().toISOString().slice(0, 10);
+    await db.employeeActivitySnapshot.upsert({
+      where: { userId_date: { userId: req.auth!.userId, date } },
+      create: { userId: req.auth!.userId, agencyId: req.auth?.agencyId, date, quotationsCreated: 1, lastActivity: "Quotation created" },
+      update: { quotationsCreated: { increment: 1 }, lastActivity: "Quotation created" },
     });
     res.status(201).json({ quotation });
   } catch (e) {
@@ -534,7 +566,7 @@ app.get("/api/agencies", requireAuth, requireRole("super_admin"), async (_req, r
         ]);
         const apiAllocation = a.apiAllocation && typeof a.apiAllocation === "object"
           ? a.apiAllocation
-          : { flights: 0, hotels: 0, bus: 0, train: 0 };
+          : { flights: 0, hotels: 0 };
         return { ...a, apiAllocation, branches, employees };
       })
     );
@@ -1019,7 +1051,7 @@ app.post("/api/agencies", requireAuth, requireRole("super_admin"), validate(agen
         plan: body.plan || "Starter",
         status: body.status || "Trial",
         walletBalance: body.walletBalance || 0,
-        apiAllocation: body.apiAllocation || { flights: 5000, hotels: 3000, bus: 2000, train: 1000 },
+        apiAllocation: body.apiAllocation || { flights: 5000, hotels: 3000 },
         gstNumber: body.gstNumber,
         panNumber: body.panNumber,
         address: body.address,
@@ -1452,6 +1484,39 @@ app.put("/api/settings", requireAuth, requireRole("super_admin", "agency_admin")
   }
 });
 
+app.get("/api/settings/role-permissions", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
+  try {
+    const agencyId = req.auth?.agencyId || "ag-1";
+    const settings = await db.settings.findUnique({ where: { agencyId } });
+    const { ROLE_CRUD, MODULES, ROLE_DEFAULT_PERMISSIONS } = await import("./lib/permissions.js");
+    res.json({
+      defaults: ROLE_CRUD,
+      modules: MODULES,
+      roleModules: ROLE_DEFAULT_PERMISSIONS,
+      overrides: settings?.rolePermissions ?? null,
+    });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/api/settings/role-permissions", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
+  try {
+    const agencyId = req.auth?.agencyId || "ag-1";
+    const rolePermissions = req.body.rolePermissions ?? req.body;
+    const settings = await db.settings.upsert({
+      where: { agencyId },
+      update: { rolePermissions },
+      create: { agencyId, rolePermissions },
+    });
+    res.json({ rolePermissions: settings.rolePermissions });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 app.get("/api/monitoring/metrics", requireAuth, requireRole("super_admin"), async (req, res) => {
   try {
     const dbStart = Date.now();
@@ -1605,6 +1670,8 @@ app.patch("/api/leaves/:id", requireAuth, requireRole("super_admin", "agency_adm
     res.status(500).json({ error: "Server error" });
   }
 });
+
+mountProductRoutes(app, agencyScope);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error(err);

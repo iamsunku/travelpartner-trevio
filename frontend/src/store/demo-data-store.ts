@@ -67,7 +67,7 @@ interface DemoDataState {
   addCustomer: (customer: Omit<Customer, "id" | "totalBookings" | "totalSpent" | "loyaltyPoints" | "createdAt">) => Customer;
   addLead: (lead: Omit<Lead, "id" | "stage" | "createdAt">) => Lead;
   updateLeadStage: (id: string, stage: Lead["stage"]) => void;
-  addQuotation: (q: Omit<Quotation, "id" | "quoteNo" | "createdAt" | "status">) => Quotation;
+  addQuotation: (q: Omit<Quotation, "id" | "quoteNo" | "createdAt" | "status"> & { status?: Quotation["status"] }) => Quotation;
   addEmployee: (e: Omit<Employee, "id" | "joinDate" | "status" | "incentives" | "achieved" | "attendance"> & { branchId?: string; permissions?: Module[] | null }) => Promise<Employee & { tempPassword?: string }>;
   updateEmployee: (id: string, patch: Partial<Employee> & { branchId?: string | null; permissions?: Module[] | null }) => Promise<void>;
   addTask: (t: Omit<Task, "id" | "createdAt" | "status">) => Task;
@@ -276,7 +276,7 @@ export const useDemoDataStore = create<DemoDataState>()(
           ...input,
           id: `qt-${Date.now()}`,
           quoteNo,
-          status: "Draft",
+          status: input.status ?? "Draft",
           createdAt: todayISO(),
         };
         set((s) => ({ quotations: [quotation, ...s.quotations] }));
@@ -290,7 +290,26 @@ export const useDemoDataStore = create<DemoDataState>()(
             total: input.total,
             validTill: input.validTill,
             createdBy: input.createdBy,
-            status: "Draft",
+            status: quotation.status,
+            isInternational: input.isInternational,
+            contactPerson: input.contactPerson,
+            contactEmail: input.contactEmail,
+            contactPhone: input.contactPhone,
+            destination: input.destination,
+            travelDates: input.travelDates,
+            adults: input.adults,
+            children: input.children,
+            infants: input.infants,
+            hotelStarPreference: input.hotelStarPreference,
+            location: input.location,
+            budget: input.budget,
+            currency: input.currency,
+            packageIncludes: input.packageIncludes,
+            packageExcludes: input.packageExcludes,
+            paymentTerms: input.paymentTerms,
+            cancellationPolicy: input.cancellationPolicy,
+            approvalStatus: input.approvalStatus,
+            lineItems: input.lineItems,
           })
           .catch(() => reportSyncFailure("Quotation"));
         return quotation;

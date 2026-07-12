@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  LayoutDashboard, Plane, Hotel, Palmtree,
+  LayoutDashboard, Plane, Hotel, Palmtree, MapPin, Car, Package,
   Users, Target, FileSpreadsheet, Ticket, CreditCard, Wallet, Percent,
   BarChart3, UserCog, CheckSquare, LifeBuoy, Bell, Megaphone, LayoutGrid,
   Receipt, KeyRound, Settings, History, Building2, GitBranch, Store,
@@ -37,6 +37,14 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: "hotels", label: "Hotels", icon: Hotel, module: "hotels" },
       { key: "holiday", label: "Holiday Packages", icon: Palmtree, module: "holiday" },
       { key: "bookings", label: "Booking Management", icon: Ticket, module: "bookings" },
+    ],
+  },
+  {
+    title: "Products",
+    items: [
+      { key: "hotel-products", label: "Hotel Products", icon: Package, module: "hotels" },
+      { key: "activities", label: "Activities", icon: MapPin, module: "activities" },
+      { key: "transfers", label: "Transfers", icon: Car, module: "transfers" },
     ],
   },
   {
@@ -107,7 +115,9 @@ export const ROLE_LABELS: Record<Role, string> = {
   agency_admin: "Admin",
   branch_manager: "Branch Manager",
   employee: "Employee / Agent",
-  accountant: "Accountant",
+  accountant: "Finance",
+  sales_executive: "Sales Executive",
+  product_executive: "Product Executive",
 };
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
@@ -116,4 +126,6 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   branch_manager: "Manage a branch — oversee staff & approvals",
   employee: "Travel consultant — handle bookings & leads",
   accountant: "Finance staff — payments, GST & settlements",
+  sales_executive: "Sales team — customers, quotations & bookings",
+  product_executive: "Product team — manage hotels, activities & transfers",
 };

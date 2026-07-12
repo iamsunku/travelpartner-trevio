@@ -34,6 +34,9 @@ import { CmsView } from "@/components/views/cms";
 import { FinanceView } from "@/components/views/finance";
 import { AuditLogsView } from "@/components/views/audit-logs";
 import { AnalyticsView } from "@/components/views/analytics";
+import { HotelProductsView } from "@/components/views/hotel-products";
+import { ActivitiesView } from "@/components/views/activities";
+import { TransfersView } from "@/components/views/transfers";
 import { AttendanceLeaveView } from "@/components/views/attendance-leave";
 import type { ViewKey } from "@/types";
 import { Construction } from "lucide-react";
@@ -43,6 +46,9 @@ const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   dashboard: DashboardView,
   flights: FlightsView,
   hotels: HotelsView,
+  "hotel-products": HotelProductsView,
+  activities: ActivitiesView,
+  transfers: TransfersView,
   holiday: HolidayView,
   customers: CustomersView,
   crm: CrmView,

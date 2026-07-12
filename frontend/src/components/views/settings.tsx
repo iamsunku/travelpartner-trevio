@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Building2, Users, Cog, Shield, Camera, Save, Plus, KeyRound, Globe,
   Clock, Lock, Smartphone, Mail, MessageSquare, Phone, Wifi, Server,
@@ -26,35 +26,60 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/api";
+import {
+  MODULE_LABELS, ROLE_CRUD,
+  type CrudAction,
+} from "@/lib/permissions";
+import type { Role } from "@/types";
+import { ROLE_LABELS } from "@/lib/nav-config";
 
-const ROLES = [
-  { role: "Super Admin", users: 1, color: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400" },
-  { role: "Agency Admin", users: 1, color: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400" },
-  { role: "Branch Manager", users: 2, color: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" },
-  { role: "Employee", users: 5, color: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400" },
-  { role: "Accountant", users: 1, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400" },
+const ROLE_KEYS: Role[] = [
+  "super_admin", "agency_admin", "branch_manager", "employee", "accountant", "sales_executive", "product_executive",
 ];
 
-const MODULES = ["Bookings", "Customers", "Payments", "Reports", "Employees", "Quotations", "API Marketplace", "Settings"];
-const ACTIONS = ["view", "edit", "delete", "approve"] as const;
-type Action = typeof ACTIONS[number];
+const MATRIX_MODULES = [
+  "bookings", "customers", "payments", "reports", "employees", "quotations",
+  "hotels", "activities", "transfers", "settings",
+] as const;
 
-// Initialize a default permissions matrix (admin has all, employee has view-only on most)
-function makeMatrix(role: string): Record<string, Record<Action, boolean>> {
-  const m: Record<string, Record<Action, boolean>> = {};
-  MODULES.forEach((mod) => {
-    if (role === "Super Admin" || role === "Agency Admin") {
-      m[mod] = { view: true, edit: true, delete: true, approve: true };
-    } else if (role === "Branch Manager") {
-      m[mod] = { view: true, edit: true, delete: mod === "Bookings" || mod === "Customers", approve: mod === "Bookings" || mod === "Quotations" };
-    } else if (role === "Accountant") {
-      m[mod] = { view: mod !== "Settings", edit: mod === "Payments" || mod === "Reports", delete: false, approve: mod === "Payments" };
-    } else {
-      m[mod] = { view: mod !== "Settings" && mod !== "Employees", edit: mod === "Bookings" || mod === "Customers" || mod === "Quotations", delete: false, approve: false };
-    }
-  });
+const CRUD_ACTIONS: CrudAction[] = ["view", "add", "edit", "delete"];
+
+function matrixFromCrud(role: Role, overrides?: Record<string, Record<string, CrudAction[]>> | null) {
+  const m: Record<string, Record<CrudAction, boolean>> = {};
+  for (const mod of MATRIX_MODULES) {
+    const actions = overrides?.[role]?.[mod] ?? ROLE_CRUD[role]?.[mod] ?? ["view"];
+    m[mod] = {
+      view: actions.includes("view"),
+      add: actions.includes("add"),
+      edit: actions.includes("edit"),
+      delete: actions.includes("delete"),
+    };
+  }
   return m;
 }
+
+function matrixToCrud(matrix: Record<string, Record<CrudAction, boolean>>): Record<string, CrudAction[]> {
+  const out: Record<string, CrudAction[]> = {};
+  for (const mod of Object.keys(matrix)) {
+    out[mod] = CRUD_ACTIONS.filter((a) => matrix[mod][a]);
+  }
+  return out;
+}
+
+const ROLES = ROLE_KEYS.map((role) => ({
+  role,
+  label: ROLE_LABELS[role],
+  users: role === "employee" ? 5 : role === "branch_manager" ? 2 : 1,
+  color:
+    role === "super_admin" ? "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400" :
+    role === "agency_admin" ? "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400" :
+    role === "branch_manager" ? "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400" :
+    role === "accountant" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400" :
+    role === "sales_executive" ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400" :
+    role === "product_executive" ? "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-400" :
+    "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-400",
+}));
 
 const TIMEZONES = ["Asia/Kolkata (IST, UTC+5:30)", "Asia/Dubai (GST, UTC+4)", "Asia/Singapore (SGT, UTC+8)", "Europe/London (GMT, UTC+0)", "America/New_York (EST, UTC-5)"];
 const LANGUAGES = ["English", "हिंदी (Hindi)", "தமிழ் (Tamil)", "తెలుగు (Telugu)", "ಕನ್ನಡ (Kannada)"];
@@ -181,40 +206,72 @@ function CompanyTab() {
 }
 
 function UsersTab() {
-  const [selectedRole, setSelectedRole] = useState("Branch Manager");
-  const [matrix, setMatrix] = useState<Record<string, Record<Action, boolean>>>(makeMatrix("Branch Manager"));
+  const { toast } = useToast();
+  const [selectedRole, setSelectedRole] = useState<Role>("branch_manager");
+  const [overrides, setOverrides] = useState<Record<string, Record<string, CrudAction[]>> | null>(null);
+  const [matrix, setMatrix] = useState<Record<string, Record<CrudAction, boolean>>>(matrixFromCrud("branch_manager"));
+  const [saving, setSaving] = useState(false);
   const [passwordPolicy, setPasswordPolicy] = useState({
     minLength: 10, requireUppercase: true, requireNumbers: true, requireSymbols: true,
     expiryDays: 90, twoFactor: true,
   });
 
-  const togglePermission = (mod: string, action: Action) => {
+  useEffect(() => {
+    apiFetch<{ overrides: Record<string, Record<string, CrudAction[]>> | null }>("/api/settings/role-permissions")
+      .then((data) => {
+        setOverrides(data.overrides);
+        setMatrix(matrixFromCrud(selectedRole, data.overrides));
+      })
+      .catch(() => setMatrix(matrixFromCrud(selectedRole)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const togglePermission = (mod: string, action: CrudAction) => {
     setMatrix((prev) => ({
       ...prev,
       [mod]: { ...prev[mod], [action]: !prev[mod][action] },
     }));
   };
 
-  const handleRoleChange = (role: string) => {
+  const handleRoleChange = (role: Role) => {
     setSelectedRole(role);
-    setMatrix(makeMatrix(role));
+    setMatrix(matrixFromCrud(role, overrides));
   };
 
-  const permissionsCount = (role: string) => {
-    const m = makeMatrix(role);
-    return MODULES.reduce((sum, mod) => sum + ACTIONS.filter((a) => m[mod][a]).length, 0);
+  const saveMatrix = async () => {
+    setSaving(true);
+    try {
+      const next = {
+        ...(overrides ?? {}),
+        [selectedRole]: {
+          ...(overrides?.[selectedRole] ?? {}),
+          ...matrixToCrud(matrix),
+        },
+      };
+      await apiFetch("/api/settings/role-permissions", {
+        method: "PUT",
+        body: JSON.stringify({ rolePermissions: next }),
+      });
+      setOverrides(next);
+      toast({ title: "Permissions saved", description: `${ROLE_LABELS[selectedRole]} CRUD rules updated and enforced on API.` });
+    } catch (e) {
+      toast({ title: "Save failed", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const permissionsCount = (role: Role) => {
+    const m = matrixFromCrud(role, overrides);
+    return MATRIX_MODULES.reduce((sum, mod) => sum + CRUD_ACTIONS.filter((a) => m[mod][a]).length, 0);
   };
 
   return (
     <div className="space-y-4">
-      {/* Roles table */}
       <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle className="text-base">Roles & Access</CardTitle>
-            <CardDescription>Define what each role can do</CardDescription>
-          </div>
-          <Button size="sm" variant="outline"><Plus className="w-3.5 h-3.5 mr-1.5" /> New Role</Button>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Roles & Access</CardTitle>
+          <CardDescription>Define what each role can do — enforced by backend CRUD checks</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -223,7 +280,6 @@ function UsersTab() {
                 <TableHead>Role</TableHead>
                 <TableHead className="text-right">Permissions</TableHead>
                 <TableHead className="text-right">Users</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -238,14 +294,11 @@ function UsersTab() {
                       <span className={cn("w-7 h-7 rounded-md flex items-center justify-center", r.color)}>
                         <Shield className="w-3.5 h-3.5" />
                       </span>
-                      <span className="text-sm font-medium">{r.role}</span>
+                      <span className="text-sm font-medium">{r.label}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-sm text-muted-foreground">{permissionsCount(r.role)} / {MODULES.length * 4}</TableCell>
+                  <TableCell className="text-right text-sm text-muted-foreground">{permissionsCount(r.role)} / {MATRIX_MODULES.length * 4}</TableCell>
                   <TableCell className="text-right text-sm">{r.users}</TableCell>
-                  <TableCell className="text-right">
-                    <Button size="icon" variant="ghost" className="h-7 w-7"><Pencil className="w-3.5 h-3.5" /></Button>
-                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -253,11 +306,15 @@ function UsersTab() {
         </CardContent>
       </Card>
 
-      {/* Permissions matrix */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Permissions Matrix — <span className="text-teal-600">{selectedRole}</span></CardTitle>
-          <CardDescription>Toggle module-level permissions for this role</CardDescription>
+        <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle className="text-base">Permissions Matrix — <span className="text-teal-600">{ROLE_LABELS[selectedRole]}</span></CardTitle>
+            <CardDescription>View / Add / Edit / Delete — saved to backend and checked on product write APIs</CardDescription>
+          </div>
+          <Button size="sm" onClick={saveMatrix} disabled={saving}>
+            <Save className="w-3.5 h-3.5 mr-1.5" />{saving ? "Saving..." : "Save Permissions"}
+          </Button>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -265,17 +322,17 @@ function UsersTab() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Module</TableHead>
-                  {ACTIONS.map((a) => <TableHead key={a} className="text-center capitalize">{a}</TableHead>)}
+                  {CRUD_ACTIONS.map((a) => <TableHead key={a} className="text-center capitalize">{a}</TableHead>)}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {MODULES.map((mod) => (
+                {MATRIX_MODULES.map((mod) => (
                   <TableRow key={mod}>
-                    <TableCell className="font-medium text-sm">{mod}</TableCell>
-                    {ACTIONS.map((a) => (
+                    <TableCell className="font-medium text-sm">{MODULE_LABELS[mod]}</TableCell>
+                    {CRUD_ACTIONS.map((a) => (
                       <TableCell key={a} className="text-center">
                         <Checkbox
-                          checked={matrix[mod][a]}
+                          checked={matrix[mod]?.[a] ?? false}
                           onCheckedChange={() => togglePermission(mod, a)}
                         />
                       </TableCell>
@@ -288,7 +345,6 @@ function UsersTab() {
         </CardContent>
       </Card>
 
-      {/* Password policy */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -319,13 +375,13 @@ function UsersTab() {
             {[
               { key: "requireUppercase", label: "Require uppercase letters (A-Z)" },
               { key: "requireNumbers", label: "Require numbers (0-9)" },
-              { key: "requireSymbols", label: "Require special characters (!@#$%)" },
+              { key: "requireSymbols", label: "Require special characters" },
               { key: "twoFactor", label: "Enforce two-factor authentication (2FA)" },
             ].map((p) => (
               <div key={p.key} className="flex items-center justify-between p-2.5 rounded-lg border border-border">
                 <span className="text-sm">{p.label}</span>
                 <Switch
-                  checked={(passwordPolicy as any)[p.key]}
+                  checked={Boolean((passwordPolicy as unknown as Record<string, boolean>)[p.key])}
                   onCheckedChange={(v) => setPasswordPolicy({ ...passwordPolicy, [p.key]: v })}
                 />
               </div>

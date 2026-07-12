@@ -1,0 +1,344 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Plus, Search, Copy, Archive, Trash2, Pencil, Download, Upload } from "lucide-react";
+import { PageHeader, StatusBadge } from "@/components/shared/ui-helpers";
+import { ProductFormDialog, type ProductKind } from "@/components/shared/product-form-dialog";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api";
+import type { ProductRecord } from "@/types";
+
+interface ProductCatalogProps {
+  title: string;
+  subtitle: string;
+  kind: ProductKind;
+  apiPath: "/api/products/hotels" | "/api/products/activities" | "/api/products/transfers";
+  columns: { key: string; label: string; render?: (item: ProductRecord) => React.ReactNode }[];
+}
+
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.replace(/^\uFEFF/, "").trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = splitCsvLine(lines[0]).map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const values = splitCsvLine(line);
+    const row: Record<string, string> = {};
+    headers.forEach((h, i) => { row[h] = (values[i] ?? "").trim(); });
+    return row;
+  });
+}
+
+function splitCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else current += ch;
+  }
+  result.push(current);
+  return result;
+}
+
+function rowToPayload(kind: ProductKind, row: Record<string, string>): Record<string, unknown> {
+  if (kind === "hotels") {
+    return {
+      name: row.name || row["Hotel Name"],
+      city: row.city || row.City || "",
+      country: row.country || row.Country || "India",
+      starCategory: parseInt(row.starCategory || row.Stars || "3", 10) || 3,
+      currency: row.currency || row.Currency || "INR",
+      description: row.description || null,
+      address: row.address || null,
+      status: row.status || "Active",
+      amenities: (row.amenities || "").split("|").map((s) => s.trim()).filter(Boolean),
+      roomCategories: [{
+        name: row.roomName || "Standard",
+        description: row.roomDescription || "",
+        maxOccupancy: parseInt(row.maxOccupancy || "2", 10) || 2,
+        maxAdults: parseInt(row.maxAdults || "2", 10) || 2,
+        maxChildren: parseInt(row.maxChildren || "0", 10) || 0,
+        mealPlan: row.mealPlan || "CP",
+        pricing: {
+          single: parseInt(row.priceSingle || "0", 10) || 0,
+          double: parseInt(row.priceDouble || "0", 10) || 0,
+          extraAdult: parseInt(row.priceExtraAdult || "0", 10) || 0,
+          extraChild: parseInt(row.priceExtraChild || "0", 10) || 0,
+        },
+      }],
+    };
+  }
+  if (kind === "activities") {
+    return {
+      name: row.name || row.Activity,
+      location: row.location || row.Location || null,
+      duration: row.duration || row.Duration || null,
+      adultPrice: parseInt(row.adultPrice || "0", 10) || 0,
+      childPrice: parseInt(row.childPrice || "0", 10) || 0,
+      currency: row.currency || "INR",
+      description: row.description || null,
+      status: row.status || "Active",
+      inclusions: (row.inclusions || "").split("|").map((s) => s.trim()).filter(Boolean),
+      exclusions: (row.exclusions || "").split("|").map((s) => s.trim()).filter(Boolean),
+    };
+  }
+  return {
+    name: row.name || row.Transfer,
+    transferType: row.transferType || row.Type || "Private",
+    vehicleType: row.vehicleType || row.Vehicle || null,
+    pickupLocation: row.pickupLocation || row.Pickup || "",
+    dropLocation: row.dropLocation || row.Drop || "",
+    privatePrice: row.privatePrice ? parseInt(row.privatePrice, 10) : null,
+    sharedPrice: row.sharedPrice ? parseInt(row.sharedPrice, 10) : null,
+    currency: row.currency || "INR",
+    status: row.status || "Active",
+  };
+}
+
+export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: ProductCatalogProps) {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [items, setItems] = useState<ProductRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("All");
+  const [sort, setSort] = useState("createdAt");
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<ProductRecord | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: "20",
+        sort,
+        order: "desc",
+        ...(q ? { q } : {}),
+        ...(status !== "All" ? { status } : {}),
+      });
+      const data = await apiFetch<{ items: ProductRecord[]; total: number }>(`${apiPath}?${params}`);
+      setItems(data.items);
+      setTotal(data.total);
+    } catch {
+      toast({ title: "Failed to load products", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }, [apiPath, page, q, sort, status, toast]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleDuplicate = async (id: string) => {
+    try {
+      await apiFetch(`${apiPath}/${id}/duplicate`, { method: "POST" });
+      toast({ title: "Product duplicated" });
+      load();
+    } catch {
+      toast({ title: "Duplicate failed", variant: "destructive" });
+    }
+  };
+
+  const handleArchive = async (id: string) => {
+    try {
+      await apiFetch(`${apiPath}/${id}/archive`, { method: "PATCH" });
+      toast({ title: "Product archived" });
+      load();
+    } catch {
+      toast({ title: "Archive failed", variant: "destructive" });
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await apiFetch(`${apiPath}/${id}`, { method: "DELETE" });
+      toast({ title: "Product deleted" });
+      load();
+    } catch {
+      toast({ title: "Delete failed", variant: "destructive" });
+    }
+  };
+
+  const handleSubmit = async (payload: Record<string, unknown>) => {
+    try {
+      if (editing) {
+        await apiFetch(`${apiPath}/${editing.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+        toast({ title: "Product updated" });
+      } else {
+        await apiFetch(apiPath, { method: "POST", body: JSON.stringify(payload) });
+        toast({ title: "Product created" });
+      }
+      setEditing(null);
+      load();
+    } catch (e) {
+      toast({ title: editing ? "Update failed" : "Create failed", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      throw e;
+    }
+  };
+
+  const exportCsv = () => {
+    const header = columns.map((c) => c.label).join(",");
+    const rows = items.map((item) => columns.map((c) => `"${String(item[c.key] ?? "").replace(/"/g, '""')}"`).join(","));
+    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.toLowerCase().replace(/\s+/g, "-")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadTemplate = () => {
+    const templates: Record<ProductKind, string> = {
+      hotels: "name,city,country,starCategory,currency,amenities,roomName,priceSingle,priceDouble,status\nSample Hotel,Mumbai,India,4,INR,WiFi|Pool,Deluxe,8000,10000,Active",
+      activities: "name,location,duration,adultPrice,childPrice,currency,inclusions,status\nDesert Safari,Dubai,6 hours,4500,2500,INR,Transfer|Dinner,Active",
+      transfers: "name,transferType,vehicleType,pickupLocation,dropLocation,privatePrice,sharedPrice,currency,status\nAirport Transfer,Private,Sedan,Airport,Hotel,2500,800,INR,Active",
+    };
+    const blob = new Blob([templates[kind]], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${kind}-import-template.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = async (file: File) => {
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (!rows.length) {
+        toast({ title: "CSV empty or invalid", variant: "destructive" });
+        return;
+      }
+      const data = await apiFetch<{ imported: number; failed: number }>(`${apiPath}/import`, {
+        method: "POST",
+        body: JSON.stringify({ rows: rows.map((r) => rowToPayload(kind, r)) }),
+      });
+      toast({ title: `Imported ${data.imported} products`, description: data.failed ? `${data.failed} rows failed` : undefined });
+      load();
+    } catch (e) {
+      toast({ title: "Import failed", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader title={title} subtitle={subtitle} />
+
+      <Card>
+        <CardContent className="p-4 space-y-4">
+          <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
+            <div className="flex flex-1 gap-2 flex-wrap">
+              <div className="relative flex-1 max-w-sm min-w-[180px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input className="pl-9" placeholder="Search products..." value={q} onChange={(e) => setQ(e.target.value)} />
+              </div>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Status</SelectItem>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Draft">Draft</SelectItem>
+                  <SelectItem value="Archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sort} onValueChange={setSort}>
+                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Sort" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="createdAt">Newest</SelectItem>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="updatedAt">Last Updated</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={exportCsv}><Download className="w-4 h-4 mr-1" />Export</Button>
+              <Button variant="outline" size="sm" onClick={downloadTemplate}><Download className="w-4 h-4 mr-1" />Template</Button>
+              <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4 mr-1" />Import</Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImport(file);
+                }}
+              />
+              <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
+                <Plus className="w-4 h-4 mr-1" />Add
+              </Button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={columns.length + 2} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                ) : items.length === 0 ? (
+                  <TableRow><TableCell colSpan={columns.length + 2} className="text-center py-8 text-muted-foreground">No products found</TableCell></TableRow>
+                ) : items.map((item) => (
+                  <TableRow key={item.id}>
+                    {columns.map((c) => (
+                      <TableCell key={c.key}>{c.render ? c.render(item) : String(item[c.key] ?? "—")}</TableCell>
+                    ))}
+                    <TableCell><StatusBadge status={item.status} /></TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => { setEditing(item); setFormOpen(true); }}><Pencil className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDuplicate(item.id)}><Copy className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleArchive(item.id)}><Archive className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <span>{total} total products</span>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <span>Page {page}</span>
+              <Button variant="outline" size="sm" disabled={page * 20 >= total} onClick={() => setPage((p) => p + 1)}>Next</Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <ProductFormDialog
+        open={formOpen}
+        onOpenChange={(open) => { setFormOpen(open); if (!open) setEditing(null); }}
+        kind={kind}
+        initial={editing}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  );
+}
