@@ -18,10 +18,14 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
 export const bookingSchema = z.object({
   customerName: z.string().min(1),
   customerId: z.string().optional(),
-  service: z.enum(["Flight", "Hotel", "Bus", "Train", "Holiday", "Visa", "Insurance"]),
+  service: z.enum(["Flight", "Hotel", "Holiday"]),
   route: z.string().min(1),
   travelDate: z.string().min(1),
   amount: z.number().positive(),
@@ -79,6 +83,7 @@ export const paymentSchema = z.object({
 
 export const employeeSchema = z.object({
   agencyId: z.string().optional(),
+  branchId: z.string().optional(),
   name: z.string().min(1),
   email: z.string().email(),
   phone: z.string().min(1),
@@ -89,6 +94,7 @@ export const employeeSchema = z.object({
   salary: z.number().min(0).optional(),
   target: z.number().min(0).optional(),
   joinDate: z.string().optional(),
+  permissions: z.array(z.string()).optional().nullable(),
 });
 
 export const employeeUpdateSchema = employeeSchema.partial().extend({
@@ -99,6 +105,7 @@ export const taskSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   assignedTo: z.string().min(1),
+  assignedToId: z.string().optional(),
   assignedBy: z.string().optional(),
   priority: z.enum(["Low", "Medium", "High", "Urgent"]).optional(),
   dueDate: z.string().min(1),
@@ -137,4 +144,17 @@ export const walletSchema = z.object({
   amount: z.number().positive(),
   source: z.string().optional(),
   description: z.string().optional(),
+});
+
+export const attendanceCheckSchema = z.object({});
+
+export const leaveSchema = z.object({
+  type: z.enum(["Casual", "Sick", "Earned", "Unpaid"]),
+  fromDate: z.string().min(1),
+  toDate: z.string().min(1),
+  reason: z.string().min(1),
+});
+
+export const leaveStatusSchema = z.object({
+  status: z.enum(["Approved", "Rejected"]),
 });

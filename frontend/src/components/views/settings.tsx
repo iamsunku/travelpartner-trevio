@@ -35,7 +35,7 @@ const ROLES = [
   { role: "Accountant", users: 1, color: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400" },
 ];
 
-const MODULES = ["Bookings", "Customers", "Payments", "Reports", "Employees", "Quotations", "Visa", "API Marketplace", "Settings"];
+const MODULES = ["Bookings", "Customers", "Payments", "Reports", "Employees", "Quotations", "API Marketplace", "Settings"];
 const ACTIONS = ["view", "edit", "delete", "approve"] as const;
 type Action = typeof ACTIONS[number];
 

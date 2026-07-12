@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Trevio Global — Enterprise Travel Booking Platform",
-  description: "Trevio Global — all-in-one travel booking SaaS: flights, hotels, buses, holidays, visa & insurance. Multi-agency RBAC, CRM, payments, commission engine.",
+  description: "Trevio Global — all-in-one travel booking SaaS: flights, hotels & holidays. Multi-agency RBAC, CRM, payments, commission engine.",
   keywords: ["Trevio Global", "travel booking", "flight booking", "hotel booking", "travel agency software", "CRM", "Razorpay"],
   authors: [{ name: "Trevio Global" }],
   icons: {

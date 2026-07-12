@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plane, Hotel, Bus, Palmtree, Shield, ArrowRight, Mail, Lock, Phone,
+  Plane, Hotel, Zap, Palmtree, Shield, ArrowRight, Mail, Lock, Phone,
   Building2, UserCog, User, Eye, EyeOff, CheckCircle2, Sparkles,
   Globe, TrendingUp,
 } from "lucide-react";
@@ -11,6 +11,7 @@ import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/nav-config";
 import { ROLE_USERS } from "@/lib/mock-data";
+import { api } from "@/lib/api";
 import type { Role } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +35,7 @@ const ROLE_CARDS: { role: Role; icon: React.ElementType; gradient: string }[] = 
 const HIGHLIGHTS = [
   { icon: Plane, label: "1M+ Flights Booked" },
   { icon: Hotel, label: "50K+ Hotels" },
-  { icon: Bus, label: "Real-time Inventory" },
+  { icon: Zap, label: "Real-time Inventory" },
   { icon: Palmtree, label: "Custom Holiday Packages" },
 ];
 
@@ -49,6 +50,8 @@ export function LoginScreen() {
   const [password, setPassword] = useState(DEMO_PASSWORD);
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   const selectRole = (role: Role) => {
     setSelectedRole(role);
@@ -76,6 +79,31 @@ export function LoginScreen() {
       toast({ title: "OTP login is a demo-only flow", description: "Please sign in with email and password instead." });
       setMode("login");
     }, 600);
+  };
+
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim()) {
+      toast({ title: "Enter your email", variant: "destructive" });
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const res = await api.forgotPassword(forgotEmail.trim());
+      if (res.tempPassword) {
+        toast({
+          title: "Password reset",
+          description: `This demo has no email delivery — your new temporary password is: ${res.tempPassword} (copy it now, it won't be shown again).`,
+        });
+      } else {
+        toast({ title: "Check that email", description: "If an account exists for that address, it has been reset." });
+      }
+      setMode("login");
+      setForgotEmail("");
+    } catch {
+      toast({ title: "Couldn't reset password", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setForgotLoading(false);
+    }
   };
 
   return (
@@ -116,7 +144,7 @@ export function LoginScreen() {
               Book the world,<br />run your agency.
             </h2>
             <p className="text-teal-100 text-base leading-relaxed">
-              Flights, hotels, buses, holidays, visa & insurance — with multi-agency RBAC,
+              Flights, hotels, and holidays — with multi-agency RBAC,
               CRM, payments, and commission engine. Everything in one powerful dashboard.
             </p>
           </motion.div>
@@ -331,18 +359,24 @@ export function LoginScreen() {
                   <div>
                     <h2 className="text-2xl font-bold">Reset Password</h2>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Enter your email and we'll send you a reset link.
+                      Enter your email — since this demo has no email delivery, we'll hand you a new temporary password directly.
                     </p>
                   </div>
                   <div className="space-y-1.5">
                     <Label>Email Address</Label>
                     <div className="relative">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input className="pl-9 h-11" placeholder="you@agency.com" />
+                      <Input
+                        className="pl-9 h-11"
+                        placeholder="you@agency.com"
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleForgotPassword()}
+                      />
                     </div>
                   </div>
-                  <Button onClick={() => { toast({ title: "Reset link sent", description: "Check your inbox" }); setMode("login"); }} className="w-full h-11">
-                    Send Reset Link
+                  <Button onClick={handleForgotPassword} disabled={forgotLoading} className="w-full h-11">
+                    {forgotLoading ? "Resetting..." : "Reset Password"}
                   </Button>
                 </div>
               )}

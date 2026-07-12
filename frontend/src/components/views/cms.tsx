@@ -81,7 +81,7 @@ interface BlogPost {
 }
 const BLOGS: BlogPost[] = [
   { id: "bl-1", title: "Top 10 Honeymoon Destinations in 2025", author: "Sneha Reddy", category: "Honeymoon", status: "Published", date: "2025-01-18", views: 12480 },
-  { id: "bl-2", title: "Visa-Free Countries for Indians in 2025", author: "Aisha Khan", category: "Visa Guide", status: "Published", date: "2025-01-15", views: 28420 },
+  { id: "bl-2", title: "Best Holiday Packages for Indians in 2025", author: "Aisha Khan", category: "Holiday Guide", status: "Published", date: "2025-01-15", views: 28420 },
   { id: "bl-3", title: "How to Pack Light for a 7-Day Europe Trip", author: "Priya Nair", category: "Travel Tips", status: "Published", date: "2025-01-10", views: 8420 },
   { id: "bl-4", title: "Best Time to Book Flights for Maximum Savings", author: "Rahul Khanna", category: "Flight Tips", status: "Draft", date: "2025-01-20", views: 0 },
   { id: "bl-5", title: "Bali vs Maldives — Which is Better for Couples?", author: "Sneha Reddy", category: "Honeymoon", status: "Published", date: "2025-01-05", views: 18920 },
@@ -100,7 +100,7 @@ const TESTIMONIALS_INIT: Testimonial[] = [
   { id: "ts-1", name: "Karthik Venkat", rating: 5, text: "Wanderlust Travels planned our Bali honeymoon flawlessly. Every detail was perfect — private villa, candle-lit dinners, and seamless transfers!", status: "Published", trip: "Bali Bliss - 6N/7D" },
   { id: "ts-2", name: "Rohit Gupta", rating: 5, text: "TechCorp India uses them for all corporate travel. The dashboard makes approvals and reporting effortless.", status: "Published", trip: "Corporate Travel" },
   { id: "ts-3", name: "Anjali Desai", rating: 4, text: "Great Goa package. Beach resort was beautiful but check-in took longer than expected. Overall a wonderful trip.", status: "Published", trip: "Goa Beach Party - 3N/4D" },
-  { id: "ts-4", name: "Imran Khan", rating: 5, text: "Got my Schengen visa processed in just 12 days! Highly recommend their visa service.", status: "Pending", trip: "Schengen Visa" },
+  { id: "ts-4", name: "Imran Khan", rating: 5, text: "Booked our Dubai holiday in minutes and the whole trip was flawlessly organized end to end.", status: "Pending", trip: "Dubai Deluxe - 4N/5D" },
   { id: "ts-5", name: "Meera Iyer", rating: 5, text: "The holiday expert understood our family's needs and crafted the perfect Europe itinerary within budget.", status: "Pending", trip: "Europe Explorer - 11N/12D" },
 ];
 
@@ -113,13 +113,13 @@ interface Faq {
 const FAQS_INIT: Faq[] = [
   { id: "fq-1", question: "How do I cancel a booking?", answer: "You can cancel any booking from your dashboard under My Bookings. Cancellation charges depend on the airline/hotel policy and time of cancellation. Refunds are processed to the original payment method within 7-10 business days.", category: "Bookings" },
   { id: "fq-2", question: "What is the refund policy?", answer: "Refunds for cancellations are processed as per the supplier's policy. For flights, cancellation within 24 hours of booking is fully refundable. Hotel refunds depend on the property's cancellation window.", category: "Payments" },
-  { id: "fq-3", question: "Do I need a visa for international travel?", answer: "Visa requirements vary by destination and your nationality. Our visa experts can assist with documentation and processing for 80+ countries. Contact us at visas@travelpartner.pro.", category: "Visa" },
+  { id: "fq-3", question: "Which services do you offer?", answer: "We offer flight bookings, hotel bookings, and curated holiday packages. Contact us at support@travelpartner.pro for anything else.", category: "General" },
   { id: "fq-4", question: "How do I use my wallet balance?", answer: "Wallet balance can be used as full or partial payment during checkout. Select 'Wallet' as the payment method on the payment page. Wallet top-ups are instant via UPI, cards, or net banking.", category: "Payments" },
   { id: "fq-5", question: "Can I modify a booking after confirmation?", answer: "Yes, most bookings can be modified. Date changes for flights may attract airline change fees plus our service charge. Hotel date changes depend on availability and the property's policy.", category: "Bookings" },
 ];
 
 const SEO_PAGES = [
-  { id: "home", name: "Homepage", title: "Travel Partner Pro — Flights, Hotels, Holidays, Visa & More", description: "Book domestic & international flights, hotels, holiday packages, bus, train tickets & visa services with best price guarantee. Trusted by 1M+ travelers." },
+  { id: "home", name: "Homepage", title: "Travel Partner Pro — Flights, Hotels & Holidays", description: "Book domestic & international flights, hotels, and holiday packages with best price guarantee. Trusted by 1M+ travelers." },
   { id: "flights", name: "Flights", title: "Cheap Flight Tickets Booking Online — Best Fares | Travel Partner Pro", description: "Search & book cheap domestic and international flight tickets. Compare fares across 700+ airlines. Instant ticketing with best price guarantee." },
   { id: "hotels", name: "Hotels", title: "Hotel Booking Online — 250K+ Hotels at Best Prices", description: "Book hotels online at the best prices. Choose from luxury resorts to budget stays across 12,000+ destinations. Free cancellation available." },
   { id: "holidays", name: "Holiday Packages", title: "Holiday Tour Packages — Domestic & International Trips", description: "Customized domestic & international holiday packages. Honeymoon, family, group & corporate tours with flights, hotels, transfers included." },
@@ -139,12 +139,15 @@ export function CmsView() {
   const { toast } = useToast();
   const [tab, setTab] = useState("banners");
   const [banners, setBanners] = useState<Banner[]>(BANNERS_INIT);
+  const [blogs, setBlogs] = useState<BlogPost[]>(BLOGS);
   const [testimonials, setTestimonials] = useState<Testimonial[]>(TESTIMONIALS_INIT);
   const [faqs, setFaqs] = useState<Faq[]>(FAQS_INIT);
   const [bannerOpen, setBannerOpen] = useState(false);
   const [blogOpen, setBlogOpen] = useState(false);
   const [faqOpen, setFaqOpen] = useState(false);
   const [editingFaq, setEditingFaq] = useState<Faq | null>(null);
+  const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
+  const [editingBlog, setEditingBlog] = useState<BlogPost | null>(null);
   const [bannerForm, setBannerForm] = useState({ title: "", position: "Home" as Banner["position"] });
   const [blogForm, setBlogForm] = useState({ title: "", author: "", category: "Travel Tips" });
   const [faqForm, setFaqForm] = useState({ question: "", answer: "", category: "Bookings" });
@@ -152,21 +155,27 @@ export function CmsView() {
   const [seoData, setSeoData] = useState(SEO_PAGES);
   const [blogSearch, setBlogSearch] = useState("");
 
-  function addBanner() {
+  function saveBanner() {
     if (!bannerForm.title) {
       toast({ title: "Missing title", description: "Banner title required.", variant: "destructive" });
       return;
     }
-    const newBanner: Banner = {
-      id: `bn-${banners.length + 1}`, title: bannerForm.title, position: bannerForm.position,
-      order: banners.filter((b) => b.position === bannerForm.position).length + 1,
-      active: true,
-      gradient: ["from-teal-500 to-emerald-600", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600", "from-rose-500 to-pink-600"][banners.length % 4],
-    };
-    setBanners([...banners, newBanner]);
+    if (editingBanner) {
+      setBanners((prev) => prev.map((b) => b.id === editingBanner.id ? { ...b, title: bannerForm.title, position: bannerForm.position } : b));
+      toast({ title: "Banner updated", description: bannerForm.title });
+    } else {
+      const newBanner: Banner = {
+        id: `bn-${banners.length + 1}`, title: bannerForm.title, position: bannerForm.position,
+        order: banners.filter((b) => b.position === bannerForm.position).length + 1,
+        active: true,
+        gradient: ["from-teal-500 to-emerald-600", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600", "from-rose-500 to-pink-600"][banners.length % 4],
+      };
+      setBanners([...banners, newBanner]);
+      toast({ title: "Banner added", description: newBanner.title });
+    }
     setBannerOpen(false);
+    setEditingBanner(null);
     setBannerForm({ title: "", position: "Home" });
-    toast({ title: "Banner added", description: newBanner.title });
   }
 
   function moveBanner(id: string, dir: "up" | "down") {
@@ -185,14 +194,30 @@ export function CmsView() {
     setBanners((prev) => prev.map((b) => b.id === id ? { ...b, active: !b.active } : b));
   }
 
-  function addBlog() {
+  function saveBlog() {
     if (!blogForm.title || !blogForm.author) {
       toast({ title: "Missing fields", description: "Title and author required.", variant: "destructive" });
       return;
     }
-    toast({ title: "Blog post created", description: blogForm.title });
+    if (editingBlog) {
+      setBlogs((prev) => prev.map((b) => b.id === editingBlog.id ? { ...b, ...blogForm } : b));
+      toast({ title: "Post updated", description: blogForm.title });
+    } else {
+      const newBlog: BlogPost = {
+        id: `bl-${blogs.length + 1}`, ...blogForm, status: "Draft",
+        date: new Date().toISOString().slice(0, 10), views: 0,
+      };
+      setBlogs([newBlog, ...blogs]);
+      toast({ title: "Blog post created", description: blogForm.title });
+    }
     setBlogOpen(false);
+    setEditingBlog(null);
     setBlogForm({ title: "", author: "", category: "Travel Tips" });
+  }
+
+  function deleteBlog(id: string, title: string) {
+    setBlogs((prev) => prev.filter((b) => b.id !== id));
+    toast({ title: "Post deleted", description: title, variant: "destructive" });
   }
 
   function saveFaq() {
@@ -216,7 +241,7 @@ export function CmsView() {
     setTestimonials((prev) => prev.map((t) => t.id === id ? { ...t, status: t.status === "Published" ? "Pending" : "Published" } : t));
   }
 
-  const filteredBlogs = BLOGS.filter((b) =>
+  const filteredBlogs = blogs.filter((b) =>
     b.title.toLowerCase().includes(blogSearch.toLowerCase()) ||
     b.author.toLowerCase().includes(blogSearch.toLowerCase()) ||
     b.category.toLowerCase().includes(blogSearch.toLowerCase())
@@ -240,7 +265,7 @@ export function CmsView() {
         <TabsContent value="banners" className="mt-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">{banners.length} banners · {banners.filter((b) => b.active).length} live</p>
-            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={() => setBannerOpen(true)}>
+            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={() => { setEditingBanner(null); setBannerForm({ title: "", position: "Home" }); setBannerOpen(true); }}>
               <Plus className="w-4 h-4 mr-1.5" /> Add Banner
             </Button>
           </div>
@@ -268,7 +293,7 @@ export function CmsView() {
                           <Button size="icon" variant="ghost" className="h-7 w-7"><MoreHorizontal className="w-3.5 h-3.5" /></Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-36">
-                          <DropdownMenuItem onClick={() => toast({ title: "Edit banner", description: b.title })}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setEditingBanner(b); setBannerForm({ title: b.title, position: b.position }); setBannerOpen(true); }}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-rose-600" onClick={() => { setBanners((prev) => prev.filter((x) => x.id !== b.id)); toast({ title: "Banner deleted", description: b.title, variant: "destructive" }); }}>
                             <Trash2 className="w-4 h-4 mr-2" /> Delete
@@ -320,7 +345,7 @@ export function CmsView() {
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input placeholder="Search posts..." className="pl-8" value={blogSearch} onChange={(e) => setBlogSearch(e.target.value)} />
             </div>
-            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={() => setBlogOpen(true)}>
+            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={() => { setEditingBlog(null); setBlogForm({ title: "", author: "", category: "Travel Tips" }); setBlogOpen(true); }}>
               <Plus className="w-4 h-4 mr-1.5" /> New Post
             </Button>
           </div>
@@ -355,9 +380,9 @@ export function CmsView() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-40">
                               <DropdownMenuItem onClick={() => toast({ title: "View post", description: b.title })}><Eye className="w-4 h-4 mr-2" /> View</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toast({ title: "Edit post", description: b.title })}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setEditingBlog(b); setBlogForm({ title: b.title, author: b.author, category: b.category }); setBlogOpen(true); }}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-rose-600" onClick={() => toast({ title: "Post deleted", description: b.title, variant: "destructive" })}>
+                              <DropdownMenuItem className="text-rose-600" onClick={() => deleteBlog(b.id, b.title)}>
                                 <Trash2 className="w-4 h-4 mr-2" /> Delete
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -480,7 +505,7 @@ export function CmsView() {
                     </div>
                     <div className="space-y-1.5">
                       <Label>Keywords (comma-separated)</Label>
-                      <Input defaultValue="travel, flights, hotels, holiday packages, visa, bus booking, train tickets" />
+                      <Input defaultValue="travel, flights, hotels, holiday packages" />
                     </div>
                     <div className="flex gap-2">
                       <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={() => toast({ title: "SEO saved", description: `${p.name} meta updated.` })}>
@@ -555,11 +580,11 @@ export function CmsView() {
       </Tabs>
 
       {/* Banner Dialog */}
-      <Dialog open={bannerOpen} onOpenChange={setBannerOpen}>
+      <Dialog open={bannerOpen} onOpenChange={(v) => { setBannerOpen(v); if (!v) setEditingBanner(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><ImageIcon className="w-5 h-5 text-teal-600" /> Add Banner</DialogTitle>
-            <DialogDescription>Create a new homepage or section banner.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><ImageIcon className="w-5 h-5 text-teal-600" /> {editingBanner ? "Edit Banner" : "Add Banner"}</DialogTitle>
+            <DialogDescription>{editingBanner ? "Update this banner." : "Create a new homepage or section banner."}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -580,17 +605,17 @@ export function CmsView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBannerOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={addBanner}><Plus className="w-4 h-4 mr-1.5" /> Add</Button>
+            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={saveBanner}><Plus className="w-4 h-4 mr-1.5" /> {editingBanner ? "Save Changes" : "Add"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Blog Dialog */}
-      <Dialog open={blogOpen} onOpenChange={setBlogOpen}>
+      <Dialog open={blogOpen} onOpenChange={(v) => { setBlogOpen(v); if (!v) setEditingBlog(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><FileText className="w-5 h-5 text-teal-600" /> New Blog Post</DialogTitle>
-            <DialogDescription>Draft a new article for the blog.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><FileText className="w-5 h-5 text-teal-600" /> {editingBlog ? "Edit Blog Post" : "New Blog Post"}</DialogTitle>
+            <DialogDescription>{editingBlog ? "Update this article." : "Draft a new article for the blog."}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -609,7 +634,7 @@ export function CmsView() {
                   <SelectContent>
                     <SelectItem value="Travel Tips">Travel Tips</SelectItem>
                     <SelectItem value="Honeymoon">Honeymoon</SelectItem>
-                    <SelectItem value="Visa Guide">Visa Guide</SelectItem>
+                    <SelectItem value="Holiday Guide">Holiday Guide</SelectItem>
                     <SelectItem value="Flight Tips">Flight Tips</SelectItem>
                     <SelectItem value="Domestic">Domestic</SelectItem>
                   </SelectContent>
@@ -623,7 +648,7 @@ export function CmsView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBlogOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={addBlog}><Plus className="w-4 h-4 mr-1.5" /> Create Post</Button>
+            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={saveBlog}><Plus className="w-4 h-4 mr-1.5" /> {editingBlog ? "Save Changes" : "Create Post"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -643,7 +668,7 @@ export function CmsView() {
                 <SelectContent>
                   <SelectItem value="Bookings">Bookings</SelectItem>
                   <SelectItem value="Payments">Payments</SelectItem>
-                  <SelectItem value="Visa">Visa</SelectItem>
+                  <SelectItem value="General">General</SelectItem>
                   <SelectItem value="Account">Account</SelectItem>
                   <SelectItem value="Other">Other</SelectItem>
                 </SelectContent>

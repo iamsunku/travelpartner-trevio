@@ -1,10 +1,10 @@
 import type { ViewKey } from "@/types";
 import {
-  LayoutDashboard, Plane, Hotel, Bus, Train, Palmtree, FileText, Shield,
+  LayoutDashboard, Plane, Hotel, Palmtree,
   Users, Target, FileSpreadsheet, Ticket, CreditCard, Wallet, Percent,
   BarChart3, UserCog, CheckSquare, LifeBuoy, Bell, Megaphone, LayoutGrid,
   Receipt, KeyRound, Settings, History, Building2, GitBranch, Store, Activity,
-  type LucideIcon,
+  CalendarCheck, type LucideIcon,
 } from "lucide-react";
 
 export interface SearchItem {
@@ -19,11 +19,7 @@ export const SEARCH_ITEMS: SearchItem[] = [
   { key: "dashboard", label: "Dashboard", section: "Overview", keywords: ["home", "overview", "kpi"], icon: LayoutDashboard },
   { key: "flights", label: "Flights", section: "Bookings", keywords: ["flight", "airline", "air"], icon: Plane },
   { key: "hotels", label: "Hotels", section: "Bookings", keywords: ["hotel", "stay", "room"], icon: Hotel },
-  { key: "bus", label: "Bus", section: "Bookings", keywords: ["bus", "coach"], icon: Bus },
-  { key: "train", label: "Train", section: "Bookings", keywords: ["train", "rail", "irctc"], icon: Train },
   { key: "holiday", label: "Holiday Packages", section: "Bookings", keywords: ["holiday", "package", "tour"], icon: Palmtree },
-  { key: "visa", label: "Visa", section: "Bookings", keywords: ["visa", "passport", "embassy"], icon: FileText },
-  { key: "insurance", label: "Insurance", section: "Bookings", keywords: ["insurance", "claim"], icon: Shield },
   { key: "bookings", label: "Booking Management", section: "Bookings", keywords: ["booking", "reservation", "ticket"], icon: Ticket },
   { key: "crm", label: "CRM / Leads", section: "Sales", keywords: ["crm", "lead", "enquiry", "pipeline"], icon: Target },
   { key: "customers", label: "Customers", section: "Sales", keywords: ["customer", "client"], icon: Users },
@@ -34,6 +30,7 @@ export const SEARCH_ITEMS: SearchItem[] = [
   { key: "finance", label: "Finance / GST", section: "Finance", keywords: ["finance", "gst", "invoice", "tax"], icon: Receipt },
   { key: "reports", label: "Reports & Analytics", section: "Insights", keywords: ["report", "analytics", "chart"], icon: BarChart3 },
   { key: "employees", label: "Employees", section: "Team", keywords: ["employee", "staff", "hr"], icon: UserCog },
+  { key: "attendance", label: "Attendance & Leave", section: "Team", keywords: ["attendance", "leave", "checkin", "checkout"], icon: CalendarCheck },
   { key: "tasks", label: "Task Management", section: "Team", keywords: ["task", "todo"], icon: CheckSquare },
   { key: "support", label: "Support", section: "Team", keywords: ["support", "help", "ticket", "chat"], icon: LifeBuoy },
   { key: "notifications", label: "Notifications", section: "Team", keywords: ["notification", "alert"], icon: Bell },

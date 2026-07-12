@@ -12,6 +12,7 @@ import type {
   WalletTransaction,
   Notification,
   Task,
+  Module,
 } from "@/types";
 import { api } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
@@ -28,19 +29,6 @@ import {
   mapApiFinance,
   mapApiCommission,
 } from "@/lib/api-mappers";
-
-export interface VisaApplication {
-  id: string;
-  country: string;
-  type: string;
-  applicant: string;
-  submittedDate: string;
-  appointmentDate: string;
-  status: "Submitted" | "Under Review" | "Approved" | "Rejected";
-  passport: string;
-}
-
-const INITIAL_VISA: VisaApplication[] = [];
 
 export interface NewBookingInput {
   customerName: string;
@@ -67,7 +55,6 @@ interface DemoDataState {
   walletBalance: number;
   walletTxns: WalletTransaction[];
   notifications: Notification[];
-  visaApplications: VisaApplication[];
   bookingSeq: number;
   paymentSeq: number;
 
@@ -81,7 +68,8 @@ interface DemoDataState {
   addLead: (lead: Omit<Lead, "id" | "stage" | "createdAt">) => Lead;
   updateLeadStage: (id: string, stage: Lead["stage"]) => void;
   addQuotation: (q: Omit<Quotation, "id" | "quoteNo" | "createdAt" | "status">) => Quotation;
-  addEmployee: (e: Omit<Employee, "id" | "joinDate" | "status" | "incentives" | "achieved" | "attendance">) => Promise<Employee & { tempPassword?: string }>;
+  addEmployee: (e: Omit<Employee, "id" | "joinDate" | "status" | "incentives" | "achieved" | "attendance"> & { branchId?: string; permissions?: Module[] | null }) => Promise<Employee & { tempPassword?: string }>;
+  updateEmployee: (id: string, patch: Partial<Employee> & { branchId?: string | null; permissions?: Module[] | null }) => Promise<void>;
   addTask: (t: Omit<Task, "id" | "createdAt" | "status">) => Task;
   updateTaskStatus: (id: string, status: Task["status"]) => void;
   addPayment: (p: Omit<Payment, "id" | "txnId" | "date" | "status">) => Payment;
@@ -89,7 +77,6 @@ interface DemoDataState {
   walletTransfer: (amount: number, description: string) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
-  addVisaApplication: (app: Omit<VisaApplication, "id" | "submittedDate" | "status" | "appointmentDate"> & { fee?: number }) => VisaApplication;
   hydrateFromApi: (agencyId?: string) => Promise<void>;
   resetDemoData: () => void;
 }
@@ -125,7 +112,6 @@ const initialState = {
   walletBalance: 0,
   walletTxns: [] as WalletTransaction[],
   notifications: [] as Notification[],
-  visaApplications: INITIAL_VISA,
   bookingSeq: 1,
   paymentSeq: 1,
   dashboardStats: null,
@@ -311,8 +297,9 @@ export const useDemoDataStore = create<DemoDataState>()(
       },
 
       addEmployee: async (input) => {
+        const { branchId, permissions, ...employeeFields } = input;
         const employee: Employee = {
-          ...input,
+          ...employeeFields,
           id: `em-${Date.now()}`,
           status: "Active",
           incentives: 0,
@@ -329,14 +316,25 @@ export const useDemoDataStore = create<DemoDataState>()(
             designation: input.designation,
             department: input.department,
             branch: input.branch,
+            branchId,
             role: input.role,
             salary: input.salary,
             target: input.target,
+            permissions,
           });
           return { ...employee, tempPassword: res.tempPassword };
         } catch {
           reportSyncFailure("Employee");
           return employee;
+        }
+      },
+
+      updateEmployee: async (id, patch) => {
+        set((s) => ({ employees: s.employees.map((e) => (e.id === id ? { ...e, ...patch } : e)) }));
+        try {
+          await api.updateEmployee(id, patch);
+        } catch {
+          reportSyncFailure("Employee update");
         }
       },
 
@@ -456,35 +454,6 @@ export const useDemoDataStore = create<DemoDataState>()(
         set((s) => ({
           notifications: s.notifications.map((n) => ({ ...n, read: true })),
         }));
-      },
-
-      addVisaApplication: (input) => {
-        const id = `VS-2025-${Math.floor(1000 + Math.random() * 9000)}`;
-        const submitted = todayISO();
-        const appointment = new Date();
-        appointment.setDate(appointment.getDate() + 14);
-        const { fee, ...rest } = input;
-        const app: VisaApplication = {
-          ...rest,
-          id,
-          submittedDate: submitted,
-          appointmentDate: appointment.toISOString().slice(0, 10),
-          status: "Submitted",
-        };
-        set((s) => ({ visaApplications: [app, ...s.visaApplications] }));
-
-        get().addBooking({
-          customerName: input.applicant,
-          service: "Visa",
-          route: `${input.country} Visa — ${input.type}`,
-          travelDate: appointment.toISOString().slice(0, 10),
-          amount: fee ?? 8500,
-          paymentMethod: "Pay at Embassy",
-          status: "Pending",
-          paymentStatus: "Pending",
-        });
-
-        return app;
       },
 
       resetDemoData: () => set({ ...initialState }),

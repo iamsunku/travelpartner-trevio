@@ -47,8 +47,6 @@ const INITIAL_KEYS: ApiKey[] = [
   { id: "k-1", provider: "Amadeus", keyMasked: "sk_live_••••a92f", environment: "Production", status: "Active", created: "2024-08-12", lastUsed: "2 min ago" },
   { id: "k-2", provider: "TBO Holidays", keyMasked: "sk_live_••••71b3", environment: "Production", status: "Active", created: "2024-09-04", lastUsed: "12 min ago" },
   { id: "k-3", provider: "Booking.com", keyMasked: "sk_live_••••c418", environment: "Production", status: "Active", created: "2024-07-22", lastUsed: "1 hour ago" },
-  { id: "k-4", provider: "redBus", keyMasked: "sk_test_••••9d51", environment: "Sandbox", status: "Active", created: "2024-11-15", lastUsed: "3 hours ago" },
-  { id: "k-5", provider: "IRCTC", keyMasked: "sk_live_••••2e7a", environment: "Production", status: "Active", created: "2024-06-30", lastUsed: "20 min ago" },
   { id: "k-6", provider: "Hotelbeds", keyMasked: "sk_test_••••0f2c", environment: "Sandbox", status: "Revoked", created: "2024-10-08", lastUsed: "2 days ago" },
   { id: "k-7", provider: "Sabre", keyMasked: "sk_live_••••8a1d", environment: "Production", status: "Active", created: "2024-05-19", lastUsed: "45 min ago" },
 ];
@@ -70,16 +68,12 @@ const LOG_ENTRIES: LogEntry[] = [
   { id: "lg-1", timestamp: "2025-01-20 14:32:11", api: "Amadeus", endpoint: "/v2/shopping/flight-offers", method: "POST", status: 200, responseMs: 342, requestId: "req_8aB2kX" },
   { id: "lg-2", timestamp: "2025-01-20 14:31:58", api: "TBO", endpoint: "/flight/search", method: "GET", status: 200, responseMs: 218, requestId: "req_K3m9pL" },
   { id: "lg-3", timestamp: "2025-01-20 14:31:42", api: "Booking.com", endpoint: "/v2/hotels/search", method: "GET", status: 429, responseMs: 1024, requestId: "req_P4nQ8m" },
-  { id: "lg-4", timestamp: "2025-01-20 14:31:25", api: "redBus", endpoint: "/v1/bus/available", method: "GET", status: 200, responseMs: 156, requestId: "req_R2tY6k" },
-  { id: "lg-5", timestamp: "2025-01-20 14:30:58", api: "IRCTC", endpoint: "/train/availability", method: "GET", status: 500, responseMs: 5012, requestId: "req_M8vL2n" },
   { id: "lg-6", timestamp: "2025-01-20 14:30:32", api: "Amadeus", endpoint: "/v1/booking/flight-orders", method: "POST", status: 201, responseMs: 892, requestId: "req_W5xK9p" },
   { id: "lg-7", timestamp: "2025-01-20 14:30:11", api: "Hotelbeds", endpoint: "/hotels/availability", method: "GET", status: 200, responseMs: 412, requestId: "req_T3pR7q" },
   { id: "lg-8", timestamp: "2025-01-20 14:29:48", api: "Sabre", endpoint: "/v1/shop/flights", method: "POST", status: 400, responseMs: 198, requestId: "req_F6dB1t" },
   { id: "lg-9", timestamp: "2025-01-20 14:29:25", api: "TBO", endpoint: "/hotel/book", method: "POST", status: 200, responseMs: 1240, requestId: "req_H9kL4w" },
   { id: "lg-10", timestamp: "2025-01-20 14:29:02", api: "Booking.com", endpoint: "/v2/reservations", method: "POST", status: 201, responseMs: 758, requestId: "req_J2mN8r" },
-  { id: "lg-11", timestamp: "2025-01-20 14:28:34", api: "redBus", endpoint: "/v1/bus/book", method: "POST", status: 502, responseMs: 3022, requestId: "req_S7pQ3v" },
   { id: "lg-12", timestamp: "2025-01-20 14:28:11", api: "Amadeus", endpoint: "/v1/shopping/flight-dates", method: "GET", status: 200, responseMs: 264, requestId: "req_V4tX6y" },
-  { id: "lg-13", timestamp: "2025-01-20 14:27:48", api: "IRCTC", endpoint: "/pnr/status", method: "GET", status: 401, responseMs: 92, requestId: "req_A8wN2z" },
   { id: "lg-14", timestamp: "2025-01-20 14:27:22", api: "Hotelbeds", endpoint: "/bookings/confirm", method: "PUT", status: 200, responseMs: 638, requestId: "req_C3fK7b" },
   { id: "lg-15", timestamp: "2025-01-20 14:26:55", api: "Sabre", endpoint: "/v2/order/flights", method: "POST", status: 200, responseMs: 1102, requestId: "req_E5rT9d" },
 ];
@@ -444,7 +438,7 @@ export function ApiManagementView() {
               <Select value={genProvider} onValueChange={setGenProvider}>
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["Amadeus", "Sabre", "TBO Holidays", "Booking.com", "redBus", "IRCTC", "Hotelbeds", "Kiwi.com"].map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                  {["Amadeus", "Sabre", "TBO Holidays", "Booking.com", "Hotelbeds", "Kiwi.com"].map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

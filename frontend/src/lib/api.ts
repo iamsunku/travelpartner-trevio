@@ -67,6 +67,12 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
 
+  forgotPassword: (email: string) =>
+    apiFetch<{ ok: boolean; tempPassword?: string }>("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
   getBookings: (params?: Record<string, string>) => {
     const q = params ? `?${new URLSearchParams(params)}` : "";
     return apiFetch<{ bookings: ApiBooking[]; total: number }>(`/api/bookings${q}`);
@@ -235,6 +241,19 @@ export const api = {
   updateSettings: (body: any) => apiFetch<any>("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
 
   getMonitoringMetrics: () => apiFetch<any>("/api/monitoring/metrics"),
+
+  checkIn: () => apiFetch<{ attendance: ApiAttendance }>("/api/attendance/check-in", { method: "POST", body: "{}" }),
+  checkOut: () => apiFetch<{ attendance: ApiAttendance }>("/api/attendance/check-out", { method: "POST", body: "{}" }),
+  getAttendance: (userId?: string) => {
+    const q = userId ? `?userId=${userId}` : "";
+    return apiFetch<{ attendance: ApiAttendance[]; total: number }>(`/api/attendance${q}`);
+  },
+
+  getLeaves: () => apiFetch<{ leaves: ApiLeave[]; total: number }>("/api/leaves"),
+  createLeave: (body: Record<string, unknown>) =>
+    apiFetch<{ leave: ApiLeave }>("/api/leaves", { method: "POST", body: JSON.stringify(body) }),
+  updateLeaveStatus: (id: string, status: "Approved" | "Rejected") =>
+    apiFetch<{ leave: ApiLeave }>(`/api/leaves/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
 };
 
 
@@ -247,6 +266,7 @@ export interface ApiUser {
   designation?: string | null;
   agencyId?: string | null;
   branchId?: string | null;
+  permissions?: string[] | null;
 }
 
 export interface ApiBooking {
@@ -294,7 +314,7 @@ export interface ApiAgency {
   commissionEarned?: number;
   totalBookings?: number;
   monthlyRevenue?: number;
-  apiAllocation?: { flights: number; hotels: number; bus: number; train: number };
+  apiAllocation?: { flights: number; hotels: number };
   branches?: number;
   employees?: number;
   createdAt?: string;
@@ -318,6 +338,7 @@ export interface ApiEmployee {
   designation: string;
   department: string;
   branch: string;
+  branchId?: string | null;
   role: string;
   status: string;
   salary: number;
@@ -326,6 +347,30 @@ export interface ApiEmployee {
   achieved: number;
   attendance: number;
   joinDate: string;
+  permissions?: string[] | null;
+}
+
+export interface ApiAttendance {
+  id: string;
+  userId: string;
+  date: string;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  status: string;
+  user?: { email: string; name: string } | null;
+}
+
+export interface ApiLeave {
+  id: string;
+  userId: string;
+  userName: string;
+  type: string;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  status: string;
+  approvedByName?: string | null;
+  createdAt: string;
 }
 
 export interface ApiTask {

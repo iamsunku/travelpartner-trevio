@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
-  Plane, Hotel, Bus, Palmtree, TrendingUp, TrendingDown, Wallet,
+  Plane, Hotel, Palmtree, TrendingUp, TrendingDown, Wallet,
   Users, Target, Receipt, DollarSign, Calendar, ArrowUpRight, ArrowRight,
   Bell, Plus, FileSpreadsheet, CreditCard, Building2, Activity,
   Server, Globe, Zap, AlertTriangle, CheckCircle2, Clock,
@@ -202,7 +202,6 @@ function AgencyDashboard() {
           <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-2">
             <QuickAction icon={Plane} label="Book Flight" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" onClick={() => setView("flights")} />
             <QuickAction icon={Hotel} label="Book Hotel" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" onClick={() => setView("hotels")} />
-            <QuickAction icon={Bus} label="Book Bus" color="bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400" onClick={() => setView("bus")} />
             <QuickAction icon={Palmtree} label="Holiday" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" onClick={() => setView("holiday")} />
             <QuickAction icon={FileSpreadsheet} label="Quotation" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" onClick={() => setView("quotations")} />
             <QuickAction icon={Users} label="Add Customer" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" onClick={() => setView("customers")} />
@@ -225,9 +224,7 @@ function AgencyDashboard() {
                   <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
                     {b.service === "Flight" && <Plane className="w-4 h-4 text-teal-600" />}
                     {b.service === "Hotel" && <Hotel className="w-4 h-4 text-amber-600" />}
-                    {b.service === "Bus" && <Bus className="w-4 h-4 text-cyan-600" />}
                     {b.service === "Holiday" && <Palmtree className="w-4 h-4 text-rose-600" />}
-                    {(b.service === "Visa" || b.service === "Insurance") && <FileSpreadsheet className="w-4 h-4 text-violet-600" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{b.customerName}</p>
@@ -417,12 +414,10 @@ function SuperAdminDashboard() {
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie data={[
-                  { name: "Flight APIs", value: 42 },
-                  { name: "Hotel APIs", value: 28 },
-                  { name: "Bus APIs", value: 16 },
-                  { name: "Train APIs", value: 14 },
+                  { name: "Flight APIs", value: 60 },
+                  { name: "Hotel APIs", value: 40 },
                 ]} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
-                  {[1, 2, 4, 5].map((c, i) => <Cell key={i} fill={`var(--chart-${c})`} />)}
+                  {[1, 2].map((c, i) => <Cell key={i} fill={`var(--chart-${c})`} />)}
                 </Pie>
                 <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
               </PieChart>
@@ -431,8 +426,6 @@ function SuperAdminDashboard() {
               {[
                 { n: "Flight APIs", c: 1 },
                 { n: "Hotel APIs", c: 2 },
-                { n: "Bus APIs", c: 4 },
-                { n: "Train APIs", c: 5 },
               ].map((d) => (
                 <div key={d.n} className="flex items-center gap-1.5 text-xs">
                   <span className="w-2.5 h-2.5 rounded-sm" style={{ background: `var(--chart-${d.c})` }} />
@@ -578,9 +571,7 @@ function EmployeeDashboard() {
                   <div className="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
                     {b.service === "Flight" && <Plane className="w-4 h-4 text-teal-600" />}
                     {b.service === "Hotel" && <Hotel className="w-4 h-4 text-amber-600" />}
-                    {b.service === "Bus" && <Bus className="w-4 h-4 text-cyan-600" />}
                     {b.service === "Holiday" && <Palmtree className="w-4 h-4 text-rose-600" />}
-                    {(b.service === "Visa" || b.service === "Insurance") && <FileSpreadsheet className="w-4 h-4 text-violet-600" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{b.customerName}</p>

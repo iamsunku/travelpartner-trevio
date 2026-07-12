@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAppStore } from "@/store/app-store";
-import { getNavForRole } from "@/lib/nav-config";
+import { getNavForUser } from "@/lib/nav-config";
 import { filterSearchItems } from "@/lib/search-config";
 import { useAuthStore } from "@/store/app-store";
 import {
@@ -24,7 +24,7 @@ export function GlobalSearch() {
 
   const allowedViews = useMemo(() => {
     if (!user) return [] as ViewKey[];
-    return getNavForRole(user.role).flatMap((s) => s.items.map((i) => i.key));
+    return getNavForUser(user).flatMap((s) => s.items.map((i) => i.key));
   }, [user]);
 
   const results = useMemo(() => filterSearchItems(query, allowedViews), [query, allowedViews]);

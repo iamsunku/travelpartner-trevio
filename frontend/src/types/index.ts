@@ -7,6 +7,14 @@ export type Role =
   | "employee"
   | "accountant";
 
+export type Module =
+  | "flights" | "hotels" | "holiday" | "bookings" | "crm" | "customers"
+  | "quotations" | "payments" | "wallet" | "commission" | "finance"
+  | "reports" | "analytics" | "employees" | "attendance" | "leaves" | "tasks"
+  | "support" | "notifications" | "marketing" | "cms" | "api-management"
+  | "settings" | "audit-logs" | "agencies" | "branches" | "api-marketplace"
+  | "monitoring";
+
 export interface User {
   id: string;
   name: string;
@@ -17,6 +25,7 @@ export interface User {
   agencyId?: string;
   branchId?: string;
   designation?: string;
+  permissions?: Module[] | null;
 }
 
 export interface Agency {
@@ -31,7 +40,7 @@ export interface Agency {
   commissionEarned: number;
   totalBookings: number;
   monthlyRevenue: number;
-  apiAllocation: { flights: number; hotels: number; bus: number; train: number };
+  apiAllocation: { flights: number; hotels: number };
   createdAt: string;
   branches: number;
   employees: number;
@@ -101,23 +110,6 @@ export interface RoomType {
   roomsLeft: number;
 }
 
-export interface Bus {
-  id: string;
-  operator: string;
-  busType: "AC Sleeper" | "AC Seater" | "Non-AC Sleeper" | "Volvo Multi-Axle" | "Mercedes";
-  origin: string;
-  destination: string;
-  departTime: string;
-  arriveTime: string;
-  duration: string;
-  price: number;
-  seatsLeft: number;
-  rating: number;
-  amenities: string[];
-  boardingPoints: string[];
-  droppingPoints: string[];
-}
-
 export interface HolidayPackage {
   id: string;
   title: string;
@@ -161,7 +153,7 @@ export interface Lead {
   email: string;
   phone: string;
   source: "Website" | "WhatsApp" | "Phone" | "Walk-in" | "Facebook" | "Instagram" | "Google Ads" | "Referral";
-  service: "Flight" | "Hotel" | "Holiday" | "Visa" | "Insurance" | "Bus" | "Train";
+  service: "Flight" | "Hotel" | "Holiday";
   value: number;
   stage: "New" | "Qualified" | "Follow-up" | "Quotation Sent" | "Negotiation" | "Won" | "Lost";
   assignedTo: string;
@@ -174,7 +166,7 @@ export interface Booking {
   id: string;
   bookingRef: string;
   customerName: string;
-  service: "Flight" | "Hotel" | "Bus" | "Train" | "Holiday" | "Visa" | "Insurance";
+  service: "Flight" | "Hotel" | "Holiday";
   route: string;
   travelDate: string;
   amount: number;
@@ -218,6 +210,7 @@ export interface Employee {
   designation: string;
   department: "Sales" | "Operations" | "Accounts" | "Support" | "Management";
   branch: string;
+  branchId?: string | null;
   role: Role;
   status: "Active" | "On Leave" | "Inactive";
   salary: number;
@@ -227,6 +220,7 @@ export interface Employee {
   attendance: number;
   joinDate: string;
   avatar?: string;
+  permissions?: Module[] | null;
 }
 
 export interface Task {
@@ -246,7 +240,7 @@ export interface Quotation {
   id: string;
   quoteNo: string;
   customerName: string;
-  service: "Flight" | "Hotel" | "Holiday" | "Visa" | "Insurance";
+  service: "Flight" | "Hotel" | "Holiday";
   items: number;
   amount: number;
   gst: number;
@@ -267,15 +261,35 @@ export interface Notification {
   priority: "low" | "medium" | "high";
 }
 
+export interface Attendance {
+  id: string;
+  userId: string;
+  userName: string;
+  date: string;
+  checkIn?: string;
+  checkOut?: string;
+  status: "Present" | "Absent" | "Half Day" | "On Leave";
+}
+
+export interface Leave {
+  id: string;
+  userId: string;
+  userName: string;
+  type: "Casual" | "Sick" | "Earned" | "Unpaid";
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  status: "Pending" | "Approved" | "Rejected";
+  approvedByName?: string;
+  createdAt: string;
+}
+
 export type ViewKey =
   | "dashboard"
   | "flights"
   | "hotels"
-  | "bus"
-  | "train"
   | "holiday"
-  | "visa"
-  | "insurance"
+  | "attendance"
   | "customers"
   | "crm"
   | "quotations"

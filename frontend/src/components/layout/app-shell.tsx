@@ -10,11 +10,7 @@ import { useApiSync } from "@/hooks/use-api-sync";
 import { DashboardView } from "@/components/views/dashboard";
 import { FlightsView } from "@/components/views/flights";
 import { HotelsView } from "@/components/views/hotels";
-import { BusView } from "@/components/views/bus";
 import { HolidayView } from "@/components/views/holiday";
-import { VisaView } from "@/components/views/visa";
-import { InsuranceView } from "@/components/views/insurance";
-import { TrainView } from "@/components/views/train";
 import { CrmView } from "@/components/views/crm";
 import { CustomersView } from "@/components/views/customers";
 import { QuotationsView } from "@/components/views/quotations";
@@ -38,6 +34,7 @@ import { CmsView } from "@/components/views/cms";
 import { FinanceView } from "@/components/views/finance";
 import { AuditLogsView } from "@/components/views/audit-logs";
 import { AnalyticsView } from "@/components/views/analytics";
+import { AttendanceLeaveView } from "@/components/views/attendance-leave";
 import type { ViewKey } from "@/types";
 import { Construction } from "lucide-react";
 import { canAccessView } from "@/lib/nav-config";
@@ -46,11 +43,7 @@ const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   dashboard: DashboardView,
   flights: FlightsView,
   hotels: HotelsView,
-  bus: BusView,
-  train: TrainView,
   holiday: HolidayView,
-  visa: VisaView,
-  insurance: InsuranceView,
   customers: CustomersView,
   crm: CrmView,
   quotations: QuotationsView,
@@ -74,6 +67,7 @@ const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   finance: FinanceView,
   "audit-logs": AuditLogsView,
   analytics: AnalyticsView,
+  attendance: AttendanceLeaveView,
 };
 
 export function AppShell() {
@@ -87,7 +81,7 @@ export function AppShell() {
   useApiSync();
 
   if (!user) return null;
-  const ViewComponent = canAccessView(user.role, activeView)
+  const ViewComponent = canAccessView(user, activeView)
     ? VIEW_REGISTRY[activeView] || DashboardView
     : DashboardView;
 

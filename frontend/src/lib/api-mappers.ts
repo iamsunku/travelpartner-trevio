@@ -1,9 +1,10 @@
 import type {
   Booking, Customer, Employee, Flight, Hotel, Lead, Notification, Payment, Quotation, Role, Task, User, WalletTransaction, Agency, Branch,
+  Module, Attendance, Leave,
 } from "@/types";
 import type {
   ApiBooking, ApiCustomer, ApiEmployee, ApiFlight, ApiHotel, ApiLead, ApiNotification, ApiPayment, ApiQuotation, ApiTask, ApiUser, ApiWalletTxn,
-  ApiAgency, ApiBranch, ApiCommissionResponse, ApiFinanceResponse, ApiFinanceInvoice,
+  ApiAgency, ApiBranch, ApiCommissionResponse, ApiFinanceResponse, ApiFinanceInvoice, ApiAttendance, ApiLeave,
 } from "@/lib/api";
 
 export function mapApiUser(u: ApiUser): User {
@@ -16,6 +17,34 @@ export function mapApiUser(u: ApiUser): User {
     designation: u.designation || undefined,
     agencyId: u.agencyId || undefined,
     branchId: u.branchId || undefined,
+    permissions: (u.permissions as Module[] | null | undefined) ?? undefined,
+  };
+}
+
+export function mapApiAttendance(a: ApiAttendance, userName = ""): Attendance {
+  return {
+    id: a.id,
+    userId: a.userId,
+    userName,
+    date: a.date,
+    checkIn: a.checkIn || undefined,
+    checkOut: a.checkOut || undefined,
+    status: a.status as Attendance["status"],
+  };
+}
+
+export function mapApiLeave(l: ApiLeave): Leave {
+  return {
+    id: l.id,
+    userId: l.userId,
+    userName: l.userName,
+    type: l.type as Leave["type"],
+    fromDate: l.fromDate,
+    toDate: l.toDate,
+    reason: l.reason,
+    status: l.status as Leave["status"],
+    approvedByName: l.approvedByName || undefined,
+    createdAt: l.createdAt,
   };
 }
 
@@ -138,6 +167,7 @@ export function mapApiEmployee(e: ApiEmployee): Employee {
     designation: e.designation,
     department: e.department as Employee["department"],
     branch: e.branch,
+    branchId: e.branchId || undefined,
     role: e.role as Role,
     status: e.status as Employee["status"],
     salary: e.salary,
@@ -146,6 +176,7 @@ export function mapApiEmployee(e: ApiEmployee): Employee {
     achieved: e.achieved,
     attendance: e.attendance,
     joinDate: e.joinDate,
+    permissions: (e.permissions as Module[] | null | undefined) ?? undefined,
   };
 }
 
@@ -191,7 +222,7 @@ export function mapApiAgency(a: ApiAgency): Agency {
     commissionEarned: a.commissionEarned ?? 0,
     totalBookings: a.totalBookings ?? 0,
     monthlyRevenue: a.monthlyRevenue ?? 0,
-    apiAllocation: a.apiAllocation ?? { flights: 0, hotels: 0, bus: 0, train: 0 },
+    apiAllocation: a.apiAllocation ?? { flights: 0, hotels: 0 },
     createdAt: a.createdAt?.slice(0, 10) ?? "",
     branches: a.branches ?? 0,
     employees: a.employees ?? 0,

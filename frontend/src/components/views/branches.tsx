@@ -32,7 +32,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { AGENCIES, BRANCHES } from "@/lib/mock-data";
-import { api } from "@/lib/api";
+import { api, type ApiEmployee } from "@/lib/api";
 import { mapApiBranch } from "@/lib/api-mappers";
 import type { Branch } from "@/types";
 import { formatINR, formatFullINR, StatusBadge, PageHeader, initials, avatarGradient } from "@/components/shared/ui-helpers";
@@ -63,6 +63,8 @@ export function BranchesView() {
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState({ name: "", agencyId: "ag-1", city: "", manager: "" });
+  const [assignBranch, setAssignBranch] = useState<Branch | null>(null);
+  const [editBranch, setEditBranch] = useState<Branch | null>(null);
 
   useEffect(() => {
     api.getBranches()
@@ -300,8 +302,8 @@ export function BranchesView() {
                           <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="w-4 h-4" /></Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-44">
-                          <DropdownMenuItem onClick={() => toast({ title: "Edit branch", description: b.name })}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => toast({ title: "Assign manager", description: `${b.name} → ?` })}><UserCog className="w-4 h-4 mr-2" /> Assign Manager</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEditBranch(b)}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setAssignBranch(b)}><UserCog className="w-4 h-4 mr-2" /> Assign Manager</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -312,6 +314,146 @@ export function BranchesView() {
           </div>
         </CardContent>
       </Card>
+
+      <AssignManagerDialog
+        branch={assignBranch}
+        onClose={() => setAssignBranch(null)}
+        onAssigned={(updated) => setBranches((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))}
+      />
+      <EditBranchDialog
+        branch={editBranch}
+        onClose={() => setEditBranch(null)}
+        onSaved={(updated) => setBranches((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))}
+      />
     </div>
+  );
+}
+
+function EditBranchDialog({ branch, onClose, onSaved }: { branch: Branch | null; onClose: () => void; onSaved: (b: Branch) => void }) {
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [city, setCity] = useState("");
+  const [manager, setManager] = useState("");
+  const [revenue, setRevenue] = useState("0");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!branch) return;
+    setName(branch.name);
+    setCity(branch.city);
+    setManager(branch.manager);
+    setRevenue(String(branch.revenue));
+  }, [branch]);
+
+  if (!branch) return null;
+
+  async function handleSave() {
+    if (!branch) return;
+    setSaving(true);
+    try {
+      const res = await api.updateBranch(branch.id, { name, city, manager, revenue: Number(revenue) || 0 });
+      onSaved(mapApiBranch(res.branch));
+      toast({ title: "Branch updated", description: `${name} has been saved.` });
+      onClose();
+    } catch {
+      toast({ title: "Couldn't save branch", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!branch} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Building2 className="w-5 h-5 text-teal-600" /> Edit Branch</DialogTitle>
+          <DialogDescription>Update branch details.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Branch Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>City</Label>
+              <Input value={city} onChange={(e) => setCity(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Manager</Label>
+              <Input value={manager} onChange={(e) => setManager(e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Monthly Revenue (₹)</Label>
+            <Input type="number" value={revenue} onChange={(e) => setRevenue(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" disabled={saving} onClick={handleSave}>Save Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AssignManagerDialog({ branch, onClose, onAssigned }: { branch: Branch | null; onClose: () => void; onAssigned: (b: Branch) => void }) {
+  const { toast } = useToast();
+  const [candidates, setCandidates] = useState<ApiEmployee[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!branch) return;
+    setSelectedId("");
+    api.getEmployees(branch.agencyId)
+      .then((res) => setCandidates(res.employees.filter((e) => e.role === "employee" || e.role === "branch_manager")))
+      .catch(() => setCandidates([]));
+  }, [branch]);
+
+  if (!branch) return null;
+
+  async function handleAssign() {
+    const employee = candidates.find((e) => e.id === selectedId);
+    if (!employee || !branch) return;
+    setSaving(true);
+    try {
+      await api.updateEmployee(employee.id, { role: "branch_manager", branchId: branch.id, branch: branch.name });
+      const res = await api.updateBranch(branch.id, { manager: employee.name });
+      onAssigned(mapApiBranch(res.branch));
+      toast({ title: "Manager assigned", description: `${employee.name} is now managing ${branch.name}.` });
+      onClose();
+    } catch {
+      toast({ title: "Couldn't assign manager", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!branch} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><UserCog className="w-5 h-5 text-teal-600" /> Assign Manager</DialogTitle>
+          <DialogDescription>Promote an employee to manage {branch.name}.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label>Employee</Label>
+          <Select value={selectedId} onValueChange={setSelectedId}>
+            <SelectTrigger className="w-full"><SelectValue placeholder="Select an employee" /></SelectTrigger>
+            <SelectContent>
+              {candidates.map((e) => <SelectItem key={e.id} value={e.id}>{e.name} — {e.designation}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" disabled={!selectedId || saving} onClick={handleAssign}>
+            <UserCog className="w-4 h-4 mr-1.5" /> Assign
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

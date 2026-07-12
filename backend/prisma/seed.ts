@@ -24,7 +24,7 @@ async function main() {
       phone: "+91 98200 12345",
       plan: "Enterprise",
       status: "Active",
-      apiAllocation: { flights: 50000, hotels: 30000, bus: 15000, train: 10000 },
+      apiAllocation: { flights: 50000, hotels: 30000 },
     },
   });
 

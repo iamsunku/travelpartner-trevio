@@ -2,7 +2,7 @@
 
 import { X } from "lucide-react";
 import { useAppStore, useAuthStore } from "@/store/app-store";
-import { getNavForRole } from "@/lib/nav-config";
+import { getNavForUser } from "@/lib/nav-config";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ export function Sidebar() {
   const { user } = useAuthStore();
 
   if (!user) return null;
-  const sections = getNavForRole(user.role);
+  const sections = getNavForUser(user);
 
   return (
     <>

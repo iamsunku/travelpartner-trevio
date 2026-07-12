@@ -9,12 +9,14 @@ import { validateEnv } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import { db } from "./lib/db.js";
 import { signToken } from "./lib/jwt.js";
-import { requireAuth, optionalAuth, requireRole, type AuthRequest } from "./middleware/auth.js";
+import { requireAuth, optionalAuth, requireRole, requirePermission, requireAnyPermission, type AuthRequest } from "./middleware/auth.js";
 import { generateFlights, generateHotels } from "./lib/mock-data.js";
+import { effectivePermissions } from "./lib/permissions.js";
 import {
   validate, loginSchema, bookingSchema, customerSchema, leadSchema, quotationSchema,
   paymentSchema, employeeSchema, employeeUpdateSchema, taskSchema, agencySchema,
   agencyUpdateSchema, branchSchema, branchUpdateSchema, walletSchema,
+  attendanceCheckSchema, leaveSchema, leaveStatusSchema, forgotPasswordSchema,
 } from "./lib/validation.js";
 
 validateEnv();
@@ -32,6 +34,34 @@ function agencyScope(req: AuthRequest): Record<string, unknown> {
 function ownAgencyId(req: AuthRequest, fallback?: string): string | undefined {
   if (req.auth?.role === "super_admin") return fallback ?? req.auth?.agencyId ?? undefined;
   return req.auth?.agencyId ?? undefined;
+}
+
+// Branch managers see their whole branch; employees/accountants additionally only
+// see records attributed to them (via ownField, e.g. "agentId") within that branch.
+// super_admin/agency_admin are agency-wide and unaffected.
+function branchScope(req: AuthRequest, ownField?: string): Record<string, unknown> {
+  const role = req.auth?.role;
+  if (role === "super_admin" || role === "agency_admin") return {};
+  const scope: Record<string, unknown> = { branchId: req.auth?.branchId ?? "__no_branch__" };
+  if (ownField && (role === "employee" || role === "accountant")) {
+    scope[ownField] = req.auth?.userId;
+  }
+  return scope;
+}
+
+// The branchId a create/write should be stamped with — the caller's own branch,
+// if they belong to one (branch_manager/employee/accountant); agency-wide roles
+// (super_admin/agency_admin) create unscoped records.
+function ownBranchId(req: AuthRequest): string | undefined {
+  return req.auth?.branchId ?? undefined;
+}
+
+// Opt-in pagination: ?page=2&pageSize=50. Omitting both preserves each route's
+// existing default page size and behaves exactly as before (page 1, that size).
+function parsePagination(req: AuthRequest, defaultPageSize: number, maxPageSize: number) {
+  const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+  const pageSize = Math.min(maxPageSize, Math.max(1, parseInt(req.query.pageSize as string, 10) || defaultPageSize));
+  return { skip: (page - 1) * pageSize, take: pageSize, page, pageSize };
 }
 
 // A readable one-time password for freshly created logins (e.g. "Rk4-Wmp2-Tq9x").
@@ -54,7 +84,13 @@ app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 app.use(pinoHttp({ logger }));
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 10, standardHeaders: true, legacyHeaders: false });
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: () => process.env.NODE_ENV === "test",
+});
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true, legacyHeaders: false });
 app.use("/api", apiLimiter);
 
@@ -88,6 +124,7 @@ app.get("/api", (_req, res) => {
       "/api/health",
       "/api/auth/login",
       "/api/auth/me",
+      "/api/auth/forgot-password",
       "/api/bookings",
       "/api/customers",
       "/api/leads",
@@ -108,6 +145,8 @@ app.get("/api", (_req, res) => {
       "/api/hotels/search",
       "/api/analytics/platform",
       "/api/analytics/employees",
+      "/api/attendance",
+      "/api/leaves",
     ],
   });
 });
@@ -137,6 +176,8 @@ app.post("/api/auth/login", authLimiter, validate(loginSchema), async (req, res)
       email: user.email,
       role: user.role,
       agencyId: user.agencyId,
+      branchId: user.branchId,
+      permissions: Array.isArray(user.permissions) ? (user.permissions as string[]) : null,
     });
     const { password: _password, ...safeUser } = user;
     res.json({ user: safeUser, token });
@@ -164,24 +205,56 @@ app.get("/api/auth/me", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.get("/api/bookings", requireAuth, async (req: AuthRequest, res) => {
+// This demo deployment has no outbound email service, so — like the temp
+// password shown to admins when they onboard a new employee/agency — the new
+// password is returned directly in the response instead of emailed. The
+// frontend must show it once and tell the user to note it down; it is never
+// logged or persisted anywhere in cleartext.
+app.post("/api/auth/forgot-password", authLimiter, validate(forgotPasswordSchema), async (req, res) => {
   try {
-    const status = req.query.status as string | undefined;
-    const service = req.query.service as string | undefined;
-    const search = req.query.q as string | undefined;
-    const where: Record<string, unknown> = { ...agencyScope(req) };
-    if (status && status !== "All") where.status = status;
-    if (service && service !== "All") where.service = service;
-    if (search) where.customerName = { contains: search };
-    const bookings = await db.booking.findMany({ where, orderBy: { createdAt: "desc" }, take: 100 });
-    res.json({ bookings, total: bookings.length });
+    const { email } = req.body;
+    const user = await db.user.findUnique({ where: { email } });
+    if (!user) {
+      // Same generic response whether or not the email exists, to avoid
+      // leaking which addresses have accounts.
+      res.json({ ok: true });
+      return;
+    }
+    const tempPassword = generateTempPassword();
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    await db.user.update({ where: { id: user.id }, data: { password: passwordHash } });
+    await db.auditLog.create({
+      data: { userId: user.id, agencyId: user.agencyId, userName: user.name, action: "Password Reset", module: "Auth", ip: req.ip || "0.0.0.0" },
+    });
+    res.json({ ok: true, tempPassword });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.post("/api/bookings", requireAuth, validate(bookingSchema), async (req: AuthRequest, res) => {
+app.get("/api/bookings", requireAuth, requireAnyPermission("flights", "hotels", "holiday", "bookings"), async (req: AuthRequest, res) => {
+  try {
+    const status = req.query.status as string | undefined;
+    const service = req.query.service as string | undefined;
+    const search = req.query.q as string | undefined;
+    const where: Record<string, unknown> = { ...agencyScope(req), ...branchScope(req, "agentId") };
+    if (status && status !== "All") where.status = status;
+    if (service && service !== "All") where.service = service;
+    if (search) where.customerName = { contains: search };
+    const { skip, take, page, pageSize } = parsePagination(req, 100, 200);
+    const [bookings, total] = await Promise.all([
+      db.booking.findMany({ where, orderBy: { createdAt: "desc" }, skip, take }),
+      db.booking.count({ where }),
+    ]);
+    res.json({ bookings, total, page, pageSize });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/bookings", requireAuth, requireAnyPermission("flights", "hotels", "holiday", "bookings"), validate(bookingSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
     const booking = await db.booking.create({
@@ -196,9 +269,11 @@ app.post("/api/bookings", requireAuth, validate(bookingSchema), async (req: Auth
         status: body.status || "Confirmed",
         paymentStatus: body.paymentStatus || "Paid",
         paymentMethod: body.paymentMethod || "Razorpay",
+        agentId: req.auth?.userId,
         agentName: body.agentName || "System",
         agencyId: ownAgencyId(req, body.agencyId),
         agencyName: body.agencyName || "",
+        branchId: ownBranchId(req),
       },
     });
     res.status(201).json({ booking });
@@ -222,17 +297,22 @@ app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/customers", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/customers", requireAuth, requirePermission("customers"), async (req: AuthRequest, res) => {
   try {
-    const customers = await db.customer.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 200 });
-    res.json({ customers, total: customers.length });
+    const where = agencyScope(req);
+    const { skip, take, page, pageSize } = parsePagination(req, 200, 200);
+    const [customers, total] = await Promise.all([
+      db.customer.findMany({ where, orderBy: { createdAt: "desc" }, skip, take }),
+      db.customer.count({ where }),
+    ]);
+    res.json({ customers, total, page, pageSize });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.post("/api/customers", requireAuth, validate(customerSchema), async (req: AuthRequest, res) => {
+app.post("/api/customers", requireAuth, requirePermission("customers"), validate(customerSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
     const customer = await db.customer.create({
@@ -255,9 +335,9 @@ app.post("/api/customers", requireAuth, validate(customerSchema), async (req: Au
   }
 });
 
-app.get("/api/leads", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/leads", requireAuth, requirePermission("crm"), async (req: AuthRequest, res) => {
   try {
-    const leads = await db.lead.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 200 });
+    const leads = await db.lead.findMany({ where: { ...agencyScope(req), ...branchScope(req, "assignedToId") }, orderBy: { createdAt: "desc" }, take: 200 });
     res.json({ leads, total: leads.length });
   } catch (e) {
     logger.error(e);
@@ -265,7 +345,7 @@ app.get("/api/leads", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.post("/api/leads", requireAuth, validate(leadSchema), async (req: AuthRequest, res) => {
+app.post("/api/leads", requireAuth, requirePermission("crm"), validate(leadSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
     const lead = await db.lead.create({
@@ -278,9 +358,11 @@ app.post("/api/leads", requireAuth, validate(leadSchema), async (req: AuthReques
         value: body.value,
         stage: body.stage || "New",
         assignedTo: body.assignedTo || "Unassigned",
+        assignedToId: req.auth?.userId,
         expectedClose: body.expectedClose || new Date().toISOString().slice(0, 10),
         notes: body.notes || "",
         agencyId: ownAgencyId(req),
+        branchId: ownBranchId(req),
       },
     });
     res.status(201).json({ lead });
@@ -304,9 +386,9 @@ app.patch("/api/leads/:id", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/quotations", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/quotations", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res) => {
   try {
-    const quotations = await db.quotation.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 200 });
+    const quotations = await db.quotation.findMany({ where: { ...agencyScope(req), ...branchScope(req, "createdById") }, orderBy: { createdAt: "desc" }, take: 200 });
     res.json({ quotations, total: quotations.length });
   } catch (e) {
     logger.error(e);
@@ -314,7 +396,7 @@ app.get("/api/quotations", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.post("/api/quotations", requireAuth, validate(quotationSchema), async (req: AuthRequest, res) => {
+app.post("/api/quotations", requireAuth, requirePermission("quotations"), validate(quotationSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
     const count = await db.quotation.count();
@@ -331,7 +413,9 @@ app.post("/api/quotations", requireAuth, validate(quotationSchema), async (req: 
         status: body.status || "Draft",
         validTill: body.validTill,
         createdBy: body.createdBy || req.auth?.email || "System",
+        createdById: req.auth?.userId,
         agencyId: ownAgencyId(req),
+        branchId: ownBranchId(req),
       },
     });
     res.status(201).json({ quotation });
@@ -341,17 +425,22 @@ app.post("/api/quotations", requireAuth, validate(quotationSchema), async (req: 
   }
 });
 
-app.get("/api/payments", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/payments", requireAuth, requirePermission("payments"), async (req: AuthRequest, res) => {
   try {
-    const payments = await db.payment.findMany({ where: agencyScope(req), orderBy: { date: "desc" }, take: 200 });
-    res.json({ payments, total: payments.length });
+    const where = { ...agencyScope(req), ...branchScope(req, "collectedById") };
+    const { skip, take, page, pageSize } = parsePagination(req, 200, 200);
+    const [payments, total] = await Promise.all([
+      db.payment.findMany({ where, orderBy: { date: "desc" }, skip, take }),
+      db.payment.count({ where }),
+    ]);
+    res.json({ payments, total, page, pageSize });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.post("/api/payments", requireAuth, validate(paymentSchema), async (req: AuthRequest, res) => {
+app.post("/api/payments", requireAuth, requirePermission("payments"), validate(paymentSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
     const txnId = `pay_${Date.now().toString(36).toUpperCase()}`;
@@ -366,6 +455,8 @@ app.post("/api/payments", requireAuth, validate(paymentSchema), async (req: Auth
         type: body.type || "Payment",
         gateway: body.gateway || "Razorpay",
         agencyId: ownAgencyId(req),
+        branchId: ownBranchId(req),
+        collectedById: req.auth?.userId,
       },
     });
     res.status(201).json({ payment });
@@ -476,12 +567,12 @@ app.get("/api/branches", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.get("/api/employees", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/employees", requireAuth, requirePermission("employees"), async (req: AuthRequest, res) => {
   try {
     const requestedAgencyId = req.query.agencyId as string | undefined;
     const where = req.auth?.role === "super_admin"
       ? (requestedAgencyId ? { agencyId: requestedAgencyId } : {})
-      : agencyScope(req);
+      : { ...agencyScope(req), ...branchScope(req) };
     const employees = await db.employee.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 });
     res.json({ employees, total: employees.length });
   } catch (e) {
@@ -493,24 +584,30 @@ app.get("/api/employees", requireAuth, async (req: AuthRequest, res) => {
 app.post("/api/employees", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager"), validate(employeeSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
-    // branch managers may only onboard rank-and-file employees, not peers/accountants
+    // branch managers may only onboard rank-and-file employees, not peers/accountants,
+    // and only within their own branch
     const role = req.auth?.role === "branch_manager" ? "employee" : body.role || "employee";
     const agencyId = ownAgencyId(req, body.agencyId);
+    const branchId = req.auth?.role === "branch_manager" ? req.auth?.branchId : (body.branchId ?? undefined);
+    const branchRecord = branchId ? await db.branch.findUnique({ where: { id: branchId } }) : null;
+    const permissions = req.auth?.role === "branch_manager" ? undefined : (body.permissions ?? undefined);
 
     const employee = await db.employee.create({
       data: {
         agencyId,
+        branchId,
         name: body.name,
         email: body.email,
         phone: body.phone,
         designation: body.designation,
         department: body.department || "Sales",
-        branch: body.branch || "",
+        branch: branchRecord?.name ?? body.branch ?? "",
         role,
         status: "Active",
         salary: body.salary || 0,
         target: body.target || 0,
         joinDate: body.joinDate || new Date().toISOString().slice(0, 10),
+        permissions: permissions ?? undefined,
       },
     });
 
@@ -527,6 +624,8 @@ app.post("/api/employees", requireAuth, requireRole("super_admin", "agency_admin
           role,
           designation: body.designation,
           agencyId,
+          branchId,
+          permissions: permissions ?? undefined,
         },
       });
     } catch {
@@ -542,9 +641,9 @@ app.post("/api/employees", requireAuth, requireRole("super_admin", "agency_admin
   }
 });
 
-app.get("/api/tasks", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/tasks", requireAuth, requirePermission("tasks"), async (req: AuthRequest, res) => {
   try {
-    const tasks = await db.task.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" }, take: 200 });
+    const tasks = await db.task.findMany({ where: { ...agencyScope(req), ...branchScope(req, "assignedToId") }, orderBy: { createdAt: "desc" }, take: 200 });
     res.json({ tasks, total: tasks.length });
   } catch (e) {
     logger.error(e);
@@ -552,7 +651,7 @@ app.get("/api/tasks", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.post("/api/tasks", requireAuth, validate(taskSchema), async (req: AuthRequest, res) => {
+app.post("/api/tasks", requireAuth, requirePermission("tasks"), validate(taskSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
     const task = await db.task.create({
@@ -560,12 +659,14 @@ app.post("/api/tasks", requireAuth, validate(taskSchema), async (req: AuthReques
         title: body.title,
         description: body.description || "",
         assignedTo: body.assignedTo,
+        assignedToId: body.assignedToId ?? req.auth?.userId,
         assignedBy: body.assignedBy || "System",
         priority: body.priority || "Medium",
         status: body.status || "To Do",
         dueDate: body.dueDate,
         relatedTo: body.relatedTo,
         agencyId: ownAgencyId(req),
+        branchId: ownBranchId(req),
       },
     });
     res.status(201).json({ task });
@@ -599,12 +700,13 @@ app.get("/api/audit-logs", requireAuth, requireRole("super_admin", "agency_admin
   }
 });
 
-app.get("/api/reports", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/reports", requireAuth, requirePermission("reports"), async (req: AuthRequest, res) => {
   try {
-    const scope = agencyScope(req);
+    const bookingScope = { ...agencyScope(req), ...branchScope(req, "agentId") };
+    const paymentScope = { ...agencyScope(req), ...branchScope(req, "collectedById") };
     const [bookings, payments] = await Promise.all([
-      db.booking.findMany({ where: scope, select: { service: true, amount: true, commission: true, createdAt: true, status: true } }),
-      db.payment.findMany({ where: scope, select: { method: true, amount: true, status: true, type: true } }),
+      db.booking.findMany({ where: bookingScope, select: { service: true, amount: true, commission: true, createdAt: true, status: true } }),
+      db.payment.findMany({ where: paymentScope, select: { method: true, amount: true, status: true, type: true } }),
     ]);
 
     const byService: Record<string, { bookings: number; revenue: number }> = {};
@@ -694,7 +796,7 @@ app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
   }
 });
 
-app.get("/api/wallet", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/wallet", requireAuth, requirePermission("wallet"), async (req: AuthRequest, res) => {
   try {
     const agencyId = req.query.agencyId as string | undefined;
     if (!agencyId) {
@@ -718,7 +820,7 @@ app.get("/api/wallet", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.post("/api/wallet", requireAuth, validate(walletSchema), async (req: AuthRequest, res) => {
+app.post("/api/wallet", requireAuth, requirePermission("wallet"), validate(walletSchema), async (req: AuthRequest, res) => {
   try {
     const { agencyId, type, amount, source, description } = req.body;
     const id = agencyId || req.auth?.agencyId;
@@ -833,21 +935,33 @@ app.delete("/api/tasks/:id", requireAuth, async (req, res) => {
 });
 
 // ── PATCH /api/employees/:id ──────────────────────────────────────────────────
-app.patch("/api/employees/:id", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager"), validate(employeeUpdateSchema), async (req, res) => {
+app.patch("/api/employees/:id", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager"), validate(employeeUpdateSchema), async (req: AuthRequest, res) => {
   try {
-    const { name, email, phone, designation, department, branch, role, status, salary, target } = req.body;
-    const data: Record<string, string | number | undefined> = {};
+    const { name, email, phone, designation, department, branch, branchId, role, status, salary, target, permissions } = req.body;
+    // branch managers may only manage employees within their own branch, and can't grant custom permissions
+    const isBranchManager = req.auth?.role === "branch_manager";
+    const data: Record<string, string | number | object | null | undefined> = {};
     if (name) data.name = name;
     if (email) data.email = email;
     if (phone) data.phone = phone;
     if (designation) data.designation = designation;
     if (department) data.department = department;
-    if (branch !== undefined) data.branch = branch;
-    if (role) data.role = role;
+    if (role && !isBranchManager) data.role = role;
     if (status) data.status = status;
     if (salary !== undefined) data.salary = salary;
     if (target !== undefined) data.target = target;
+    if (branchId !== undefined && !isBranchManager) {
+      data.branchId = branchId || null;
+      const branchRecord = branchId ? await db.branch.findUnique({ where: { id: branchId } }) : null;
+      data.branch = branchRecord?.name ?? branch ?? "";
+    } else if (branch !== undefined) {
+      data.branch = branch;
+    }
     const employee = await db.employee.update({ where: { id: req.params.id as string }, data });
+    if (permissions !== undefined && !isBranchManager) {
+      await db.employee.update({ where: { id: employee.id }, data: { permissions: permissions ?? null } }).catch(() => undefined);
+      await db.user.updateMany({ where: { email: employee.email }, data: { permissions: permissions ?? null } }).catch(() => undefined);
+    }
     res.json({ employee });
   } catch (e) {
     logger.error(e);
@@ -963,10 +1077,10 @@ app.patch("/api/agencies/:id", requireAuth, requireRole("super_admin"), validate
 });
 
 // ── GET /api/commission ───────────────────────────────────────────────────────
-app.get("/api/commission", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/commission", requireAuth, requirePermission("commission"), async (req: AuthRequest, res) => {
   try {
     const bookings = await db.booking.findMany({
-      where: agencyScope(req),
+      where: { ...agencyScope(req), ...branchScope(req, "agentId") },
       select: { agencyId: true, agencyName: true, agentName: true, commission: true, amount: true, status: true, createdAt: true },
     });
 
@@ -1022,16 +1136,17 @@ app.get("/api/commission", requireAuth, async (req: AuthRequest, res) => {
 });
 
 // ── GET /api/finance ──────────────────────────────────────────────────────────
-app.get("/api/finance", requireAuth, async (req: AuthRequest, res) => {
+app.get("/api/finance", requireAuth, requirePermission("finance"), async (req: AuthRequest, res) => {
   try {
-    const scope = agencyScope(req);
+    const bookingScope = { ...agencyScope(req), ...branchScope(req, "agentId") };
+    const paymentScope = { ...agencyScope(req), ...branchScope(req, "collectedById") };
     const [bookings, payments] = await Promise.all([
       db.booking.findMany({
-        where: scope,
+        where: bookingScope,
         select: { amount: true, commission: true, status: true, service: true, createdAt: true, bookingRef: true, customerName: true, agencyName: true },
       }),
       db.payment.findMany({
-        where: scope,
+        where: paymentScope,
         select: { amount: true, method: true, status: true, type: true, date: true, txnId: true, customerName: true, bookingRef: true },
       }),
     ]);
@@ -1158,12 +1273,14 @@ app.get("/api/analytics/platform", requireAuth, requireRole("super_admin"), asyn
 });
 
 // ── GET /api/analytics/employees ──────────────────────────────────────────────
-app.get("/api/analytics/employees", requireAuth, requireRole("super_admin"), async (req, res) => {
+app.get("/api/analytics/employees", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager"), async (req: AuthRequest, res) => {
   try {
     const range = req.query.range === "yearly" ? "yearly" : "monthly";
+    const employeeScope = { ...agencyScope(req), ...branchScope(req) };
     const [employees, bookings] = await Promise.all([
-      db.employee.findMany({ orderBy: { createdAt: "desc" } }),
+      db.employee.findMany({ where: employeeScope, orderBy: { createdAt: "desc" } }),
       db.booking.findMany({
+        where: { ...agencyScope(req), ...branchScope(req, "agentId") },
         select: { agentName: true, amount: true, commission: true, status: true, createdAt: true },
       }),
     ]);
@@ -1358,6 +1475,131 @@ app.get("/api/monitoring/metrics", requireAuth, requireRole("super_admin"), asyn
       errorRate,
       windowStart: new Date(requestWindowStart).toISOString(),
     });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ── Attendance ─────────────────────────────────────────────────────────────
+app.post("/api/attendance/check-in", requireAuth, requirePermission("attendance"), validate(attendanceCheckSchema), async (req: AuthRequest, res) => {
+  try {
+    const userId = req.auth!.userId;
+    const date = new Date().toISOString().slice(0, 10);
+    const attendance = await db.attendance.upsert({
+      where: { userId_date: { userId, date } },
+      update: { checkIn: new Date(), status: "Present" },
+      create: {
+        userId, date, checkIn: new Date(), status: "Present",
+        agencyId: req.auth?.agencyId ?? undefined,
+        branchId: req.auth?.branchId ?? undefined,
+      },
+    });
+    res.status(201).json({ attendance });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/attendance/check-out", requireAuth, requirePermission("attendance"), validate(attendanceCheckSchema), async (req: AuthRequest, res) => {
+  try {
+    const userId = req.auth!.userId;
+    const date = new Date().toISOString().slice(0, 10);
+    const existing = await db.attendance.findUnique({ where: { userId_date: { userId, date } } });
+    if (!existing) {
+      res.status(400).json({ error: "Check in before checking out" });
+      return;
+    }
+    const attendance = await db.attendance.update({
+      where: { userId_date: { userId, date } },
+      data: { checkOut: new Date() },
+    });
+    res.json({ attendance });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/attendance", requireAuth, requirePermission("attendance"), async (req: AuthRequest, res) => {
+  try {
+    const isManager = ["super_admin", "agency_admin", "branch_manager"].includes(req.auth?.role ?? "");
+    const requestedUserId = req.query.userId as string | undefined;
+    const where: Record<string, unknown> = isManager
+      ? { ...agencyScope(req), ...branchScope(req), ...(requestedUserId ? { userId: requestedUserId } : {}) }
+      : { userId: req.auth!.userId };
+    const records = await db.attendance.findMany({
+      where,
+      include: { user: { select: { email: true, name: true } } },
+      orderBy: { date: "desc" },
+      take: 200,
+    });
+    res.json({ attendance: records, total: records.length });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ── Leaves ─────────────────────────────────────────────────────────────────
+app.post("/api/leaves", requireAuth, requirePermission("leaves"), validate(leaveSchema), async (req: AuthRequest, res) => {
+  try {
+    const body = req.body;
+    const leave = await db.leave.create({
+      data: {
+        userId: req.auth!.userId,
+        userName: req.auth!.email,
+        type: body.type,
+        fromDate: body.fromDate,
+        toDate: body.toDate,
+        reason: body.reason,
+        agencyId: req.auth?.agencyId ?? undefined,
+        branchId: req.auth?.branchId ?? undefined,
+      },
+    });
+    res.status(201).json({ leave });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/leaves", requireAuth, requirePermission("leaves"), async (req: AuthRequest, res) => {
+  try {
+    const isManager = ["super_admin", "agency_admin", "branch_manager"].includes(req.auth?.role ?? "");
+    const where: Record<string, unknown> = isManager
+      ? { ...agencyScope(req), ...branchScope(req) }
+      : { userId: req.auth!.userId };
+    const leaves = await db.leave.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 });
+    res.json({ leaves, total: leaves.length });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.patch("/api/leaves/:id", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager"), validate(leaveStatusSchema), async (req: AuthRequest, res) => {
+  try {
+    const leave = await db.leave.findUnique({ where: { id: req.params.id as string } });
+    if (!leave) {
+      res.status(404).json({ error: "Leave not found" });
+      return;
+    }
+    const scope = { ...agencyScope(req), ...branchScope(req) };
+    if (scope.agencyId && leave.agencyId !== scope.agencyId) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    if (scope.branchId && leave.branchId !== scope.branchId) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const updated = await db.leave.update({
+      where: { id: req.params.id as string },
+      data: { status: req.body.status, approvedById: req.auth!.userId, approvedByName: req.auth!.email },
+    });
+    res.json({ leave: updated });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });

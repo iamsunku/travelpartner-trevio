@@ -8,7 +8,7 @@ import {
 } from "recharts";
 import {
   Download, TrendingUp, TrendingDown, DollarSign, Calendar, Users,
-  Target, Award, Activity, Plane, Hotel, Palmtree, Bus, FileSpreadsheet,
+  Target, Award, Activity, Plane, Hotel, Palmtree,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,18 +41,15 @@ const BOOKINGS_BY_SERVICE = [
   { service: "Flights", bookings: 1450, revenue: 18450000 },
   { service: "Hotels", bookings: 980, revenue: 8420000 },
   { service: "Holidays", bookings: 420, revenue: 6240000 },
-  { service: "Bus", bookings: 340, revenue: 1240000 },
-  { service: "Visa", bookings: 180, revenue: 1620000 },
-  { service: "Insurance", bookings: 95, revenue: 480000 },
 ];
 
 const BOOKINGS_TREND = [
-  { week: "W1", flight: 110, hotel: 78, holiday: 32, bus: 28 },
-  { week: "W2", flight: 132, hotel: 92, holiday: 38, bus: 35 },
-  { week: "W3", flight: 118, hotel: 85, holiday: 45, bus: 30 },
-  { week: "W4", flight: 145, hotel: 105, holiday: 42, bus: 38 },
-  { week: "W5", flight: 138, hotel: 98, holiday: 36, bus: 42 },
-  { week: "W6", flight: 162, hotel: 112, holiday: 48, bus: 40 },
+  { week: "W1", flight: 110, hotel: 78, holiday: 32 },
+  { week: "W2", flight: 132, hotel: 92, holiday: 38 },
+  { week: "W3", flight: 118, hotel: 85, holiday: 45 },
+  { week: "W4", flight: 145, hotel: 105, holiday: 42 },
+  { week: "W5", flight: 138, hotel: 98, holiday: 36 },
+  { week: "W6", flight: 162, hotel: 112, holiday: 48 },
 ];
 
 const PAYMENT_METHOD_DATA = [
@@ -73,7 +70,7 @@ const REFUND_TREND = [
 ];
 
 const SERVICE_ICONS: Record<string, React.ElementType> = {
-  Flights: Plane, Hotels: Hotel, Holidays: Palmtree, Bus: Bus, Visa: FileSpreadsheet, Insurance: FileSpreadsheet,
+  Flights: Plane, Hotels: Hotel, Holidays: Palmtree,
 };
 
 function ChartTooltip({ active, payload, label, formatter }: any) {
@@ -437,7 +434,6 @@ export function ReportsView() {
                   <Line type="monotone" dataKey="flight" name="Flights" stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} />
                   <Line type="monotone" dataKey="hotel" name="Hotels" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} />
                   <Line type="monotone" dataKey="holiday" name="Holidays" stroke="#f43f5e" strokeWidth={2.5} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="bus" name="Bus" stroke="#06b6d4" strokeWidth={2.5} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>

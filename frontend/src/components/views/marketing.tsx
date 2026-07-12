@@ -58,7 +58,7 @@ const CAMPAIGNS: Campaign[] = [
   { id: "cm-2", name: "Bali Honeymoon Package — WhatsApp Blast", type: "WhatsApp", audience: 3420, sent: 3380, opened: 2910, clicked: 824, status: "Running", date: "2025-01-19", gradient: "from-emerald-500 to-teal-600" },
   { id: "cm-3", name: "Weekend Goa Getaway Reminder", type: "SMS", audience: 8240, sent: 8240, opened: 6120, clicked: 980, status: "Completed", date: "2025-01-18", gradient: "from-amber-500 to-orange-600" },
   { id: "cm-4", name: "Summer Europe Early Bird", type: "Email", audience: 5420, sent: 0, opened: 0, clicked: 0, status: "Scheduled", date: "2025-02-01", gradient: "from-violet-500 to-purple-600" },
-  { id: "cm-5", name: "Visa Renewal Reminder", type: "WhatsApp", audience: 1240, sent: 0, opened: 0, clicked: 0, status: "Draft", date: "—", gradient: "from-cyan-500 to-teal-600" },
+  { id: "cm-5", name: "Flight Fare Drop Alert", type: "WhatsApp", audience: 1240, sent: 0, opened: 0, clicked: 0, status: "Draft", date: "—", gradient: "from-cyan-500 to-teal-600" },
   { id: "cm-6", name: "Holiday Package — Christmas Special", type: "Email", audience: 18420, sent: 18420, opened: 8120, clicked: 2240, status: "Completed", date: "2024-12-15", gradient: "from-rose-500 to-pink-600" },
 ];
 
@@ -88,7 +88,7 @@ const COUPONS: Coupon[] = [
   { id: "cp-3", code: "GOA1500", type: "Flat", value: 1500, limit: 500, used: 412, validTill: "2025-02-15", status: "Active" },
   { id: "cp-4", code: "WINTERSALE", type: "Percent", value: 15, limit: 2000, used: 2000, validTill: "2024-12-31", status: "Expired" },
   { id: "cp-5", code: "HONEYMOON25", type: "Percent", value: 25, limit: 1000, used: 380, validTill: "2025-04-30", status: "Active" },
-  { id: "cp-6", code: "BUS100", type: "Flat", value: 100, limit: 5000, used: 1820, validTill: "2025-05-31", status: "Paused" },
+  { id: "cp-6", code: "HOTEL100", type: "Flat", value: 100, limit: 5000, used: 1820, validTill: "2025-05-31", status: "Paused" },
 ];
 
 interface Promotion {
@@ -204,6 +204,7 @@ export function MarketingView() {
   const [promos, setPromos] = useState<Promotion[]>(PROMOS_INIT);
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [couponOpen, setCouponOpen] = useState(false);
+  const [editingCoupon, setEditingCoupon] = useState<Coupon | null>(null);
   const [campaignForm, setCampaignForm] = useState({ name: "", type: "Email" as CampaignType, audience: "", message: "", schedule: "" });
   const [couponForm, setCouponForm] = useState({ code: "", type: "Flat" as "Flat" | "Percent", value: "", limit: "", validTill: "" });
 
@@ -253,25 +254,38 @@ export function MarketingView() {
     toast({ title: "Campaign created", description: newC.name });
   }
 
-  function createCoupon() {
+  function saveCoupon() {
     if (!couponForm.code || !couponForm.value) {
       toast({ title: "Missing fields", description: "Code and value required.", variant: "destructive" });
       return;
     }
-    const newC: Coupon = {
-      id: `cp-${coupons.length + 1}`,
-      code: couponForm.code.toUpperCase(),
-      type: couponForm.type,
-      value: parseInt(couponForm.value) || 0,
-      limit: parseInt(couponForm.limit) || 0,
-      used: 0,
-      validTill: couponForm.validTill || "2025-12-31",
-      status: "Active",
-    };
-    setCoupons([newC, ...coupons]);
+    if (editingCoupon) {
+      setCoupons((prev) => prev.map((c) => c.id === editingCoupon.id ? {
+        ...c,
+        code: couponForm.code.toUpperCase(),
+        type: couponForm.type,
+        value: parseInt(couponForm.value) || 0,
+        limit: parseInt(couponForm.limit) || 0,
+        validTill: couponForm.validTill || c.validTill,
+      } : c));
+      toast({ title: "Coupon updated", description: couponForm.code.toUpperCase() });
+    } else {
+      const newC: Coupon = {
+        id: `cp-${coupons.length + 1}`,
+        code: couponForm.code.toUpperCase(),
+        type: couponForm.type,
+        value: parseInt(couponForm.value) || 0,
+        limit: parseInt(couponForm.limit) || 0,
+        used: 0,
+        validTill: couponForm.validTill || "2025-12-31",
+        status: "Active",
+      };
+      setCoupons([newC, ...coupons]);
+      toast({ title: "Coupon created", description: newC.code });
+    }
     setCouponOpen(false);
+    setEditingCoupon(null);
     setCouponForm({ code: "", type: "Flat", value: "", limit: "", validTill: "" });
-    toast({ title: "Coupon created", description: newC.code });
   }
 
   const totalAudience = campaigns.reduce((s, c) => s + c.audience, 0);
@@ -343,7 +357,7 @@ export function MarketingView() {
         <TabsContent value="coupons" className="mt-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">{coupons.length} coupons · {coupons.filter((c) => c.status === "Active").length} active</p>
-            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={() => setCouponOpen(true)}>
+            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={() => { setEditingCoupon(null); setCouponForm({ code: "", type: "Flat", value: "", limit: "", validTill: "" }); setCouponOpen(true); }}>
               <Plus className="w-4 h-4 mr-1.5" /> Create Coupon
             </Button>
           </div>
@@ -387,7 +401,7 @@ export function MarketingView() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-40">
                               <DropdownMenuItem onClick={() => toast({ title: "Copied", description: `${c.code} copied` })}><Copy className="w-4 h-4 mr-2" /> Copy Code</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => toast({ title: "Edit coupon", description: c.code })}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setEditingCoupon(c); setCouponForm({ code: c.code, type: c.type, value: String(c.value), limit: String(c.limit), validTill: c.validTill }); setCouponOpen(true); }}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-rose-600" onClick={() => { setCoupons((prev) => prev.filter((x) => x.id !== c.id)); toast({ title: "Coupon deleted", description: c.code, variant: "destructive" }); }}>
                                 <Trash2 className="w-4 h-4 mr-2" /> Delete
@@ -487,12 +501,12 @@ export function MarketingView() {
         </DialogContent>
       </Dialog>
 
-      {/* Create Coupon Dialog */}
-      <Dialog open={couponOpen} onOpenChange={setCouponOpen}>
+      {/* Create/Edit Coupon Dialog */}
+      <Dialog open={couponOpen} onOpenChange={(v) => { setCouponOpen(v); if (!v) setEditingCoupon(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Ticket className="w-5 h-5 text-teal-600" /> Create Coupon</DialogTitle>
-            <DialogDescription>Add a new discount coupon.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2"><Ticket className="w-5 h-5 text-teal-600" /> {editingCoupon ? "Edit Coupon" : "Create Coupon"}</DialogTitle>
+            <DialogDescription>{editingCoupon ? "Update this discount coupon." : "Add a new discount coupon."}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -528,8 +542,8 @@ export function MarketingView() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCouponOpen(false)}>Cancel</Button>
-            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={createCoupon}>
-              <Plus className="w-4 h-4 mr-1.5" /> Create
+            <Button className="bg-gradient-to-r from-teal-600 to-emerald-600" onClick={saveCoupon}>
+              <Plus className="w-4 h-4 mr-1.5" /> {editingCoupon ? "Save Changes" : "Create"}
             </Button>
           </DialogFooter>
         </DialogContent>

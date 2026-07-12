@@ -46,7 +46,7 @@ type Ticket = {
 const TICKETS: Ticket[] = [
   { id: "TK-3402", subject: "Refund not received for cancelled flight", customer: "Karthik Venkat", priority: "Urgent", status: "Open", createdAt: "2025-01-20 14:32", assignedTo: "Nikhil Joshi", category: "Refunds" },
   { id: "TK-3401", subject: "Unable to download e-ticket for BK-8849", customer: "Kavya Reddy", priority: "High", status: "In Progress", createdAt: "2025-01-20 12:18", assignedTo: "Nikhil Joshi", category: "Booking" },
-  { id: "TK-3398", subject: "Visa document upload failing", customer: "Meera Iyer", priority: "High", status: "In Progress", createdAt: "2025-01-19 18:45", assignedTo: "Aisha Khan", category: "Visa" },
+  { id: "TK-3398", subject: "Holiday package itinerary not loading", customer: "Meera Iyer", priority: "High", status: "In Progress", createdAt: "2025-01-19 18:45", assignedTo: "Aisha Khan", category: "Booking" },
   { id: "TK-3395", subject: "Wallet balance mismatch after refund", customer: "TechCorp India", priority: "Medium", status: "Open", createdAt: "2025-01-19 16:02", assignedTo: "Vikram Iyer", category: "Payments" },
   { id: "TK-3390", subject: "Hotel booking shows wrong check-in date", customer: "Rohit Gupta", priority: "High", status: "Resolved", createdAt: "2025-01-19 11:30", assignedTo: "Sneha Reddy", category: "Booking" },
   { id: "TK-3385", subject: "GST invoice not generated for January", customer: "TechCorp India", priority: "Medium", status: "Resolved", createdAt: "2025-01-18 09:15", assignedTo: "Vikram Iyer", category: "Payments" },
@@ -56,13 +56,11 @@ const TICKETS: Ticket[] = [
 
 const FAQS = [
   { q: "How do I cancel a booking and get a refund?", a: "Visit Bookings → select the booking → click 'Cancel'. Refunds are processed within 5-7 business days to the original payment method. Cancellation charges depend on the airline/hotel policy and time of cancellation." },
-  { q: "What documents are required for an international visa?", a: "Typically: valid passport (6+ months validity), recent photographs, flight itinerary, hotel bookings, bank statements (last 3 months), employment proof, and a cover letter. Visa requirements vary by country — check the Visa module for country-specific checklists." },
   { q: "Can I modify my flight booking after confirmation?", a: "Yes, modifications are allowed subject to airline policy and fare rules. Go to Bookings → Edit. Date changes typically incur a fee plus fare difference. Name changes are usually not permitted by most airlines." },
   { q: "How does the wallet top-up work?", a: "Go to Wallet → Top Up, enter the amount, and pay via Razorpay/UPI/Card. The balance reflects instantly and can be used for any booking. Corporate accounts can also top up via bank transfer." },
-  { q: "What is the commission structure for agents?", a: "Commission varies by service: Flights (3-5%), Hotels (8-15%), Holidays (5-10%), Visa (10%), Insurance (15%). It is auto-credited to your wallet after booking completion. View detailed breakdown in the Commission module." },
+  { q: "What is the commission structure for agents?", a: "Commission varies by service: Flights (3-5%), Hotels (8-15%), Holidays (5-10%). It is auto-credited to your wallet after booking completion. View detailed breakdown in the Commission module." },
   { q: "How do I generate a GST invoice for my customer?", a: "For any paid booking, open the booking details and click 'Generate Invoice'. Ensure your customer's GSTIN is added to their profile. Invoices are auto-generated for corporate customers and emailed monthly." },
   { q: "Can I create custom holiday packages for clients?", a: "Yes! Use the Holiday module → Create Package. You can add flights, hotels, transfers, and activities. Set your margin and generate a quotation. Packages can be saved as templates for future use." },
-  { q: "What happens if a customer's visa is rejected?", a: "Visa rejection triggers an automatic notification. You can initiate a refund for the visa fee (subject to embassy rules) and any associated bookings. Resubmission with additional documents can be done through the Visa module." },
   { q: "How do I handle group bookings (10+ passengers)?", a: "Use the 'Group Booking' option in the Flights module. Enter passenger count, and our system will request a special group fare from the airline. Group fares offer better pricing but have separate cancellation policies." },
   { q: "Is there a mobile app for Travel Partner Pro?", a: "Yes, our mobile app is available for iOS and Android. Agents can manage bookings, receive notifications, and chat with customers on the go. Download from your agency dashboard → Settings → Mobile App." },
 ];
@@ -71,7 +69,7 @@ const HELP_CATEGORIES = [
   { icon: Plane, title: "Booking Management", desc: "Create, modify, cancel bookings across all services", articles: 24, color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" },
   { icon: CreditCard, title: "Payments & Wallet", desc: "Process payments, manage wallet, handle refunds", articles: 18, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
   { icon: RefreshCw, title: "Refunds & Cancellations", desc: "Refund policies, processing timelines, disputes", articles: 12, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" },
-  { icon: FileText, title: "Visa & Documentation", desc: "Visa applications, document checklists, embassy rules", articles: 16, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" },
+  { icon: FileText, title: "Holiday Packages", desc: "Package itineraries, inclusions, custom quotes", articles: 16, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" },
   { icon: User, title: "Account & Profile", desc: "Manage agency profile, branches, users & roles", articles: 14, color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400" },
   { icon: Headphones, title: "Technical Support", desc: "APIs, integrations, troubleshooting, system status", articles: 22, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" },
 ];
@@ -455,7 +453,7 @@ function RaiseTicketDialog({ open, onOpenChange }: { open: boolean; onOpenChange
               <Select defaultValue="Booking">
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["Booking", "Payments", "Refunds", "Visa", "Account", "Technical"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {["Booking", "Payments", "Refunds", "Account", "Technical"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

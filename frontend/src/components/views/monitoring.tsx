@@ -52,8 +52,6 @@ const API_HEALTH: ApiHealth[] = [
   { id: "h-1", vendor: "Amadeus", uptime: 99.98, avgResponse: 312, status: "Operational", lastIncident: "None in 30 days" },
   { id: "h-2", vendor: "TBO Holidays", uptime: 99.95, avgResponse: 198, status: "Operational", lastIncident: "None in 30 days" },
   { id: "h-3", vendor: "Booking.com", uptime: 98.42, avgResponse: 540, status: "Degraded", lastIncident: "429 Rate limit · 2h ago" },
-  { id: "h-4", vendor: "redBus", uptime: 99.89, avgResponse: 156, status: "Operational", lastIncident: "Minor timeout · 1d ago" },
-  { id: "h-5", vendor: "IRCTC", uptime: 96.21, avgResponse: 1240, status: "Degraded", lastIncident: "500 Internal · 35 min ago" },
   { id: "h-6", vendor: "Hotelbeds", uptime: 99.72, avgResponse: 412, status: "Operational", lastIncident: "None in 30 days" },
   { id: "h-7", vendor: "Sabre", uptime: 99.91, avgResponse: 286, status: "Operational", lastIncident: "Slow response · 3d ago" },
   { id: "h-8", vendor: "Skyscanner", uptime: 88.14, avgResponse: 1820, status: "Down", lastIncident: "Outage · 8 min ago" },
@@ -70,9 +68,7 @@ interface ErrorLog {
 const ERROR_LOGS: ErrorLog[] = [
   { id: "er-1", timestamp: "2025-01-20 14:32:11", service: "booking-service", message: "NullPointerException at BookingService.confirm():142", severity: "High", stack: "at com.tp.booking.BookingService.confirm(BookingService.java:142) ~[booking-service.jar:1.4.2]" },
   { id: "er-2", timestamp: "2025-01-20 14:31:42", service: "payment-gateway", message: "Razorpay webhook signature mismatch", severity: "Urgent", stack: "at com.tp.payment.RazorpayHandler.verify(RazorpayHandler.java:78) ~[payment-gateway.jar:2.1.0]" },
-  { id: "er-3", timestamp: "2025-01-20 14:30:58", service: "irctc-adapter", message: "HTTP 500 from IRCTC /train/availability", severity: "Medium", stack: "at com.tp.adapters.IrctcClient.getAvailability(IrctcClient.java:215)" },
   { id: "er-4", timestamp: "2025-01-20 14:29:25", service: "redis-cache", message: "Connection pool exhausted (max: 50)", severity: "Medium", stack: "at redis.clients.jedis.JedisFactory.makeObject(JedisFactory.java:89)" },
-  { id: "er-5", timestamp: "2025-01-20 14:28:34", service: "redbus-api", message: "Upstream timeout after 3000ms", severity: "High", stack: "at okhttp3.internal.http.RetryAndFollowUpInterceptor.retry(RetryAndFollowUpInterceptor.java:158)" },
   { id: "er-6", timestamp: "2025-01-20 14:27:48", service: "auth-service", message: "JWT expired for user u-cu-2", severity: "Low", stack: "at io.jsonwebtoken.impl.DefaultJwtParser.parse(DefaultJwtParser.java:232)" },
   { id: "er-7", timestamp: "2025-01-20 14:26:55", service: "hotel-search", message: "Booking.com returned 429 Too Many Requests", severity: "Medium", stack: "at com.tp.search.BookingComProvider.search(BookingComProvider.java:124)" },
   { id: "er-8", timestamp: "2025-01-20 14:25:11", service: "notification-svc", message: "WhatsApp template rejected by provider", severity: "Low", stack: "at com.tp.notify.WhatsappSender.send(WhatsappSender.java:67)" },

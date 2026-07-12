@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Building2, Plus, Search, MoreHorizontal, Eye, Pencil, Ban, CheckCircle2,
-  Settings2, Wallet, TrendingUp, Plane, Hotel, Bus, Train, Crown, Sparkles, Rocket,
+  Settings2, Wallet, TrendingUp, Plane, Hotel, Crown, Sparkles, Rocket,
 } from "lucide-react";
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -104,6 +104,7 @@ export function AgenciesView() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [addOpen, setAddOpen] = useState(false);
   const [detailAgency, setDetailAgency] = useState<Agency | null>(null);
+  const [editAgency, setEditAgency] = useState<Agency | null>(null);
   const [agencies, setAgencies] = useState<Agency[]>(AGENCIES);
 
   useEffect(() => {
@@ -117,7 +118,7 @@ export function AgenciesView() {
   // Add-agency dialog state
   const [form, setForm] = useState({
     name: "", owner: "", email: "", phone: "", plan: "Growth" as Agency["plan"],
-    flights: 20000, hotels: 15000, bus: 8000, train: 5000,
+    flights: 20000, hotels: 15000,
   });
 
   const stats = {
@@ -145,13 +146,13 @@ export function AgenciesView() {
       email: form.email,
       phone: form.phone || "+91 90000 00000",
       plan: form.plan,
-      apiAllocation: { flights: form.flights, hotels: form.hotels, bus: form.bus, train: form.train },
+      apiAllocation: { flights: form.flights, hotels: form.hotels },
     };
     api.createAgency(reqBody)
       .then((res) => {
         setAgencies([mapApiAgency(res.agency), ...agencies]);
         setAddOpen(false);
-        setForm({ name: "", owner: "", email: "", phone: "", plan: "Growth", flights: 20000, hotels: 15000, bus: 8000, train: 5000 });
+        setForm({ name: "", owner: "", email: "", phone: "", plan: "Growth", flights: 20000, hotels: 15000 });
         toast({
           title: "Agency created",
           description: res.tempPassword
@@ -165,13 +166,13 @@ export function AgenciesView() {
           name: form.name, owner: form.owner, email: form.email, phone: form.phone || "+91 90000 00000",
           plan: form.plan, status: "Trial", walletBalance: 0, commissionEarned: 0, totalBookings: 0,
           monthlyRevenue: 0,
-          apiAllocation: { flights: form.flights, hotels: form.hotels, bus: form.bus, train: form.train },
+          apiAllocation: { flights: form.flights, hotels: form.hotels },
           createdAt: new Date().toISOString().slice(0, 10),
           branches: 0, employees: 0,
         };
         setAgencies([newAgency, ...agencies]);
         setAddOpen(false);
-        setForm({ name: "", owner: "", email: "", phone: "", plan: "Growth", flights: 20000, hotels: 15000, bus: 8000, train: 5000 });
+        setForm({ name: "", owner: "", email: "", phone: "", plan: "Growth", flights: 20000, hotels: 15000 });
         toast({ title: "Agency created (offline)", description: `${newAgency.name} created locally.` });
       });
   }
@@ -247,8 +248,6 @@ export function AgenciesView() {
                 {([
                   { key: "flights", label: "Flights", icon: Plane, color: "text-teal-600", max: 100000 },
                   { key: "hotels", label: "Hotels", icon: Hotel, color: "text-amber-600", max: 80000 },
-                  { key: "bus", label: "Bus", icon: Bus, color: "text-cyan-600", max: 50000 },
-                  { key: "train", label: "Train", icon: Train, color: "text-violet-600", max: 30000 },
                 ] as const).map((c) => (
                   <div key={c.key} className="space-y-1.5">
                     <div className="flex items-center justify-between">
@@ -353,7 +352,7 @@ export function AgenciesView() {
                         <DropdownMenuContent align="end" className="w-44">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem onClick={() => setDetailAgency(a)}><Eye className="w-4 h-4 mr-2" /> View Details</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => toast({ title: "Edit agency", description: `Opening editor for ${a.name}` })}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEditAgency(a)}><Pencil className="w-4 h-4 mr-2" /> Edit</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => toast({ title: "Manage API", description: `API allocation for ${a.name}` })}><Settings2 className="w-4 h-4 mr-2" /> Manage API</DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
@@ -429,13 +428,112 @@ export function AgenciesView() {
           {detailAgency && <AgencyDetail agency={detailAgency} />}
         </DialogContent>
       </Dialog>
+
+      <EditAgencyDialog
+        agency={editAgency}
+        onClose={() => setEditAgency(null)}
+        onSaved={(updated) => setAgencies((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))}
+      />
     </div>
+  );
+}
+
+function EditAgencyDialog({ agency, onClose, onSaved }: { agency: Agency | null; onClose: () => void; onSaved: (a: Agency) => void }) {
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [owner, setOwner] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [plan, setPlan] = useState<Agency["plan"]>("Starter");
+  const [status, setStatus] = useState<Agency["status"]>("Active");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!agency) return;
+    setName(agency.name);
+    setOwner(agency.owner);
+    setEmail(agency.email);
+    setPhone(agency.phone);
+    setPlan(agency.plan);
+    setStatus(agency.status);
+  }, [agency]);
+
+  if (!agency) return null;
+
+  async function handleSave() {
+    if (!agency) return;
+    setSaving(true);
+    try {
+      const res = await api.updateAgency(agency.id, { name, owner, email, phone, plan, status });
+      onSaved(mapApiAgency(res.agency));
+      toast({ title: "Agency updated", description: `${name} has been saved.` });
+      onClose();
+    } catch {
+      toast({ title: "Couldn't save agency", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!agency} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Agency</DialogTitle>
+          <DialogDescription>Update agency details.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Agency Name</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Owner</Label>
+              <Input value={owner} onChange={(e) => setOwner(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Phone</Label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Email</Label>
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Plan</Label>
+              <Select value={plan} onValueChange={(v) => setPlan(v as Agency["plan"])}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(["Starter", "Growth", "Enterprise"] as const).map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Status</Label>
+              <Select value={status} onValueChange={(v) => setStatus(v as Agency["status"])}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(["Active", "Suspended", "Trial"] as const).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button disabled={saving} onClick={handleSave}>Save Changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function AgencyDetail({ agency }: { agency: Agency }) {
   const recentBookings = BOOKINGS.filter((b) => b.agency === agency.name || b.agency === "Wanderlust Travels").slice(0, 5);
-  const maxAlloc = Math.max(agency.apiAllocation.flights, agency.apiAllocation.hotels, agency.apiAllocation.bus, agency.apiAllocation.train, 100000);
+  const maxAlloc = Math.max(agency.apiAllocation.flights, agency.apiAllocation.hotels, 100000);
 
   return (
     <>
@@ -477,8 +575,6 @@ function AgencyDetail({ agency }: { agency: Agency }) {
         <div className="space-y-2.5 rounded-lg border p-3">
           <AllocationBar label="Flights" value={agency.apiAllocation.flights} total={maxAlloc} color="bg-teal-500" />
           <AllocationBar label="Hotels" value={agency.apiAllocation.hotels} total={maxAlloc} color="bg-amber-500" />
-          <AllocationBar label="Bus" value={agency.apiAllocation.bus} total={maxAlloc} color="bg-cyan-500" />
-          <AllocationBar label="Train" value={agency.apiAllocation.train} total={maxAlloc} color="bg-violet-500" />
         </div>
       </div>
 

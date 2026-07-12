@@ -33,7 +33,7 @@ export interface Agency {
   commissionEarned: number;
   totalBookings: number;
   monthlyRevenue: number;
-  apiAllocation: { flights: number; hotels: number; bus: number; train: number };
+  apiAllocation: { flights: number; hotels: number };
   createdAt: string;
   branches: number;
   employees: number;
@@ -103,23 +103,6 @@ export interface RoomType {
   roomsLeft: number;
 }
 
-export interface Bus {
-  id: string;
-  operator: string;
-  busType: "AC Sleeper" | "AC Seater" | "Non-AC Sleeper" | "Volvo Multi-Axle" | "Mercedes";
-  origin: string;
-  destination: string;
-  departTime: string;
-  arriveTime: string;
-  duration: string;
-  price: number;
-  seatsLeft: number;
-  rating: number;
-  amenities: string[];
-  boardingPoints: string[];
-  droppingPoints: string[];
-}
-
 export interface HolidayPackage {
   id: string;
   title: string;
@@ -163,7 +146,7 @@ export interface Lead {
   email: string;
   phone: string;
   source: "Website" | "WhatsApp" | "Phone" | "Walk-in" | "Facebook" | "Instagram" | "Google Ads" | "Referral";
-  service: "Flight" | "Hotel" | "Holiday" | "Visa" | "Insurance" | "Bus" | "Train";
+  service: "Flight" | "Hotel" | "Holiday";
   value: number;
   stage: "New" | "Qualified" | "Follow-up" | "Quotation Sent" | "Negotiation" | "Won" | "Lost";
   assignedTo: string;
@@ -176,7 +159,7 @@ export interface Booking {
   id: string;
   bookingRef: string;
   customerName: string;
-  service: "Flight" | "Hotel" | "Bus" | "Train" | "Holiday" | "Visa" | "Insurance";
+  service: "Flight" | "Hotel" | "Holiday";
   route: string;
   travelDate: string;
   amount: number;
@@ -248,7 +231,7 @@ export interface Quotation {
   id: string;
   quoteNo: string;
   customerName: string;
-  service: "Flight" | "Hotel" | "Holiday" | "Visa" | "Insurance";
+  service: "Flight" | "Hotel" | "Holiday";
   items: number;
   amount: number;
   gst: number;

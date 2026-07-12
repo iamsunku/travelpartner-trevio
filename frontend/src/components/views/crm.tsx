@@ -76,10 +76,6 @@ const SERVICE_COLORS: Record<string, string> = {
   Flight: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400",
   Hotel: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
   Holiday: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
-  Visa: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400",
-  Insurance: "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-400",
-  Bus: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-400",
-  Train: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
 };
 
 function LeadCard({ lead }: { lead: Lead }) {
@@ -237,7 +233,7 @@ function NewLeadDialog() {
               <Select value={form.service} onValueChange={(v) => setForm({ ...form, service: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {["Flight", "Hotel", "Holiday", "Visa", "Insurance", "Bus", "Train"].map((s) => (
+                  {["Flight", "Hotel", "Holiday"].map((s) => (
                     <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
                 </SelectContent>

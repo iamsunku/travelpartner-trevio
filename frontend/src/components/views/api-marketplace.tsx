@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
-  Plane, Hotel, Bus, Train, Search, Check, ExternalLink, Zap, Globe2, PlugZap, ShieldCheck,
+  Plane, Hotel, Search, Check, ExternalLink, Zap, Globe2, PlugZap, ShieldCheck,
 } from "lucide-react";
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -58,29 +58,9 @@ const HOTEL_VENDORS: Vendor[] = [
   { id: "desiya", name: "Desiya (GDS)", description: "Domestic India inventory with 18K+ Indian hotels.", pricing: 2.2, coverage: "18K Indian hotels", connected: false, status: "Operational", gradient: VENDOR_GRADIENTS[5], callsToday: 0 },
 ];
 
-const BUS_VENDORS: Vendor[] = [
-  { id: "redbus", name: "redBus API", description: "Largest bus inventory in India — 3500+ operators.", pricing: 1.5, coverage: "3500+ operators", connected: true, status: "Operational", gradient: VENDOR_GRADIENTS[0], callsToday: 9120 },
-  { id: "abhibus", name: "abhibus", description: "Strong South + West India bus network.", pricing: 1.4, coverage: "2500+ operators", connected: true, status: "Operational", gradient: VENDOR_GRADIENTS[1], callsToday: 4200 },
-  { id: "paytm", name: "Paytm Bus", description: "Bus aggregator with wallet payment flow.", pricing: 1.2, coverage: "2000+ operators", connected: false, status: "Operational", gradient: VENDOR_GRADIENTS[2], callsToday: 0 },
-  { id: "makemytrip", name: "MakeMyTrip Bus", description: "Curated bus inventory with quality scoring.", pricing: 1.8, coverage: "3000+ operators", connected: false, status: "Operational", gradient: VENDOR_GRADIENTS[3], callsToday: 0 },
-  { id: "yatra", name: "Yatra Bus", description: "Bus + train combos for intercity travel.", pricing: 1.3, coverage: "1800+ operators", connected: false, status: "Operational", gradient: VENDOR_GRADIENTS[4], callsToday: 0 },
-  { id: "travelyaari", name: "TravelYaari", description: "Verified operator network with live tracking.", pricing: 1.1, coverage: "1500+ operators", connected: false, status: "Degraded", gradient: VENDOR_GRADIENTS[5], callsToday: 0 },
-];
-
-const TRAIN_VENDORS: Vendor[] = [
-  { id: "irctc", name: "IRCTC API", description: "Official Indian Railways reservation API via authorized partner.", pricing: 2.0, coverage: "12K+ trains", connected: true, status: "Operational", gradient: VENDOR_GRADIENTS[0], callsToday: 7820 },
-  { id: "railrabit", name: "RailRabbit", description: "Aggregated train data with seat availability predictions.", pricing: 1.7, coverage: "12K+ trains", connected: false, status: "Operational", gradient: VENDOR_GRADIENTS[1], callsToday: 0 },
-  { id: "trainline", name: "Trainline", description: "European rail booking — 270+ operators in 45 countries.", pricing: 3.5, coverage: "270+ operators", connected: false, status: "Operational", gradient: VENDOR_GRADIENTS[2], callsToday: 0 },
-  { id: "raileurope", name: "Rail Europe", description: "European rail passes and point-to-point tickets.", pricing: 3.0, coverage: "200+ operators", connected: false, status: "Operational", gradient: VENDOR_GRADIENTS[3], callsToday: 0 },
-  { id: "kvhtrain", name: "KVH Train Connect", description: "Indian Railways PNR + timetable lookup.", pricing: 1.0, coverage: "12K+ trains", connected: false, status: "Operational", gradient: VENDOR_GRADIENTS[4], callsToday: 0 },
-  { id: "etrain", name: "eTrain.info", description: "Train route + station info with live status.", pricing: 0.8, coverage: "All Indian trains", connected: false, status: "Operational", gradient: VENDOR_GRADIENTS[5], callsToday: 0 },
-];
-
 const CATEGORY_TABS = [
   { id: "flights", label: "Flight APIs", icon: Plane, vendors: FLIGHT_VENDORS },
   { id: "hotels", label: "Hotel APIs", icon: Hotel, vendors: HOTEL_VENDORS },
-  { id: "bus", label: "Bus APIs", icon: Bus, vendors: BUS_VENDORS },
-  { id: "train", label: "Train APIs", icon: Train, vendors: TRAIN_VENDORS },
 ];
 
 function VendorCard({ vendor, onToggle }: { vendor: Vendor; onToggle: (id: string) => void }) {
@@ -155,7 +135,7 @@ export function ApiMarketplaceView() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [state, setState] = useState<Record<string, Vendor[]>>({
-    flights: FLIGHT_VENDORS, hotels: HOTEL_VENDORS, bus: BUS_VENDORS, train: TRAIN_VENDORS,
+    flights: FLIGHT_VENDORS, hotels: HOTEL_VENDORS,
   });
 
   const allConnected = useMemo(

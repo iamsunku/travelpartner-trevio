@@ -1,7 +1,7 @@
 // Travel Partner Pro — Rich Mock Data
 
 import type {
-  Agency, Branch, Flight, Hotel, Bus, HolidayPackage, Customer, Lead,
+  Agency, Branch, Flight, Hotel, HolidayPackage, Customer, Lead,
   Booking, Payment, WalletTransaction, Employee, Task, Quotation, Notification, User,
 } from "@/types";
 
@@ -33,12 +33,12 @@ export const ROLE_USERS: Record<string, User> = {
 };
 
 export const AGENCIES: Agency[] = [
-  { id: "ag-1", name: "Wanderlust Travels", owner: "Priya Sharma", email: "admin@wanderlusttravels.in", phone: "+91 98200 12345", plan: "Enterprise", status: "Active", walletBalance: 845000, commissionEarned: 1240000, totalBookings: 3420, monthlyRevenue: 2850000, apiAllocation: { flights: 50000, hotels: 30000, bus: 15000, train: 10000 }, createdAt: "2023-02-14", branches: 4, employees: 38 },
-  { id: "ag-2", name: "Sky High Holidays", owner: "Mohit Agarwal", email: "ops@skyhighholidays.com", phone: "+91 98111 23456", plan: "Growth", status: "Active", walletBalance: 312000, commissionEarned: 560000, totalBookings: 1890, monthlyRevenue: 1450000, apiAllocation: { flights: 20000, hotels: 15000, bus: 8000, train: 5000 }, createdAt: "2023-06-20", branches: 2, employees: 18 },
-  { id: "ag-3", name: "Royal Routes Tourism", owner: "Fatima Sheikh", email: "info@royalroutes.in", phone: "+91 98222 34567", plan: "Enterprise", status: "Active", walletBalance: 1250000, commissionEarned: 2100000, totalBookings: 5100, monthlyRevenue: 4200000, apiAllocation: { flights: 80000, hotels: 50000, bus: 25000, train: 15000 }, createdAt: "2022-11-03", branches: 7, employees: 64 },
-  { id: "ag-4", name: "Voyage Vista", owner: "Anil Kapoor", email: "hello@voyagevista.co", phone: "+91 98333 45678", plan: "Starter", status: "Trial", walletBalance: 45000, commissionEarned: 78000, totalBookings: 320, monthlyRevenue: 240000, apiAllocation: { flights: 5000, hotels: 3000, bus: 2000, train: 1000 }, createdAt: "2024-09-12", branches: 1, employees: 6 },
-  { id: "ag-5", name: "Global Gateway Tours", owner: "Sunita Menon", email: "contact@globalgateway.in", phone: "+91 98444 56789", plan: "Growth", status: "Active", walletBalance: 498000, commissionEarned: 890000, totalBookings: 2400, monthlyRevenue: 1980000, apiAllocation: { flights: 25000, hotels: 18000, bus: 10000, train: 6000 }, createdAt: "2023-04-08", branches: 3, employees: 24 },
-  { id: "ag-6", name: "Horizon Holidays", owner: "Deepak Joshi", email: "team@horizonholidays.in", phone: "+91 98555 67890", plan: "Enterprise", status: "Suspended", walletBalance: -12000, commissionEarned: 450000, totalBookings: 980, monthlyRevenue: 720000, apiAllocation: { flights: 10000, hotels: 8000, bus: 4000, train: 2000 }, createdAt: "2023-08-25", branches: 2, employees: 12 },
+  { id: "ag-1", name: "Wanderlust Travels", owner: "Priya Sharma", email: "admin@wanderlusttravels.in", phone: "+91 98200 12345", plan: "Enterprise", status: "Active", walletBalance: 845000, commissionEarned: 1240000, totalBookings: 3420, monthlyRevenue: 2850000, apiAllocation: { flights: 50000, hotels: 30000 }, createdAt: "2023-02-14", branches: 4, employees: 38 },
+  { id: "ag-2", name: "Sky High Holidays", owner: "Mohit Agarwal", email: "ops@skyhighholidays.com", phone: "+91 98111 23456", plan: "Growth", status: "Active", walletBalance: 312000, commissionEarned: 560000, totalBookings: 1890, monthlyRevenue: 1450000, apiAllocation: { flights: 20000, hotels: 15000 }, createdAt: "2023-06-20", branches: 2, employees: 18 },
+  { id: "ag-3", name: "Royal Routes Tourism", owner: "Fatima Sheikh", email: "info@royalroutes.in", phone: "+91 98222 34567", plan: "Enterprise", status: "Active", walletBalance: 1250000, commissionEarned: 2100000, totalBookings: 5100, monthlyRevenue: 4200000, apiAllocation: { flights: 80000, hotels: 50000 }, createdAt: "2022-11-03", branches: 7, employees: 64 },
+  { id: "ag-4", name: "Voyage Vista", owner: "Anil Kapoor", email: "hello@voyagevista.co", phone: "+91 98333 45678", plan: "Starter", status: "Trial", walletBalance: 45000, commissionEarned: 78000, totalBookings: 320, monthlyRevenue: 240000, apiAllocation: { flights: 5000, hotels: 3000 }, createdAt: "2024-09-12", branches: 1, employees: 6 },
+  { id: "ag-5", name: "Global Gateway Tours", owner: "Sunita Menon", email: "contact@globalgateway.in", phone: "+91 98444 56789", plan: "Growth", status: "Active", walletBalance: 498000, commissionEarned: 890000, totalBookings: 2400, monthlyRevenue: 1980000, apiAllocation: { flights: 25000, hotels: 18000 }, createdAt: "2023-04-08", branches: 3, employees: 24 },
+  { id: "ag-6", name: "Horizon Holidays", owner: "Deepak Joshi", email: "team@horizonholidays.in", phone: "+91 98555 67890", plan: "Enterprise", status: "Suspended", walletBalance: -12000, commissionEarned: 450000, totalBookings: 980, monthlyRevenue: 720000, apiAllocation: { flights: 10000, hotels: 8000 }, createdAt: "2023-08-25", branches: 2, employees: 12 },
 ];
 
 export const BRANCHES: Branch[] = [
@@ -257,161 +257,7 @@ export function generateHotels(city: string, count = 8): Hotel[] {
 
 export const POPULAR_HOTELS = generateHotels("Mumbai", 8);
 
-// State-run transport corporations, picked by the state of the origin/destination city
-const CITY_STATE: Record<string, string> = {
-  Mumbai: "Maharashtra", Pune: "Maharashtra", Nagpur: "Maharashtra", Nashik: "Maharashtra", Shirdi: "Maharashtra",
-  Delhi: "Delhi",
-  Bangalore: "Karnataka", Mysore: "Karnataka",
-  Chennai: "Tamil Nadu", Coimbatore: "Tamil Nadu",
-  Hyderabad: "Telangana",
-  Kolkata: "West Bengal",
-  Ahmedabad: "Gujarat", Surat: "Gujarat", Vadodara: "Gujarat",
-  Jaipur: "Rajasthan", Udaipur: "Rajasthan",
-  Goa: "Goa",
-  Indore: "Madhya Pradesh", Bhopal: "Madhya Pradesh",
-  Kochi: "Kerala",
-  Lucknow: "Uttar Pradesh",
-  Chandigarh: "Chandigarh",
-  Amritsar: "Punjab",
-  Visakhapatnam: "Andhra Pradesh",
-};
 
-type BusOperator = { operator: string; busType: Bus["busType"] };
-
-const STATE_RTC: Record<string, BusOperator[]> = {
-  Maharashtra: [
-    { operator: "MSRTC Shivneri", busType: "AC Seater" },
-    { operator: "MSRTC Shivshahi Volvo", busType: "Volvo Multi-Axle" },
-  ],
-  Karnataka: [
-    { operator: "KSRTC Airavat Club Class", busType: "AC Sleeper" },
-    { operator: "KSRTC Rajahamsa", busType: "AC Seater" },
-  ],
-  Telangana: [
-    { operator: "TSRTC Garuda Plus", busType: "AC Sleeper" },
-    { operator: "TSRTC Indra AC", busType: "AC Seater" },
-  ],
-  "Andhra Pradesh": [
-    { operator: "APSRTC Amaravathi", busType: "AC Sleeper" },
-    { operator: "APSRTC Super Luxury", busType: "AC Seater" },
-  ],
-  "Tamil Nadu": [
-    { operator: "TNSTC Ultra Deluxe", busType: "Non-AC Sleeper" },
-    { operator: "SETC AC Sleeper", busType: "AC Sleeper" },
-  ],
-  Kerala: [
-    { operator: "KSRTC (Kerala) Garuda Maharaja", busType: "AC Sleeper" },
-    { operator: "KSRTC (Kerala) Swift", busType: "AC Seater" },
-  ],
-  Gujarat: [
-    { operator: "GSRTC ExpressWay", busType: "AC Seater" },
-  ],
-  Rajasthan: [
-    { operator: "RSRTC Silver Line Volvo", busType: "Volvo Multi-Axle" },
-    { operator: "RSRTC Deluxe", busType: "Non-AC Sleeper" },
-  ],
-  Punjab: [
-    { operator: "PUNBUS AC", busType: "AC Seater" },
-    { operator: "PRTC Deluxe", busType: "Non-AC Sleeper" },
-  ],
-  "West Bengal": [
-    { operator: "WBTC Volvo AC", busType: "Volvo Multi-Axle" },
-  ],
-  "Uttar Pradesh": [
-    { operator: "UPSRTC Janrath", busType: "AC Seater" },
-    { operator: "UPSRTC Shatabdi", busType: "Non-AC Sleeper" },
-  ],
-  Delhi: [
-    { operator: "DTC Interstate AC", busType: "AC Seater" },
-  ],
-  Goa: [
-    { operator: "Kadamba Transport (KTC)", busType: "AC Seater" },
-  ],
-  Chandigarh: [
-    { operator: "CTU Interstate", busType: "AC Seater" },
-  ],
-};
-
-const PRIVATE_OPERATORS: BusOperator[] = [
-  { operator: "VRL Travels", busType: "AC Sleeper" },
-  { operator: "SRS Travels", busType: "AC Sleeper" },
-  { operator: "Orange Tours & Travels", busType: "AC Sleeper" },
-  { operator: "Neeta Travels", busType: "Volvo Multi-Axle" },
-  { operator: "Patel Tours & Travels", busType: "Mercedes" },
-  { operator: "Kallada Travels", busType: "AC Sleeper" },
-  { operator: "National Travels", busType: "Volvo Multi-Axle" },
-  { operator: "Sharma Transport", busType: "AC Seater" },
-  { operator: "Parveen Travels", busType: "AC Sleeper" },
-  { operator: "Kaveri Travels", busType: "AC Seater" },
-  { operator: "Durgamba Motors", busType: "AC Sleeper" },
-  { operator: "Jabbar Travels", busType: "Mercedes" },
-  { operator: "KPN Travels", busType: "AC Sleeper" },
-  { operator: "IntrCity SmartBus", busType: "AC Sleeper" },
-  { operator: "Zingbus", busType: "AC Seater" },
-  { operator: "Yolo Bus", busType: "Volvo Multi-Axle" },
-  { operator: "Rajdhani Travels", busType: "Non-AC Sleeper" },
-];
-
-function hashCode(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
-const AMENITIES_POOL_BUS = ["Charging Point", "Blanket", "Water Bottle", "Reading Light", "Live Tracking", "AC", "Wifi", "Snacks", "CCTV"];
-const DEP_HOURS_BUS = ["05:30", "06:00", "07:15", "08:30", "09:45", "11:00", "13:30", "14:15", "16:00", "17:30", "19:00", "20:30", "21:45", "22:30", "23:15", "23:59"];
-
-// Picks operators serving a route based on the state RTCs of the origin/destination plus pan-India private operators
-export function generateBuses(origin: string, destination: string, count = 10): Bus[] {
-  const originState = CITY_STATE[origin];
-  const destState = CITY_STATE[destination];
-
-  const pool: BusOperator[] = [];
-  if (originState && STATE_RTC[originState]) pool.push(...STATE_RTC[originState]);
-  if (destState && destState !== originState && STATE_RTC[destState]) pool.push(...STATE_RTC[destState]);
-  pool.push(...PRIVATE_OPERATORS);
-
-  const seen = new Set<string>();
-  const uniquePool = pool.filter((p) => (seen.has(p.operator) ? false : (seen.add(p.operator), true)));
-
-  const seed = hashCode(`${origin}-${destination}`);
-  const n = Math.min(count, uniquePool.length);
-  const buses: Bus[] = [];
-
-  for (let i = 0; i < n; i++) {
-    const op = uniquePool[(seed + i) % uniquePool.length];
-    const dep = DEP_HOURS_BUS[(seed + i * 3) % DEP_HOURS_BUS.length];
-    const durHours = 3 + ((seed + i * 5) % 9);
-    const durMin = ((seed + i * 13) % 4) * 15;
-    const arrH = (parseInt(dep.slice(0, 2), 10) + durHours) % 24;
-    const arrM = (parseInt(dep.slice(3, 5), 10) + durMin) % 60;
-    const isRtc = /RTC|STC|SETC|PUNBUS|PRTC|WBTC|DTC|KTC|CTU/.test(op.operator);
-    const basePrice = 350 + durHours * 65 + (isRtc ? 0 : 150);
-    const price = basePrice + ((seed + i * 7) % 5) * 40;
-    const rating = Number((isRtc ? 3.4 + ((seed + i) % 6) * 0.15 : 3.9 + ((seed + i) % 6) * 0.15).toFixed(1));
-    const seatsLeft = 6 + ((seed + i * 11) % 40);
-    const amenities = AMENITIES_POOL_BUS.filter((_, ai) => (seed + i + ai) % 3 !== 0);
-
-    buses.push({
-      id: `bs-gen-${origin}-${destination}-${i}`,
-      operator: op.operator,
-      busType: op.busType,
-      origin,
-      destination,
-      departTime: dep,
-      arriveTime: `${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`,
-      duration: `${durHours}h ${durMin}m`,
-      price,
-      seatsLeft,
-      rating,
-      amenities: amenities.length ? amenities : ["AC"],
-      boardingPoints: [`${origin} Central Bus Stand`, `${origin} Bypass`, `${origin} Outskirts`],
-      droppingPoints: [`${destination} Outskirts`, `${destination} Bypass`, `${destination} Central Bus Stand`],
-    });
-  }
-
-  return buses.sort((a, b) => a.departTime.localeCompare(b.departTime));
-}
 
 export const HOLIDAY_PACKAGES: HolidayPackage[] = [
   { id: "pk-1", title: "Bali Bliss - 6N/7D", destination: "Bali", country: "Indonesia", type: "Honeymoon", duration: "6 Nights 7 Days", nights: 6, days: 7, price: 49999, originalPrice: 65000, rating: 4.7, reviews: 234, image: "", highlights: ["Private Pool Villa", "Sunset Dinner Cruise", "Uluwatu Temple Tour", "Kintamani Volcano"], inclusions: ["Return Flights", "6N Villa Stay", "Daily Breakfast", "All Transfers", "Tour Passes"], isInternational: true },
@@ -439,9 +285,7 @@ export const LEADS: Lead[] = [
   { id: "ld-3", customerName: "Amit Patel", email: "amit.patel@gmail.com", phone: "+91 98333 33333", source: "Google Ads", service: "Holiday", value: 220000, stage: "Follow-up", assignedTo: "Rahul Khanna", expectedClose: "2025-02-10", createdAt: "2025-01-14", notes: "Europe tour interest, 2 couples, May 2025" },
   { id: "ld-4", customerName: "Kavya Reddy", email: "kavya.r@gmail.com", phone: "+91 98444 44444", source: "Instagram", service: "Hotel", value: 38000, stage: "Quotation Sent", assignedTo: "Sneha Reddy", expectedClose: "2025-01-25", createdAt: "2025-01-12", notes: "Goa luxury resort, 3 nights, anniversary" },
   { id: "ld-5", customerName: "Sanjay Kumar", email: "sanjay.k@gmail.com", phone: "+91 98555 55555", source: "Referral", service: "Flight", value: 72000, stage: "Negotiation", assignedTo: "Deepa Rao", expectedClose: "2025-01-24", createdAt: "2025-01-10", notes: "Group booking 6 pax, Delhi-Singapore, asking for discount" },
-  { id: "ld-6", customerName: "Ritu Singh", email: "ritu.s@gmail.com", phone: "+91 98666 66666", source: "Phone", service: "Visa", value: 18000, stage: "Won", assignedTo: "Sneha Reddy", expectedClose: "2025-01-15", createdAt: "2025-01-08", notes: "Schengen visa for 2, converted to booking BK-8841" },
   { id: "ld-7", customerName: "Manoj Joshi", email: "manoj.j@gmail.com", phone: "+91 98777 77777", source: "Facebook", service: "Holiday", value: 95000, stage: "New", assignedTo: "Rahul Khanna", expectedClose: "2025-02-15", createdAt: "2025-01-18", notes: "Andaman family package query" },
-  { id: "ld-8", customerName: "Lakshmi Nair", email: "lakshmi.n@gmail.com", phone: "+91 98888 88888", source: "Walk-in", service: "Insurance", value: 8500, stage: "Qualified", assignedTo: "Deepa Rao", expectedClose: "2025-01-22", createdAt: "2025-01-16", notes: "Travel insurance for Europe trip" },
   { id: "ld-9", customerName: "Harish Reddy", email: "harish.r@gmail.com", phone: "+91 98999 99999", source: "Website", service: "Flight", value: 28000, stage: "Lost", assignedTo: "Sneha Reddy", expectedClose: "2025-01-12", createdAt: "2025-01-04", notes: "Booked directly with airline, price sensitive" },
 ];
 
@@ -450,9 +294,6 @@ export const BOOKINGS: Booking[] = [
   { id: "bk-2", bookingRef: "BK-8842", customerName: "Rohit Gupta", service: "Hotel", route: "Taj Palace, Delhi - 2N", travelDate: "2025-01-22", amount: 18900, commission: 945, status: "Ticketed", paymentStatus: "Paid", paymentMethod: "UPI", agent: "Rahul Khanna", agency: "Wanderlust Travels", createdAt: "2025-01-18" },
   { id: "bk-3", bookingRef: "BK-8843", customerName: "Anjali Desai", service: "Holiday", route: "Goa Beach Party - 3N", travelDate: "2025-02-08", amount: 14999, commission: 1500, status: "Pending", paymentStatus: "Partial", paymentMethod: "Razorpay", agent: "Sneha Reddy", agency: "Wanderlust Travels", createdAt: "2025-01-19" },
   { id: "bk-4", bookingRef: "BK-8844", customerName: "TechCorp India", service: "Flight", route: "BLR → DXB → BLR", travelDate: "2025-01-25", amount: 124000, commission: 6200, status: "Ticketed", paymentStatus: "Paid", paymentMethod: "Bank Transfer", agent: "Deepa Rao", agency: "Wanderlust Travels", createdAt: "2025-01-19" },
-  { id: "bk-5", bookingRef: "BK-8845", customerName: "Imran Khan", service: "Bus", route: "MUM → PUN", travelDate: "2025-01-23", amount: 1700, commission: 85, status: "Completed", paymentStatus: "Paid", paymentMethod: "UPI", agent: "Sneha Reddy", agency: "Wanderlust Travels", createdAt: "2025-01-15" },
-  { id: "bk-6", bookingRef: "BK-8846", customerName: "Meera Iyer", service: "Visa", route: "Schengen Visa - 2 pax", travelDate: "2025-03-10", amount: 18000, commission: 1800, status: "Confirmed", paymentStatus: "Paid", paymentMethod: "Razorpay", agent: "Deepa Rao", agency: "Wanderlust Travels", createdAt: "2025-01-16" },
-  { id: "bk-7", bookingRef: "BK-8847", customerName: "Suresh Pillai", service: "Insurance", route: "Travel Insurance - Annual", travelDate: "2025-01-20", amount: 8500, commission: 850, status: "Completed", paymentStatus: "Paid", paymentMethod: "Razorpay", agent: "Sneha Reddy", agency: "Wanderlust Travels", createdAt: "2025-01-14" },
   { id: "bk-8", bookingRef: "BK-8848", customerName: "Nisha Agarwal", service: "Flight", route: "CCU → BKK → CCU", travelDate: "2025-02-20", amount: 42000, commission: 2100, status: "Cancelled", paymentStatus: "Refunded", paymentMethod: "Card", agent: "Deepa Rao", agency: "Wanderlust Travels", createdAt: "2025-01-10" },
   { id: "bk-9", bookingRef: "BK-8849", customerName: "Kavya Reddy", service: "Hotel", route: "W Goa - 3N", travelDate: "2025-02-12", amount: 78000, commission: 3900, status: "Confirmed", paymentStatus: "Paid", paymentMethod: "Razorpay", agent: "Sneha Reddy", agency: "Wanderlust Travels", createdAt: "2025-01-19" },
   { id: "bk-10", bookingRef: "BK-8850", customerName: "Vivek Sharma", service: "Holiday", route: "Bali Bliss - 6N", travelDate: "2025-04-05", amount: 99998, commission: 10000, status: "Pending", paymentStatus: "Pending", agent: "Sneha Reddy", agency: "Wanderlust Travels", createdAt: "2025-01-20" },
@@ -489,14 +330,14 @@ export const EMPLOYEES: Employee[] = [
   { id: "em-3", name: "Deepa Rao", email: "deepa@wanderlusttravels.in", phone: "+91 98113 55667", designation: "Travel Consultant", department: "Sales", branch: "Bangalore - Indiranagar", role: "employee", status: "Active", salary: 38000, incentives: 12000, target: 400000, achieved: 358000, attendance: 92, joinDate: "2023-08-10" },
   { id: "em-4", name: "Vikram Iyer", email: "vikram@wanderlusttravels.in", phone: "+91 98114 66778", designation: "Finance Manager", department: "Accounts", branch: "Mumbai - Andheri", role: "accountant", status: "Active", salary: 62000, incentives: 8000, target: 0, achieved: 0, attendance: 99, joinDate: "2022-11-05" },
   { id: "em-5", name: "Suresh Babu", email: "suresh@wanderlusttravels.in", phone: "+91 98115 77889", designation: "Branch Manager", department: "Management", branch: "Chennai - T. Nagar", role: "branch_manager", status: "On Leave", salary: 68000, incentives: 15000, target: 800000, achieved: 210000, attendance: 88, joinDate: "2023-01-18" },
-  { id: "em-6", name: "Aisha Khan", email: "aisha@wanderlusttravels.in", phone: "+91 98116 88990", designation: "Visa Specialist", department: "Operations", branch: "Mumbai - Andheri", role: "employee", status: "Active", salary: 40000, incentives: 14000, target: 300000, achieved: 287000, attendance: 95, joinDate: "2023-05-22" },
+  { id: "em-6", name: "Aisha Khan", email: "aisha@wanderlusttravels.in", phone: "+91 98116 88990", designation: "Holiday Package Specialist", department: "Operations", branch: "Mumbai - Andheri", role: "employee", status: "Active", salary: 40000, incentives: 14000, target: 300000, achieved: 287000, attendance: 95, joinDate: "2023-05-22" },
   { id: "em-7", name: "Nikhil Joshi", email: "nikhil@wanderlusttravels.in", phone: "+91 98117 99001", designation: "Support Executive", department: "Support", branch: "Delhi - CP", role: "employee", status: "Active", salary: 32000, incentives: 6000, target: 0, achieved: 0, attendance: 94, joinDate: "2024-02-01" },
   { id: "em-8", name: "Priya Nair", email: "priya.n@wanderlusttravels.in", phone: "+91 98118 11223", designation: "Holiday Package Expert", department: "Sales", branch: "Bangalore - Indiranagar", role: "employee", status: "Active", salary: 42000, incentives: 16000, target: 450000, achieved: 498000, attendance: 97, joinDate: "2023-04-08" },
 ];
 
 export const TASKS: Task[] = [
   { id: "tk-1", title: "Follow up with Vivek Sharma - Bali package", description: "Send revised quotation with private pool villa option", assignedTo: "Sneha Reddy", assignedBy: "Arjun Nair", priority: "High", status: "In Progress", dueDate: "2025-01-22", relatedTo: "LD-1", createdAt: "2025-01-19" },
-  { id: "tk-2", title: "Process visa documents - Schengen", description: "Collect and verify documents for Meera Iyer's Schengen visa", assignedTo: "Aisha Khan", assignedBy: "Arjun Nair", priority: "Urgent", status: "To Do", dueDate: "2025-01-23", relatedTo: "BK-8846", createdAt: "2025-01-19" },
+  { id: "tk-2", title: "Confirm Bali villa upgrade", description: "Verify private pool villa availability for Vivek Sharma's Bali package", assignedTo: "Aisha Khan", assignedBy: "Arjun Nair", priority: "Urgent", status: "To Do", dueDate: "2025-01-23", relatedTo: "LD-1", createdAt: "2025-01-19" },
   { id: "tk-3", title: "Corporate rate negotiation - TechCorp", description: "Finalize annual corporate travel contract with TechCorp India", assignedTo: "Deepa Rao", assignedBy: "Priya Sharma", priority: "High", status: "Review", dueDate: "2025-01-25", createdAt: "2025-01-15" },
   { id: "tk-4", title: "Prepare weekly sales report", description: "Compile branch-wise sales performance for management review", assignedTo: "Sneha Reddy", assignedBy: "Arjun Nair", priority: "Medium", status: "Completed", dueDate: "2025-01-20", createdAt: "2025-01-18" },
   { id: "tk-5", title: "Refund follow-up - BK-8848", description: "Check with Razorpay for refund status of Nisha Agarwal's cancelled booking", assignedTo: "Vikram Iyer", assignedBy: "Deepa Rao", priority: "Medium", status: "In Progress", dueDate: "2025-01-21", relatedTo: "BK-8848", createdAt: "2025-01-16" },
@@ -543,8 +384,6 @@ export const BOOKING_TYPE_DATA = [
   { name: "Flights", value: 1450, color: "var(--chart-1)" },
   { name: "Hotels", value: 980, color: "var(--chart-2)" },
   { name: "Holidays", value: 420, color: "var(--chart-3)" },
-  { name: "Bus", value: 340, color: "var(--chart-4)" },
-  { name: "Visa", value: 180, color: "var(--chart-5)" },
 ];
 
 export const ENQUIRY_SOURCE_DATA = [
@@ -572,6 +411,6 @@ export const RECENT_ACTIVITIES = [
   { id: "ac-2", user: "System", action: "received payment", target: "₹45,000 via Razorpay", time: "20 min ago", type: "payment" },
   { id: "ac-3", user: "Deepa Rao", action: "created quotation", target: "QT-2025-018", time: "45 min ago", type: "quotation" },
   { id: "ac-4", user: "Vikram Iyer", action: "processed refund", target: "BK-8848 (₹42,000)", time: "1 hour ago", type: "refund" },
-  { id: "ac-5", user: "Aisha Khan", action: "updated visa status", target: "BK-8846 - Documents received", time: "2 hours ago", type: "visa" },
+  { id: "ac-5", user: "Aisha Khan", action: "updated package itinerary", target: "BK-8850 - Villa upgrade confirmed", time: "2 hours ago", type: "booking" },
   { id: "ac-6", user: "Rahul Khanna", action: "assigned task", target: "to Deepa Rao", time: "3 hours ago", type: "task" },
 ];

@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import {
   Users, Building2, User, Crown, Plus, Search, Phone, Mail, MapPin,
   Calendar, Award, BookOpen, FileText, StickyNote, Activity, Plane,
-  Stamp, ShieldCheck, Clock, Star,
+  Star,
 } from "lucide-react";
 import { BOOKINGS } from "@/lib/mock-data";
 import { useDemoDataStore } from "@/store/demo-data-store";
@@ -44,8 +44,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 const SERVICE_ICONS: Record<string, React.ElementType> = {
-  Flight: Plane, Hotel: Building2, Holiday: Star, Visa: Stamp,
-  Insurance: ShieldCheck, Bus: Users, Train: Clock,
+  Flight: Plane, Hotel: Building2, Holiday: Star,
 };
 
 const TRAVEL_HISTORY: Record<string, { route: string; date: string; service: string; amount: number }[]> = {
@@ -53,12 +52,10 @@ const TRAVEL_HISTORY: Record<string, { route: string; date: string; service: str
     { route: "MUM → DEL → MUM", date: "2025-01-12", service: "Flight", amount: 28400 },
     { route: "Goa Beach Party - 3N", date: "2024-12-22", service: "Holiday", amount: 14999 },
     { route: "Taj Palace Delhi - 2N", date: "2024-11-08", service: "Hotel", amount: 24500 },
-    { route: "Schengen Visa - 2 pax", date: "2024-09-15", service: "Visa", amount: 18000 },
   ],
   "cu-2": [
     { route: "BLR → DXB → BLR", date: "2025-01-19", service: "Flight", amount: 124000 },
     { route: "Bali Bliss - 6N", date: "2024-12-10", service: "Holiday", amount: 99998 },
-    { route: "Annual Travel Insurance", date: "2024-11-20", service: "Insurance", amount: 12500 },
   ],
   "cu-6": [
     { route: "BLR → SIN → BLR (Group 8)", date: "2025-01-15", service: "Flight", amount: 320000 },

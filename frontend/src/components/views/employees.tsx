@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Users, UserCheck, UserMinus, Calendar, Plus, Search, Mail, Phone,
   Eye, Pencil, Briefcase, Building2, Award, Target, TrendingUp, Wallet,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useAuthStore } from "@/store/app-store";
+import { api } from "@/lib/api";
+import { MODULES, MODULE_LABELS, ROLE_DEFAULT_PERMISSIONS } from "@/lib/permissions";
+import type { Module, Role } from "@/types";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -57,6 +62,7 @@ export function EmployeesView() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Employee | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [editing, setEditing] = useState<Employee | null>(null);
 
   const filtered = useMemo(() => {
     return employees.filter((e) => {
@@ -222,7 +228,7 @@ export function EmployeesView() {
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setSelected(e)}>
                             <Eye className="w-3.5 h-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => toast({ title: "Edit mode", description: `Editing ${e.name}` })}>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditing(e)}>
                             <Pencil className="w-3.5 h-3.5" />
                           </Button>
                         </div>
@@ -244,6 +250,7 @@ export function EmployeesView() {
       </Card>
 
       <AddEmployeeDialog open={addOpen} onOpenChange={setAddOpen} />
+      <EditEmployeeDialog employee={editing} onClose={() => setEditing(null)} />
       <EmployeeDetailDialog employee={selected} onClose={() => setSelected(null)} />
     </div>
   );
@@ -252,20 +259,43 @@ export function EmployeesView() {
 function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
   const addEmployee = useDemoDataStore((s) => s.addEmployee);
+  const currentUser = useAuthStore((s) => s.user);
+  const isBranchManager = currentUser?.role === "branch_manager";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [designation, setDesignation] = useState("Travel Consultant");
   const [department, setDepartment] = useState<Employee["department"]>("Sales");
-  const [branch, setBranch] = useState("Mumbai - Andheri");
-  const [role, setRole] = useState("employee");
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [branchId, setBranchId] = useState<string>(currentUser?.branchId || "");
+  const [role, setRole] = useState<Role>("employee");
   const [salary, setSalary] = useState("40000");
   const [target, setTarget] = useState("500000");
+  const [permissions, setPermissions] = useState<Module[]>(ROLE_DEFAULT_PERMISSIONS.employee);
+  const [permissionsTouched, setPermissionsTouched] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    api.getBranches(currentUser?.agencyId)
+      .then((res) => setBranches(res.branches.map((b) => ({ id: b.id, name: b.name }))))
+      .catch(() => setBranches([]));
+    if (isBranchManager && currentUser?.branchId) setBranchId(currentUser.branchId);
+  }, [open, currentUser?.agencyId, currentUser?.branchId, isBranchManager]);
+
+  useEffect(() => {
+    if (!permissionsTouched) setPermissions(ROLE_DEFAULT_PERMISSIONS[role]);
+  }, [role, permissionsTouched]);
 
   const resetForm = () => {
     setName(""); setEmail(""); setPhone(""); setDesignation("Travel Consultant");
-    setDepartment("Sales"); setBranch("Mumbai - Andheri"); setRole("employee");
+    setDepartment("Sales"); setBranchId(currentUser?.branchId || ""); setRole("employee");
     setSalary("40000"); setTarget("500000");
+    setPermissions(ROLE_DEFAULT_PERMISSIONS.employee); setPermissionsTouched(false);
+  };
+
+  const togglePermission = (module: Module) => {
+    setPermissionsTouched(true);
+    setPermissions((prev) => prev.includes(module) ? prev.filter((m) => m !== module) : [...prev, module]);
   };
 
   const handleSubmit = async () => {
@@ -273,16 +303,19 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
       toast({ title: "Missing fields", description: "Name and email are required", variant: "destructive" });
       return;
     }
+    const branchName = branches.find((b) => b.id === branchId)?.name || "";
     const result = await addEmployee({
       name,
       email,
       phone: phone || "+91 98000 00000",
       designation,
       department,
-      branch,
-      role: role as Employee["role"],
+      branch: branchName,
+      branchId: branchId || undefined,
+      role,
       salary: Number(salary) || 40000,
       target: Number(target) || 500000,
+      permissions: isBranchManager ? undefined : (permissionsTouched ? permissions : undefined),
     });
     toast({
       title: "Employee added",
@@ -328,16 +361,16 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
           </div>
           <div className="space-y-1.5">
             <Label>Branch</Label>
-            <Select value={branch} onValueChange={setBranch}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <Select value={branchId} onValueChange={setBranchId} disabled={isBranchManager}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select branch" /></SelectTrigger>
               <SelectContent>
-                {BRANCHES.filter((b) => b !== "All").map((b) => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                {branches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Role</Label>
-            <Select value={role} onValueChange={setRole}>
+            <Select value={role} onValueChange={(v) => setRole(v as Role)} disabled={isBranchManager}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {ROLES.map((r) => <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>)}
@@ -353,9 +386,167 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
             <Input type="number" placeholder="500000" value={target} onChange={(e) => setTarget(e.target.value)} />
           </div>
         </div>
+
+        {!isBranchManager && (
+          <div className="space-y-1.5">
+            <Label>Module Access</Label>
+            <p className="text-[11px] text-muted-foreground">Defaults to the role's standard access — uncheck anything this person shouldn't see.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 rounded-lg border p-2.5 max-h-[180px] overflow-y-auto scroll-thin">
+              {MODULES.map((m) => (
+                <label key={m} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                  <Checkbox checked={permissions.includes(m)} onCheckedChange={() => togglePermission(m)} />
+                  {MODULE_LABELS[m]}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">Add Employee</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditEmployeeDialog({ employee, onClose }: { employee: Employee | null; onClose: () => void }) {
+  const { toast } = useToast();
+  const updateEmployee = useDemoDataStore((s) => s.updateEmployee);
+  const currentUser = useAuthStore((s) => s.user);
+  const isBranchManager = currentUser?.role === "branch_manager";
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
+  const [designation, setDesignation] = useState("");
+  const [department, setDepartment] = useState<Employee["department"]>("Sales");
+  const [branchId, setBranchId] = useState("");
+  const [role, setRole] = useState<Role>("employee");
+  const [status, setStatus] = useState<Employee["status"]>("Active");
+  const [salary, setSalary] = useState("0");
+  const [target, setTarget] = useState("0");
+  const [permissions, setPermissions] = useState<Module[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!employee) return;
+    setDesignation(employee.designation);
+    setDepartment(employee.department);
+    setBranchId(employee.branchId || "");
+    setRole(employee.role);
+    setStatus(employee.status);
+    setSalary(String(employee.salary));
+    setTarget(String(employee.target));
+    setPermissions(employee.permissions ?? ROLE_DEFAULT_PERMISSIONS[employee.role]);
+    api.getBranches(currentUser?.agencyId)
+      .then((res) => setBranches(res.branches.map((b) => ({ id: b.id, name: b.name }))))
+      .catch(() => setBranches([]));
+  }, [employee, currentUser?.agencyId]);
+
+  if (!employee) return null;
+
+  const togglePermission = (module: Module) => {
+    setPermissions((prev) => prev.includes(module) ? prev.filter((m) => m !== module) : [...prev, module]);
+  };
+
+  async function handleSave() {
+    if (!employee) return;
+    setSaving(true);
+    const branchName = branches.find((b) => b.id === branchId)?.name;
+    try {
+      await updateEmployee(employee.id, {
+        designation,
+        department,
+        branchId: branchId || null,
+        branch: branchName,
+        role,
+        status,
+        salary: Number(salary) || 0,
+        target: Number(target) || 0,
+        permissions: isBranchManager ? undefined : permissions,
+      });
+      toast({ title: "Employee updated", description: `${employee.name}'s profile has been saved.` });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={!!employee} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit {employee.name}</DialogTitle>
+          <DialogDescription>Update role, branch, and module access.</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2 space-y-1.5">
+            <Label>Designation</Label>
+            <Input value={designation} onChange={(e) => setDesignation(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Department</Label>
+            <Select value={department} onValueChange={(v) => setDepartment(v as Employee["department"])}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {DEPARTMENTS.filter((d) => d !== "All").map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Branch</Label>
+            <Select value={branchId} onValueChange={setBranchId} disabled={isBranchManager}>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select branch" /></SelectTrigger>
+              <SelectContent>
+                {branches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Role</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as Role)} disabled={isBranchManager}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {ROLES.map((r) => <SelectItem key={r} value={r} className="capitalize">{r.replace("_", " ")}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Status</Label>
+            <Select value={status} onValueChange={(v) => setStatus(v as Employee["status"])}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(["Active", "On Leave", "Inactive"] as const).map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Salary (₹/month)</Label>
+            <Input type="number" value={salary} onChange={(e) => setSalary(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Target (₹/month)</Label>
+            <Input type="number" value={target} onChange={(e) => setTarget(e.target.value)} />
+          </div>
+        </div>
+
+        {!isBranchManager && (
+          <div className="space-y-1.5">
+            <Label>Module Access</Label>
+            <p className="text-[11px] text-muted-foreground">Deactivating a module here takes effect immediately, even on their existing session.</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 rounded-lg border p-2.5 max-h-[180px] overflow-y-auto scroll-thin">
+              {MODULES.map((m) => (
+                <label key={m} className="flex items-center gap-1.5 text-xs cursor-pointer">
+                  <Checkbox checked={permissions.includes(m)} onCheckedChange={() => togglePermission(m)} />
+                  {MODULE_LABELS[m]}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} disabled={saving} className="bg-teal-600 hover:bg-teal-700">Save Changes</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

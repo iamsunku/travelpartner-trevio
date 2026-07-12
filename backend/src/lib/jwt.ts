@@ -8,6 +8,8 @@ export interface JwtPayload {
   email: string;
   role: string;
   agencyId?: string | null;
+  branchId?: string | null;
+  permissions?: string[] | null;
 }
 
 export function signToken(payload: JwtPayload): string {
