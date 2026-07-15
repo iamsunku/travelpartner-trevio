@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Search, Copy, Archive, Trash2, Pencil, Download, Upload } from "lucide-react";
+import { Plus, Search, Copy, Archive, Trash2, Pencil, Download, Upload, CheckCircle } from "lucide-react";
 import { PageHeader, StatusBadge } from "@/components/shared/ui-helpers";
 import { ProductFormDialog, type ProductKind } from "@/components/shared/product-form-dialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -162,6 +162,16 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
     }
   };
 
+  const handleSubmitForApproval = async (id: string) => {
+    try {
+      await apiFetch(`${apiPath}/${id}/submit-for-approval`, { method: "POST" });
+      toast({ title: "Submitted for approval", description: "Admin will review and approve/reject the rates" });
+      load();
+    } catch {
+      toast({ title: "Submission failed", variant: "destructive" });
+    }
+  };
+
   const handleDelete = async (id: string) => {
     try {
       await apiFetch(`${apiPath}/${id}`, { method: "DELETE" });
@@ -309,6 +319,17 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
                     <TableCell><StatusBadge status={item.status} /></TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
+                        {item.approvalStatus === "Draft" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-blue-600"
+                            onClick={() => handleSubmitForApproval(item.id)}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Submit
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => { setEditing(item); setFormOpen(true); }}><Pencil className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleDuplicate(item.id)}><Copy className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleArchive(item.id)}><Archive className="w-4 h-4" /></Button>

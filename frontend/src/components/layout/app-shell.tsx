@@ -37,6 +37,7 @@ import { AnalyticsView } from "@/components/views/analytics";
 import { HotelProductsView } from "@/components/views/hotel-products";
 import { ActivitiesView } from "@/components/views/activities";
 import { TransfersView } from "@/components/views/transfers";
+import { ProductApprovalsView } from "@/components/views/product-approvals";
 import { AttendanceLeaveView } from "@/components/views/attendance-leave";
 import type { ViewKey } from "@/types";
 import { Construction } from "lucide-react";
@@ -49,6 +50,7 @@ const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   "hotel-products": HotelProductsView,
   activities: ActivitiesView,
   transfers: TransfersView,
+  "product-approvals": ProductApprovalsView,
   holiday: HolidayView,
   customers: CustomersView,
   crm: CrmView,

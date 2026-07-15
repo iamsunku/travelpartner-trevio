@@ -324,6 +324,7 @@ export type ViewKey =
   | "hotel-products"
   | "activities"
   | "transfers"
+  | "product-approvals"
   | "holiday"
   | "attendance"
   | "customers"

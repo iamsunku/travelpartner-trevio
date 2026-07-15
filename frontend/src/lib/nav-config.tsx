@@ -5,7 +5,7 @@ import {
   Users, Target, FileSpreadsheet, Ticket, CreditCard, Wallet, Percent,
   BarChart3, UserCog, CheckSquare, LifeBuoy, Bell, Megaphone, LayoutGrid,
   Receipt, KeyRound, Settings, History, Building2, GitBranch, Store,
-  Activity, LineChart, CalendarCheck, type LucideIcon,
+  Activity, LineChart, CalendarCheck, CheckCircle, type LucideIcon,
 } from "lucide-react";
 import type { Module, Role, User, ViewKey } from "@/types";
 import { hasPermission } from "@/lib/permissions";
@@ -45,6 +45,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: "hotel-products", label: "Hotel Products", icon: Package, module: "hotels" },
       { key: "activities", label: "Activities", icon: MapPin, module: "activities" },
       { key: "transfers", label: "Transfers", icon: Car, module: "transfers" },
+      { key: "product-approvals", label: "Rate Approvals", icon: CheckCircle, module: "activities" },
     ],
   },
   {
