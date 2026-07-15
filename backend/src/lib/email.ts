@@ -13,19 +13,47 @@ export interface EmailPayload {
   };
 }
 
+// Initialize SendGrid client if API key is provided
+let sgMail: any = null;
+if (process.env.SENDGRID_API_KEY) {
+  try {
+    const sgMailModule = await import("@sendgrid/mail");
+    sgMail = sgMailModule.default;
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  } catch (error) {
+    logger.warn("SendGrid not installed. Email notifications will be logged only.");
+  }
+}
+
 export async function sendEmail(payload: EmailPayload): Promise<boolean> {
   try {
-    // In development: log instead of sending
+    const html = payload.template === "approval"
+      ? generateApprovalEmail(payload)
+      : generateRejectionEmail(payload);
+
+    // Development mode: log instead of sending
     if (process.env.NODE_ENV === "development") {
-      logger.info(`[EMAIL] To: ${payload.to}, Subject: ${payload.subject}`);
-      logger.info(`[EMAIL] Template: ${payload.template}, Data:`, payload.data);
+      logger.info(`[EMAIL-DEV] To: ${payload.to}, Subject: ${payload.subject}`);
+      logger.info(`[EMAIL-DEV] Template: ${payload.template}`);
       return true;
     }
 
-    // TODO: Integrate with email service (SendGrid, AWS SES, etc.)
-    // For now, just log
-    logger.info(`[EMAIL] Sending to ${payload.to}: ${payload.subject}`);
-    return true;
+    // Production: use SendGrid if available
+    if (sgMail) {
+      const msg = {
+        to: payload.to,
+        from: process.env.SENDGRID_FROM_EMAIL || "noreply@travelpartner.com",
+        subject: payload.subject,
+        html: html,
+      };
+      await sgMail.send(msg);
+      logger.info(`[EMAIL-SENT] To: ${payload.to}, Subject: ${payload.subject}`);
+      return true;
+    }
+
+    // Fallback: log if SendGrid is not configured
+    logger.warn(`[EMAIL-FALLBACK] SendGrid not configured. To: ${payload.to}, Subject: ${payload.subject}`);
+    return false;
   } catch (error) {
     logger.error("Email send failed:", error);
     return false;

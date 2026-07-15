@@ -80,9 +80,39 @@ const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
   .map((o) => o.trim())
   .filter(Boolean);
 
-app.use(helmet());
-app.use(cors({ origin: allowedOrigins }));
-app.use(express.json());
+// Strict security headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"],
+    },
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true, preload: true },
+  noSniff: true,
+  xssFilter: true,
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+}));
+
+// CORS with strict origin validation
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV === "development") {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 3600,
+}));
+// Limit request size to prevent DoS attacks
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(pinoHttp({ logger }));
 
 const authLimiter = rateLimit({
