@@ -13,6 +13,8 @@ import { requireAuth, optionalAuth, requireRole, requirePermission, requireAnyPe
 import { generateFlights, generateHotels } from "./lib/mock-data.js";
 import { effectivePermissions } from "./lib/permissions.js";
 import { mountProductRoutes } from "./routes/products.js";
+import { analyticsMiddleware } from "./middleware/analytics.js";
+import { analyticsRouter } from "./routes/analytics.js";
 import {
   validate, loginSchema, bookingSchema, customerSchema, leadSchema, quotationSchema,
   paymentSchema, employeeSchema, employeeUpdateSchema, taskSchema, agencySchema,
@@ -114,6 +116,7 @@ app.use(cors({
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(pinoHttp({ logger }));
+app.use(analyticsMiddleware());
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -1702,6 +1705,9 @@ app.patch("/api/leaves/:id", requireAuth, requireRole("super_admin", "agency_adm
 });
 
 mountProductRoutes(app, agencyScope);
+
+// Analytics routes
+app.use("/api/analytics", analyticsRouter);
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error(err);

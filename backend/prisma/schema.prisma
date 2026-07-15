@@ -621,3 +621,39 @@ model EmployeeActivitySnapshot {
   @@index([agencyId])
 }
 
+// ── Performance Analytics ────────────────────────────────────────────────────
+
+model ApiMetric {
+  id            String   @id @default(cuid())
+  endpoint      String   // /api/products, /api/auth/login, etc
+  method        String   // GET, POST, PUT, DELETE, PATCH
+  statusCode    Int
+  responseTime  Int      // milliseconds
+  userId        String?
+  agencyId      String?
+  errorMessage  String?
+  queryTime     Int?     // database query time in ms
+  createdAt     DateTime @default(now())
+
+  @@index([endpoint])
+  @@index([method])
+  @@index([statusCode])
+  @@index([userId])
+  @@index([agencyId])
+  @@index([createdAt])
+}
+
+model PerformanceMetric {
+  id            String   @id @default(cuid())
+  metric        String   // cpu_usage, memory_usage, request_count, error_count, etc
+  value         Float
+  unit          String   // %, MB, count, etc
+  date          String   // YYYY-MM-DD
+  hour          Int      // 0-23
+  createdAt     DateTime @default(now())
+
+  @@unique([metric, date, hour])
+  @@index([metric])
+  @@index([date])
+}
+
