@@ -5,10 +5,45 @@ import { ROLE_USERS } from "../src/lib/mock-data";
 const prisma = new PrismaClient();
 
 const DEFAULT_SEED_PASSWORD = "Passw0rd@123";
+const SUPER_ADMIN_EMAIL = "admin@travelpartner.pro";
+const SUPER_ADMIN_PASSWORD = "TravioAdmin@2024!";
 
 async function main() {
-  console.log("Seeding Travel Partner Pro database (login accounts only, no demo business data)...");
+  console.log("🌱 Seeding Travel Partner Pro database...");
+  console.log("");
+
   const hashedPassword = await bcrypt.hash(DEFAULT_SEED_PASSWORD, 10);
+  const superAdminHashedPassword = await bcrypt.hash(SUPER_ADMIN_PASSWORD, 10);
+
+  // Create Super Admin User (REQUIRED FOR PRODUCTION)
+  console.log("📍 Creating Super Admin account...");
+  try {
+    const existingSuperAdmin = await prisma.user.findUnique({
+      where: { email: SUPER_ADMIN_EMAIL },
+    });
+
+    if (!existingSuperAdmin) {
+      await prisma.user.create({
+        data: {
+          name: "Super Administrator",
+          email: SUPER_ADMIN_EMAIL,
+          password: superAdminHashedPassword,
+          phone: "+91-9999999999",
+          role: "super_admin",
+          designation: "Platform Administrator",
+          status: "Active",
+        },
+      });
+      console.log(`✅ Super Admin created: ${SUPER_ADMIN_EMAIL}`);
+      console.log(`   Password: ${SUPER_ADMIN_PASSWORD}`);
+    } else {
+      console.log(`✓ Super Admin already exists: ${SUPER_ADMIN_EMAIL}`);
+    }
+  } catch (error) {
+    console.error(`❌ Failed to create Super Admin:`, error);
+  }
+
+  console.log("");
 
   // One agency + branch — required so the agency_admin/branch_manager/employee/accountant
   // demo accounts have somewhere to belong. Everything else (bookings, customers, etc.)
@@ -154,7 +189,9 @@ async function main() {
     },
   });
 
-  console.log("Seed complete!");
+  console.log("✅ Database seeding completed!");
+  console.log("");
+
   const counts = {
     agencies: await prisma.agency.count(),
     branches: await prisma.branch.count(),
@@ -164,8 +201,35 @@ async function main() {
     activities: await prisma.activityProduct.count(),
     transfers: await prisma.transferProduct.count(),
   };
-  console.log("Counts:", counts);
-  console.log(`\nAll seeded users share the default password: ${DEFAULT_SEED_PASSWORD}\nChange it after first login in any real deployment.`);
+
+  console.log("📊 Database Counts:");
+  console.log(`   Agencies: ${counts.agencies}`);
+  console.log(`   Branches: ${counts.branches}`);
+  console.log(`   Users: ${counts.users}`);
+  console.log(`   Suppliers: ${counts.suppliers}`);
+  console.log(`   Hotels: ${counts.hotels}`);
+  console.log(`   Activities: ${counts.activities}`);
+  console.log(`   Transfers: ${counts.transfers}`);
+  console.log("");
+
+  console.log("🔐 LOGIN CREDENTIALS:");
+  console.log("━".repeat(60));
+  console.log("SUPER ADMIN (Platform Owner):");
+  console.log(`  Email: ${SUPER_ADMIN_EMAIL}`);
+  console.log(`  Password: ${SUPER_ADMIN_PASSWORD}`);
+  console.log("");
+  console.log("DEMO USERS (All use same password):");
+  console.log(`  Password: ${DEFAULT_SEED_PASSWORD}`);
+  console.log("");
+  console.log("Roles:");
+  console.log("  • super_admin@travelpartner.pro (Super Admin)");
+  console.log("  • agency@travelpartner.pro (Agency Admin)");
+  console.log("  • branch@travelpartner.pro (Branch Manager)");
+  console.log("  • employee@travelpartner.pro (Employee)");
+  console.log("  • accountant@travelpartner.pro (Accountant)");
+  console.log("━".repeat(60));
+  console.log("");
+  console.log("⚠️  IMPORTANT: Change all passwords after first login in production!");
 }
 
 main()
