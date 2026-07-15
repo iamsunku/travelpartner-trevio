@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { prisma } from "../db.js";
+import { db as prisma } from "../lib/db.js";
 
 export function analyticsMiddleware() {
   return async (req: Request, res: Response, next: NextFunction) => {

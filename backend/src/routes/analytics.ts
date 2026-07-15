@@ -1,26 +1,22 @@
 import express, { Request, Response } from "express";
-import { prisma } from "../db.js";
-import { authenticate } from "../middleware/auth.js";
+import { db as prisma } from "../lib/db.js";
+import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 
 export const analyticsRouter = express.Router();
 
 // Middleware: Only super_admin can view analytics
-const requireAdmin = async (req: Request, res: Response, next) => {
+const requireAdmin = async (req: AuthRequest, res: Response, next) => {
   try {
-    const userId = (req as any).userId;
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-
-    if (user?.role !== "super_admin") {
+    if (req.auth?.role !== "super_admin") {
       return res.status(403).json({ error: "Admin access required" });
     }
-
     next();
   } catch (error) {
     res.status(500).json({ error: "Authorization failed" });
   }
 };
 
-analyticsRouter.use(authenticate, requireAdmin);
+analyticsRouter.use(requireAuth, requireAdmin);
 
 // Get API metrics with filters
 analyticsRouter.get("/api-metrics", async (req: Request, res: Response) => {
