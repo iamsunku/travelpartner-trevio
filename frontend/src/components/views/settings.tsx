@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Building2, Users, Cog, Shield, Camera, Save, Plus, KeyRound, Globe,
   Clock, Lock, Smartphone, Mail, MessageSquare, Phone, Wifi, Server,
-  CheckCircle2, AlertTriangle, Pencil, Check, X,
+  CheckCircle2, AlertTriangle, Pencil, Check, X, Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -109,7 +109,45 @@ export function SettingsView() {
 
 function CompanyTab() {
   const { toast } = useToast();
-  const handleSave = () => toast({ title: "Saved", description: "Company profile updated successfully." });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [logo, setLogo] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [agencyName] = useState("Wanderlust Travels");
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum file size is 2MB", variant: "destructive" });
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Invalid file type", description: "Please upload a PNG or JPG image", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        setLogo(result);
+        toast({ title: "Logo uploaded", description: "Changes will be saved when you click Save Changes" });
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleSave = () => {
+    toast({ title: "Saved", description: "Company profile updated successfully." });
+  };
+
+  const initials = agencyName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <Card className="lg:col-span-2">
@@ -121,13 +159,32 @@ function CompanyTab() {
           {/* Logo upload */}
           <div className="flex items-center gap-4">
             <Avatar className="w-20 h-20">
-              <AvatarFallback className="bg-gradient-to-br from-teal-500 to-emerald-600 text-white text-2xl font-bold">
-                WT
-              </AvatarFallback>
+              {logo ? (
+                <img src={logo} alt="Logo" className="w-full h-full object-cover" />
+              ) : (
+                <AvatarFallback className="bg-gradient-to-br from-teal-500 to-emerald-600 text-white text-2xl font-bold">
+                  {initials}
+                </AvatarFallback>
+              )}
             </Avatar>
             <div>
-              <Button variant="outline" size="sm"><Camera className="w-3.5 h-3.5 mr-1.5" /> Upload Logo</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Camera className="w-3.5 h-3.5 mr-1.5" />}
+                {uploading ? "Uploading..." : "Upload Logo"}
+              </Button>
               <p className="text-[11px] text-muted-foreground mt-1.5">PNG or JPG, max 2MB. Recommended 256×256px.</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                onChange={handleLogoUpload}
+              />
             </div>
           </div>
           <Separator />

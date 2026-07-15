@@ -4,6 +4,7 @@ import type { AuthRequest } from "../middleware/auth.js";
 import { requireAuth, requirePermission, requireCrudPermission } from "../middleware/auth.js";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
+import { sendEmail, generateApprovalEmail, generateRejectionEmail } from "../lib/email.js";
 
 type ScopeFn = (req: AuthRequest) => Record<string, unknown>;
 
@@ -302,6 +303,7 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
       const id = paramId(req);
       const existing = await db.activityProduct.findFirst({ where: { id } });
       if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const creator = existing.createdById ? await db.user.findUnique({ where: { id: existing.createdById } }) : null;
       const item = await db.activityProduct.update({
         where: { id },
         data: {
@@ -312,6 +314,20 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
           updatedById: req.auth?.userId,
         },
       });
+      // Send approval email
+      if (creator?.email) {
+        await sendEmail({
+          to: creator.email,
+          subject: `✅ Activity Approved: ${item.name}`,
+          template: "approval",
+          data: {
+            agentName: creator.name,
+            productName: item.name,
+            productType: "activity",
+            approverName: req.auth?.email,
+          },
+        });
+      }
       res.json({ item });
     } catch (e) {
       logger.error(e);
@@ -324,6 +340,7 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
       const id = paramId(req);
       const existing = await db.activityProduct.findFirst({ where: { id } });
       if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const creator = existing.createdById ? await db.user.findUnique({ where: { id: existing.createdById } }) : null;
       const item = await db.activityProduct.update({
         where: { id },
         data: {
@@ -333,6 +350,21 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
           updatedById: req.auth?.userId,
         },
       });
+      // Send rejection email
+      if (creator?.email) {
+        await sendEmail({
+          to: creator.email,
+          subject: `❌ Activity Rejected: ${item.name}`,
+          template: "rejection",
+          data: {
+            agentName: creator.name,
+            productName: item.name,
+            productType: "activity",
+            reason: req.body.reason || "No reason provided",
+            approverName: req.auth?.email,
+          },
+        });
+      }
       res.json({ item });
     } catch (e) {
       logger.error(e);
@@ -487,6 +519,7 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
       const id = paramId(req);
       const existing = await db.transferProduct.findFirst({ where: { id } });
       if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const creator = existing.createdById ? await db.user.findUnique({ where: { id: existing.createdById } }) : null;
       const item = await db.transferProduct.update({
         where: { id },
         data: {
@@ -497,6 +530,20 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
           updatedById: req.auth?.userId,
         },
       });
+      // Send approval email
+      if (creator?.email) {
+        await sendEmail({
+          to: creator.email,
+          subject: `✅ Transfer Approved: ${item.name}`,
+          template: "approval",
+          data: {
+            agentName: creator.name,
+            productName: item.name,
+            productType: "transfer",
+            approverName: req.auth?.email,
+          },
+        });
+      }
       res.json({ item });
     } catch (e) {
       logger.error(e);
@@ -509,6 +556,7 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
       const id = paramId(req);
       const existing = await db.transferProduct.findFirst({ where: { id } });
       if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const creator = existing.createdById ? await db.user.findUnique({ where: { id: existing.createdById } }) : null;
       const item = await db.transferProduct.update({
         where: { id },
         data: {
@@ -518,6 +566,21 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
           updatedById: req.auth?.userId,
         },
       });
+      // Send rejection email
+      if (creator?.email) {
+        await sendEmail({
+          to: creator.email,
+          subject: `❌ Transfer Rejected: ${item.name}`,
+          template: "rejection",
+          data: {
+            agentName: creator.name,
+            productName: item.name,
+            productType: "transfer",
+            reason: req.body.reason || "No reason provided",
+            approverName: req.auth?.email,
+          },
+        });
+      }
       res.json({ item });
     } catch (e) {
       logger.error(e);

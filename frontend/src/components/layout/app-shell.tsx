@@ -35,8 +35,7 @@ import { FinanceView } from "@/components/views/finance";
 import { AuditLogsView } from "@/components/views/audit-logs";
 import { AnalyticsView } from "@/components/views/analytics";
 import { HotelProductsView } from "@/components/views/hotel-products";
-import { ActivitiesView } from "@/components/views/activities";
-import { TransfersView } from "@/components/views/transfers";
+import { ActivityPackagesView } from "@/components/views/activity-packages";
 import { ProductApprovalsView } from "@/components/views/product-approvals";
 import { AttendanceLeaveView } from "@/components/views/attendance-leave";
 import type { ViewKey } from "@/types";
@@ -48,8 +47,7 @@ const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   flights: FlightsView,
   hotels: HotelsView,
   "hotel-products": HotelProductsView,
-  activities: ActivitiesView,
-  transfers: TransfersView,
+  "activity-packages": ActivityPackagesView,
   "product-approvals": ProductApprovalsView,
   holiday: HolidayView,
   customers: CustomersView,

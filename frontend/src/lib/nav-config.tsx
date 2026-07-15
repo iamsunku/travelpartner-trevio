@@ -43,8 +43,7 @@ export const NAV_SECTIONS: NavSection[] = [
     title: "Products",
     items: [
       { key: "hotel-products", label: "Hotel Products", icon: Package, module: "hotels" },
-      { key: "activities", label: "Activities", icon: MapPin, module: "activities" },
-      { key: "transfers", label: "Transfers", icon: Car, module: "transfers" },
+      { key: "activity-packages", label: "Activities & Transfers", icon: MapPin, module: "activities" },
       { key: "product-approvals", label: "Rate Approvals", icon: CheckCircle, module: "activities" },
     ],
   },
