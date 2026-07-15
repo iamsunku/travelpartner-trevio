@@ -498,6 +498,10 @@ model HotelProduct {
   blackoutDates   Json     @default("[]")
   inventory       Json     @default("[]")
   status          String   @default("Active") // Active|Archived|Draft
+  approvalStatus  String   @default("Draft") // Draft|Pending|Approved|Rejected
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
   createdById     String?
   updatedById     String?
   createdAt       DateTime @default(now())
@@ -508,6 +512,7 @@ model HotelProduct {
   @@index([agencyId])
   @@index([city])
   @@index([status])
+  @@index([approvalStatus])
 }
 
 model ActivityProduct {
@@ -531,7 +536,11 @@ model ActivityProduct {
   rateValidFrom   String?
   rateValidTo     String?
   cancellationPolicy String?
-  status          String   @default("Active")
+  status          String   @default("Active") // Active|Draft|Archived
+  approvalStatus  String   @default("Draft") // Draft|Pending|Approved|Rejected
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
   createdById     String?
   updatedById     String?
   createdAt       DateTime @default(now())
@@ -541,6 +550,7 @@ model ActivityProduct {
 
   @@index([agencyId])
   @@index([status])
+  @@index([approvalStatus])
 }
 
 model TransferProduct {
@@ -548,7 +558,7 @@ model TransferProduct {
   agencyId        String?
   supplierId      String?
   name            String
-  transferType    String   // Private|Shared
+  transferType    String   // Private|Shared|Both
   vehicleType     String?
   pickupLocation  String
   dropLocation    String
@@ -560,7 +570,11 @@ model TransferProduct {
   rateValidTo     String?
   blackoutDates   Json     @default("[]")
   cancellationPolicy String?
-  status          String   @default("Active")
+  status          String   @default("Active") // Active|Draft|Archived
+  approvalStatus  String   @default("Draft") // Draft|Pending|Approved|Rejected
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
   createdById     String?
   updatedById     String?
   createdAt       DateTime @default(now())
@@ -570,6 +584,7 @@ model TransferProduct {
 
   @@index([agencyId])
   @@index([status])
+  @@index([approvalStatus])
 }
 
 model CustomerDocument {

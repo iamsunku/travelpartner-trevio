@@ -280,6 +280,65 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
       res.status(500).json({ error: "Server error" });
     }
   });
+
+  app.post(`${base}/:id/submit-for-approval`, requireAuth, requireCrudPermission("activities", "edit"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      const existing = await db.activityProduct.findFirst({ where: { id, ...agencyScope(req) } });
+      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const item = await db.activityProduct.update({
+        where: { id },
+        data: { approvalStatus: "Pending", updatedById: req.auth?.userId },
+      });
+      res.json({ item });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post(`${base}/:id/approve`, requireAuth, requirePermission("admin-approval"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      const existing = await db.activityProduct.findFirst({ where: { id } });
+      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const item = await db.activityProduct.update({
+        where: { id },
+        data: {
+          approvalStatus: "Approved",
+          status: "Active",
+          approvedBy: req.auth?.email,
+          approvedAt: new Date(),
+          updatedById: req.auth?.userId,
+        },
+      });
+      res.json({ item });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post(`${base}/:id/reject`, requireAuth, requirePermission("admin-approval"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      const existing = await db.activityProduct.findFirst({ where: { id } });
+      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const item = await db.activityProduct.update({
+        where: { id },
+        data: {
+          approvalStatus: "Rejected",
+          status: "Draft",
+          rejectionReason: req.body.reason || "",
+          updatedById: req.auth?.userId,
+        },
+      });
+      res.json({ item });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
 }
 
 function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
@@ -401,6 +460,65 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
       if (!existing) { res.status(404).json({ error: "Not found" }); return; }
       await db.transferProduct.delete({ where: { id } });
       res.json({ success: true });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post(`${base}/:id/submit-for-approval`, requireAuth, requireCrudPermission("transfers", "edit"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      const existing = await db.transferProduct.findFirst({ where: { id, ...agencyScope(req) } });
+      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const item = await db.transferProduct.update({
+        where: { id },
+        data: { approvalStatus: "Pending", updatedById: req.auth?.userId },
+      });
+      res.json({ item });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post(`${base}/:id/approve`, requireAuth, requirePermission("admin-approval"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      const existing = await db.transferProduct.findFirst({ where: { id } });
+      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const item = await db.transferProduct.update({
+        where: { id },
+        data: {
+          approvalStatus: "Approved",
+          status: "Active",
+          approvedBy: req.auth?.email,
+          approvedAt: new Date(),
+          updatedById: req.auth?.userId,
+        },
+      });
+      res.json({ item });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post(`${base}/:id/reject`, requireAuth, requirePermission("admin-approval"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      const existing = await db.transferProduct.findFirst({ where: { id } });
+      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const item = await db.transferProduct.update({
+        where: { id },
+        data: {
+          approvalStatus: "Rejected",
+          status: "Draft",
+          rejectionReason: req.body.reason || "",
+          updatedById: req.auth?.userId,
+        },
+      });
+      res.json({ item });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
