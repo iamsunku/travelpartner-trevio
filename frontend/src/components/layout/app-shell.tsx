@@ -109,11 +109,11 @@ export function AppShell() {
 export function ComingSoon({ title }: { title: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-        <Construction className="w-8 h-8 text-muted-foreground" />
+      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#2A7BBD]/15 to-[#00A79D]/15 border border-border/80 flex items-center justify-center mb-4">
+        <Construction className="w-7 h-7 text-primary" />
       </div>
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="text-sm text-muted-foreground mt-1">This module is being assembled.</p>
+      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+      <p className="text-sm text-muted-foreground mt-1.5 max-w-sm leading-relaxed">This module is being assembled.</p>
     </div>
   );
 }

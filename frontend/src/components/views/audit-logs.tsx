@@ -17,7 +17,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
 import type { ApiAuditLog } from "@/lib/api";
-import { PageHeader, initials, avatarGradient } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, SectionHeader, MetricCard, initials, avatarGradient } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 type LogType = "login" | "booking" | "payment" | "api" | "employee" | "system";
@@ -125,17 +125,28 @@ export function AuditLogsView() {
     });
   };
 
+  const successCount = logs.filter((l) => l.status === "success").length;
+  const warningCount = logs.filter((l) => l.status === "warning").length;
+  const errorCount = logs.filter((l) => l.status === "error").length;
+
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Audit Logs"
         subtitle="Track every action across your travel platform"
         action={
-          <Button onClick={handleExport} className="bg-teal-600 hover:bg-teal-700">
+          <Button onClick={handleExport} className="bg-gradient-to-r from-[#2A7BBD] to-[#00A79D] hover:opacity-90">
             <Download className="w-4 h-4 mr-1.5" /> Export Logs
           </Button>
         }
       />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetricCard icon={FileEdit} label="Total Events" value={String(logs.length)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
+        <MetricCard icon={CheckCircle2} label="Successful" value={String(successCount)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+        <MetricCard icon={AlertTriangle} label="Warnings" value={String(warningCount)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
+        <MetricCard icon={AlertTriangle} label="Errors" value={String(errorCount)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
+      </div>
 
       {/* Filter tabs */}
       <Card>
@@ -151,7 +162,7 @@ export function AuditLogsView() {
                   onClick={() => setFilter(f)}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap",
-                    isActive ? "bg-teal-600 text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    isActive ? "bg-gradient-to-r from-[#2A7BBD] to-[#00A79D] text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -197,7 +208,7 @@ export function AuditLogsView() {
       {/* Timeline */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Activity Timeline</CardTitle>
+          <CardTitle>Activity Timeline</CardTitle>
           <CardDescription>{filtered.length} events · Newest first</CardDescription>
         </CardHeader>
         <CardContent>
@@ -295,6 +306,6 @@ export function AuditLogsView() {
           );
         })}
       </div>
-    </div>
+    </PageShell>
   );
 }

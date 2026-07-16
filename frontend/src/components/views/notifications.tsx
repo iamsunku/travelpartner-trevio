@@ -4,9 +4,9 @@ import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   Bell, CheckCheck, Plane, CreditCard, Server, Users, Briefcase, Target,
-  AlertTriangle, Filter, Settings2,
+  AlertTriangle, Filter,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { Notification } from "@/types";
-import { PageHeader } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, MetricCard, SectionHeader } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 const TYPE_META: Record<string, { icon: React.ElementType; color: string; label: string }> = {
@@ -70,7 +70,7 @@ export function NotificationsView() {
   };
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Notifications"
         subtitle={`${unreadCount} unread of ${items.length} total`}
@@ -81,8 +81,14 @@ export function NotificationsView() {
         }
       />
 
-      {/* Filter tabs */}
-      <Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetricCard icon={Bell} label="Total" value={String(items.length)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+        <MetricCard icon={AlertTriangle} label="Unread" value={String(unreadCount)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={1} />
+        <MetricCard icon={Plane} label="Booking" value={String(counts.booking || 0)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={2} />
+        <MetricCard icon={CreditCard} label="Payment" value={String(counts.payment || 0)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={3} />
+      </div>
+
+      <Card className="border-border/80 shadow-none">
         <CardContent className="p-2">
           <div className="flex items-center gap-1 overflow-x-auto">
             <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-1.5" />
@@ -97,7 +103,7 @@ export function NotificationsView() {
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium capitalize transition-all whitespace-nowrap",
                     isActive
-                      ? "bg-teal-600 text-white shadow-sm"
+                      ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
@@ -119,7 +125,7 @@ export function NotificationsView() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Notification list */}
         <div className="lg:col-span-2">
-          <Card>
+          <Card className="border-border/80 shadow-none">
             <CardContent className="p-0">
               <div className="max-h-[640px] overflow-y-auto scroll-thin divide-y divide-border">
                 {filtered.map((n, i) => {
@@ -134,7 +140,7 @@ export function NotificationsView() {
                       onClick={() => toggleRead(n.id)}
                       className={cn(
                         "w-full flex items-start gap-3 p-3 text-left hover:bg-muted/40 transition-colors",
-                        !n.read && "bg-teal-50/50 dark:bg-teal-500/5",
+                        !n.read && "bg-primary/[0.04] dark:bg-primary/5",
                       )}
                     >
                       <div className="relative shrink-0">
@@ -156,7 +162,7 @@ export function NotificationsView() {
                               <AlertTriangle className="w-2.5 h-2.5" /> High priority
                             </span>
                           )}
-                          {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-teal-500 ml-auto" />}
+                          {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-primary ml-auto" />}
                         </div>
                       </div>
                     </motion.button>
@@ -175,12 +181,9 @@ export function NotificationsView() {
 
         {/* Preferences */}
         <div>
-          <Card>
+          <Card className="border-border/80 shadow-none">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Settings2 className="w-4 h-4 text-teal-600" /> Notification Preferences
-              </CardTitle>
-              <CardDescription>Choose what you want to be notified about</CardDescription>
+              <SectionHeader title="Notification Preferences" description="Choose what you want to be notified about" />
             </CardHeader>
             <CardContent className="space-y-1">
               {PREFERENCES.map((p) => {
@@ -232,6 +235,6 @@ export function NotificationsView() {
           </Card>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -19,14 +19,14 @@ import {
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { PageHeader } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, BrandHero, SectionHeader, MetricCard } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 interface HealthMetric { name: string; value: number; fill: string; icon: React.ElementType; }
 const HEALTH: HealthMetric[] = [
-  { name: "CPU", value: 42, fill: "#0d9488", icon: Cpu },
-  { name: "Memory", value: 68, fill: "#f59e0b", icon: MemoryStick },
-  { name: "Disk", value: 31, fill: "#8b5cf6", icon: HardDrive },
+  { name: "CPU", value: 42, fill: "#2A7BBD", icon: Cpu },
+  { name: "Memory", value: 68, fill: "#00A79D", icon: MemoryStick },
+  { name: "Disk", value: 31, fill: "#f59e0b", icon: HardDrive },
   { name: "Network", value: 57, fill: "#06b6d4", icon: Wifi },
 ];
 
@@ -121,7 +121,7 @@ export function MonitoringView() {
   const down = API_HEALTH.filter((a) => a.status === "Down").length;
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="System Monitoring"
         subtitle="Real-time platform health, API status, and incident tracking"
@@ -132,42 +132,40 @@ export function MonitoringView() {
         }
       />
 
-      {/* Health summary banner */}
-      <Card className="relative overflow-hidden bg-gradient-to-r from-teal-600 via-teal-700 to-emerald-700 text-white">
-        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-amber-400/20 blur-3xl translate-x-1/3 -translate-y-1/3" />
-        <CardContent className="p-5 relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center">
-              <Server className="w-6 h-6" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold">All Systems Operational</h3>
-              <p className="text-xs text-teal-100">Last updated just now · 4 regions · 28 services</p>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-6">
+      <BrandHero
+        eyebrow="Platform Status"
+        title="All Systems Operational"
+        subtitle="Last updated just now · 4 regions · 28 services"
+        actions={
+          <div className="grid grid-cols-3 gap-6 text-center">
             <div>
               <p className="text-2xl font-bold">{operational}</p>
-              <p className="text-[11px] text-teal-100">Operational</p>
+              <p className="text-[11px] text-white/75">Operational</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-amber-300">{degraded}</p>
-              <p className="text-[11px] text-teal-100">Degraded</p>
+              <p className="text-2xl font-bold text-amber-200">{degraded}</p>
+              <p className="text-[11px] text-white/75">Degraded</p>
             </div>
             <div>
-              <p className="text-2xl font-bold text-rose-300">{down}</p>
-              <p className="text-[11px] text-teal-100">Down</p>
+              <p className="text-2xl font-bold text-rose-200">{down}</p>
+              <p className="text-[11px] text-white/75">Down</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        }
+      />
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MetricCard icon={CheckCircle2} label="Operational APIs" value={String(operational)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={0} />
+        <MetricCard icon={AlertTriangle} label="Degraded" value={String(degraded)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={1} />
+        <MetricCard icon={ShieldAlert} label="Down" value={String(down)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
+        <MetricCard icon={Activity} label="Error Logs" value={String(ERROR_LOGS.length)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" subtitle="Last 24h" index={3} />
+      </div>
 
       {/* Health gauges + response time */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card>
+        <Card className="border-border/80 shadow-none">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">System Health</CardTitle>
-            <CardDescription className="text-xs">Live server resource usage</CardDescription>
+            <SectionHeader title="System Health" description="Live server resource usage" />
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
@@ -187,17 +185,19 @@ export function MonitoringView() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <div>
-              <CardTitle className="text-base">Server Response Time</CardTitle>
-              <CardDescription className="text-xs">Avg response (ms) across top vendors — last 24h</CardDescription>
-            </div>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-500" /> Amadeus</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> TBO</span>
-              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-violet-500" /> Booking.com</span>
-            </div>
+        <Card className="lg:col-span-2 border-border/80 shadow-none">
+          <CardHeader className="pb-2">
+            <SectionHeader
+              title="Server Response Time"
+              description="Avg response (ms) across top vendors — last 24h"
+              action={
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#2A7BBD]" /> Amadeus</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#00A79D]" /> TBO</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> Booking.com</span>
+                </div>
+              }
+            />
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={240}>
@@ -206,9 +206,9 @@ export function MonitoringView() {
                 <XAxis dataKey="t" tick={{ fontSize: 11 }} className="text-muted-foreground" axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" axisLine={false} tickLine={false} tickFormatter={(v) => `${v}ms`} />
                 <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} formatter={(v: number) => `${v}ms`} />
-                <Line type="monotone" dataKey="amadeus" stroke="#0d9488" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="tbo" stroke="#f59e0b" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="booking" stroke="#8b5cf6" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="amadeus" stroke="#2A7BBD" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="tbo" stroke="#00A79D" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="booking" stroke="#f59e0b" strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -219,7 +219,7 @@ export function MonitoringView() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">API Health</CardTitle>
+            <CardTitle>API Health</CardTitle>
             <CardDescription className="text-xs">Per-vendor uptime and incident history</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
@@ -266,7 +266,7 @@ export function MonitoringView() {
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
             <div>
-              <CardTitle className="text-base">Live Activity</CardTitle>
+              <CardTitle>Live Activity</CardTitle>
               <CardDescription className="text-xs">Real-time platform events</CardDescription>
             </div>
             <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">
@@ -386,6 +386,6 @@ export function MonitoringView() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }

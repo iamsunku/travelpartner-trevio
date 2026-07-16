@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
@@ -15,10 +14,10 @@ import { REVENUE_DATA, CUSTOMERS } from "@/lib/mock-data";
 import { api } from "@/lib/api";
 import { mapApiFinance, type MappedFinance } from "@/lib/api-mappers";
 import {
-  formatINR, formatFullINR, StatusBadge, PageHeader,
+  formatINR, formatFullINR, StatusBadge, PageShell, PageHeader, MetricCard, SectionHeader, BrandHero,
 } from "@/components/shared/ui-helpers";
 import {
-  Card, CardContent, CardHeader, CardTitle, CardDescription,
+  Card, CardContent, CardHeader,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,25 +92,6 @@ const CATEGORY_ICON: Record<string, React.ElementType> = {
   Software: Calculator, Travel: Plane, Utilities: Zap,
 };
 
-function StatCard({ icon: Icon, label, value, color, change }: { icon: React.ElementType; label: string; value: string; color: string; change?: string }) {
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", color)}>
-              <Icon className="w-4 h-4" />
-            </div>
-            {change && <span className="text-[11px] text-emerald-600 font-medium">{change}</span>}
-          </div>
-          <p className="text-xl font-bold mt-2 tracking-tight">{value}</p>
-          <p className="text-[11px] text-muted-foreground">{label}</p>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
 function OverviewTab({ data }: { data: MappedFinance | null }) {
   const totalRevenue = data ? data.summary.totalRevenue : REVENUE_DATA.reduce((s, d) => s + d.revenue, 0);
   const gstCollected = data ? data.summary.totalGst : Math.round(totalRevenue * 0.18);
@@ -134,16 +114,15 @@ function OverviewTab({ data }: { data: MappedFinance | null }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard icon={IndianRupee} label="Total Revenue (12mo)" value={formatINR(totalRevenue)} color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" change="+18.4%" />
-        <StatCard icon={Receipt} label="GST Collected" value={formatINR(gstCollected)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" />
-        <StatCard icon={FileText} label="TDS Deducted" value={formatINR(tdsDeducted)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" />
-        <StatCard icon={TrendingUp} label="Net Profit" value={formatINR(netProfit)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" change="+12.1%" />
+        <MetricCard icon={IndianRupee} label="Total Revenue (12mo)" value={formatINR(totalRevenue)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" change={18.4} trend="up" index={0} />
+        <MetricCard icon={Receipt} label="GST Collected" value={formatINR(gstCollected)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={1} />
+        <MetricCard icon={FileText} label="TDS Deducted" value={formatINR(tdsDeducted)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
+        <MetricCard icon={TrendingUp} label="Net Profit" value={formatINR(netProfit)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" change={12.1} trend="up" index={3} />
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">Revenue vs Profit</CardTitle>
-          <CardDescription>Monthly revenue and net profit comparison</CardDescription>
+          <SectionHeader title="Revenue vs Profit" description="Monthly revenue and net profit comparison" />
         </CardHeader>
         <CardContent>
           <div className="h-72">
@@ -151,8 +130,8 @@ function OverviewTab({ data }: { data: MappedFinance | null }) {
               <AreaChart data={chartData} margin={{ left: -10, right: 10, top: 10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="revArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0d9488" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#0d9488" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#2A7BBD" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#2A7BBD" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="profArea" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35} />
@@ -166,13 +145,13 @@ function OverviewTab({ data }: { data: MappedFinance | null }) {
                   contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
                   formatter={(v: number, name) => [formatFullINR(v), name === "revenue" ? "Revenue" : "Profit"]}
                 />
-                <Area type="monotone" dataKey="revenue" stroke="#0d9488" strokeWidth={2.5} fill="url(#revArea)" />
+                <Area type="monotone" dataKey="revenue" stroke="#2A7BBD" strokeWidth={2.5} fill="url(#revArea)" />
                 <Area type="monotone" dataKey="profit" stroke="#f59e0b" strokeWidth={2.5} fill="url(#profArea)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
           <div className="flex gap-4 mt-2 text-[11px]">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-teal-500" /> Revenue</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#2A7BBD]" /> Revenue</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> Net Profit</span>
           </div>
         </CardContent>
@@ -201,33 +180,14 @@ function GstTab({ data }: { data: MappedFinance | null }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-500/10 dark:to-orange-500/10 border-amber-200/50 dark:border-amber-500/20">
-          <CardContent className="p-4">
-            <Receipt className="w-5 h-5 text-amber-600 mb-2" />
-            <p className="text-xl font-bold">{formatFullINR(outputTax)}</p>
-            <p className="text-[11px] text-muted-foreground">Output Tax (Sales)</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <ShoppingBag className="w-5 h-5 text-emerald-600 mb-2" />
-            <p className="text-xl font-bold">{formatFullINR(inputTax)}</p>
-            <p className="text-[11px] text-muted-foreground">Input Tax Credit (ITC)</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-500/10 dark:to-pink-500/10 border-rose-200/50 dark:border-rose-500/20">
-          <CardContent className="p-4">
-            <IndianRupee className="w-5 h-5 text-rose-600 mb-2" />
-            <p className="text-xl font-bold">{formatFullINR(netPayable)}</p>
-            <p className="text-[11px] text-muted-foreground">Net GST Payable</p>
-          </CardContent>
-        </Card>
+        <MetricCard icon={Receipt} label="Output Tax (Sales)" value={formatFullINR(outputTax)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={0} />
+        <MetricCard icon={ShoppingBag} label="Input Tax Credit (ITC)" value={formatFullINR(inputTax)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
+        <MetricCard icon={IndianRupee} label="Net GST Payable" value={formatFullINR(netPayable)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">GST Filing Status</CardTitle>
-          <CardDescription>Monthly GST returns (GSTR-1 & GSTR-3B)</CardDescription>
+          <SectionHeader title="GST Filing Status" description="Monthly GST returns (GSTR-1 & GSTR-3B)" />
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-lg border max-h-96 overflow-y-auto scroll-thin mx-4 mb-4">
@@ -270,15 +230,14 @@ function TdsTab() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <StatCard icon={FileText} label="Total Deducted" value={formatFullINR(totalDeducted)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" />
-        <StatCard icon={IndianRupee} label="Transaction Value" value={formatINR(totalAmount)} color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" />
-        <StatCard icon={Clock} label="Pending Deposit" value={formatFullINR(pending)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" />
+        <MetricCard icon={FileText} label="Total Deducted" value={formatFullINR(totalDeducted)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={0} />
+        <MetricCard icon={IndianRupee} label="Transaction Value" value={formatINR(totalAmount)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={1} />
+        <MetricCard icon={Clock} label="Pending Deposit" value={formatFullINR(pending)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">TDS Deductions</CardTitle>
-          <CardDescription>Section-wise TDS deducted and deposit status</CardDescription>
+          <SectionHeader title="TDS Deductions" description="Section-wise TDS deducted and deposit status" />
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-lg border max-h-96 overflow-y-auto scroll-thin mx-4 mb-4">
@@ -334,14 +293,14 @@ function InvoiceDetailDialog({ invoice, open, onOpenChange }: { invoice: typeof 
             <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatFullINR(invoice.amount)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">GST @ 18%</span><span>{formatFullINR(invoice.gst)}</span></div>
             <Separator className="my-1" />
-            <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-teal-600">{formatFullINR(invoice.total)}</span></div>
+            <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-[#2A7BBD] dark:text-[#00A79D]">{formatFullINR(invoice.total)}</span></div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" className="flex-1" onClick={() => toast({ title: "PDF generated", description: `${invoice.no}.pdf downloaded` })}>
               <FileDown className="w-3.5 h-3.5 mr-1" /> Download PDF
             </Button>
             {invoice.status !== "Paid" && (
-              <Button size="sm" className="flex-1 bg-teal-600 hover:bg-teal-700" onClick={() => toast({ title: "Payment reminder sent", description: `Reminder emailed to ${invoice.customer}` })}>
+              <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90" onClick={() => toast({ title: "Payment reminder sent", description: `Reminder emailed to ${invoice.customer}` })}>
                 <CreditCard className="w-3.5 h-3.5 mr-1" /> Send Reminder
               </Button>
             )}
@@ -368,7 +327,7 @@ function GenerateInvoiceDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
+        <Button className="bg-primary hover:bg-primary/90">
           <Plus className="w-4 h-4 mr-1" /> Generate Invoice
         </Button>
       </DialogTrigger>
@@ -399,13 +358,13 @@ function GenerateInvoiceDialog() {
               <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatFullINR(Number(amount))}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">GST @ 18%</span><span>{formatFullINR(Math.round(Number(amount) * 0.18))}</span></div>
               <Separator className="my-1" />
-              <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-teal-600">{formatFullINR(Math.round(Number(amount) * 1.18))}</span></div>
+              <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-[#2A7BBD] dark:text-[#00A79D]">{formatFullINR(Math.round(Number(amount) * 1.18))}</span></div>
             </div>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={generate} className="bg-teal-600 hover:bg-teal-700">Generate</Button>
+          <Button onClick={generate} className="bg-primary hover:bg-primary/90">Generate</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -441,19 +400,16 @@ function InvoicesTab({ data }: { data: MappedFinance | null }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
-          <StatCard icon={FileText} label="Total Invoiced" value={formatINR(total)} color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" />
-          <StatCard icon={CheckCircle2} label="Paid" value={formatINR(paid)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" />
-          <StatCard icon={Clock} label="Pending" value={formatINR(pending)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" />
-          <StatCard icon={AlertCircle} label="Overdue" value={formatINR(overdue)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" />
+          <MetricCard icon={FileText} label="Total Invoiced" value={formatINR(total)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+          <MetricCard icon={CheckCircle2} label="Paid" value={formatINR(paid)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
+          <MetricCard icon={Clock} label="Pending" value={formatINR(pending)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
+          <MetricCard icon={AlertCircle} label="Overdue" value={formatINR(overdue)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
         </div>
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader className="flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle className="text-base">Invoices</CardTitle>
-            <CardDescription>All generated invoices with GST and payment status</CardDescription>
-          </div>
+          <SectionHeader title="Invoices" description="All generated invoices with GST and payment status" />
           <GenerateInvoiceDialog />
         </CardHeader>
         <CardContent className="p-0">
@@ -518,7 +474,7 @@ function AddExpenseDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
+        <Button className="bg-primary hover:bg-primary/90">
           <Plus className="w-4 h-4 mr-1" /> Add Expense
         </Button>
       </DialogTrigger>
@@ -563,7 +519,7 @@ function AddExpenseDialog() {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} className="bg-teal-600 hover:bg-teal-700">Add Expense</Button>
+          <Button onClick={submit} className="bg-primary hover:bg-primary/90">Add Expense</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -575,22 +531,17 @@ function ExpensesTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="bg-gradient-to-r from-rose-500 to-pink-600 text-white border-0">
-        <CardContent className="p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs text-white/80 uppercase tracking-wide">Total Expenses (This Month)</p>
-            <p className="text-3xl font-bold tracking-tight mt-1">{formatFullINR(total)}</p>
-            <p className="text-[11px] text-white/70 mt-0.5">{EXPENSES.length} expense entries recorded</p>
-          </div>
-          <AddExpenseDialog />
-        </CardContent>
-      </Card>
+      <BrandHero
+        eyebrow="This Month"
+        title={formatFullINR(total)}
+        subtitle={`${EXPENSES.length} expense entries recorded`}
+        actions={<AddExpenseDialog />}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-1">
+        <Card className="lg:col-span-1 border-border/80 shadow-none">
           <CardHeader>
-            <CardTitle className="text-base">By Category</CardTitle>
-            <CardDescription>Expense distribution</CardDescription>
+            <SectionHeader title="By Category" description="Expense distribution" />
           </CardHeader>
           <CardContent>
             <div className="h-56">
@@ -617,10 +568,9 @@ function ExpensesTab() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-2 border-border/80 shadow-none">
           <CardHeader>
-            <CardTitle className="text-base">Expense List</CardTitle>
-            <CardDescription>Recent business expenses</CardDescription>
+            <SectionHeader title="Expense List" description="Recent business expenses" />
           </CardHeader>
           <CardContent className="p-0">
             <div className="rounded-lg border max-h-96 overflow-y-auto scroll-thin mx-4 mb-4">
@@ -674,7 +624,7 @@ export function FinanceView() {
   }, []);
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Finance"
         subtitle="Track revenue, GST, TDS, invoices and expenses — your complete financial cockpit."
@@ -693,6 +643,6 @@ export function FinanceView() {
         <TabsContent value="invoices" className="mt-4"><InvoicesTab data={data} /></TabsContent>
         <TabsContent value="expenses" className="mt-4"><ExpensesTab /></TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

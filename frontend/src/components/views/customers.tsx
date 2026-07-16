@@ -1,20 +1,18 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import {
   Users, Building2, User, Crown, Plus, Search, Phone, Mail, MapPin,
   Calendar, Award, BookOpen, FileText, StickyNote, Activity, Plane,
   Star,
 } from "lucide-react";
-import { BOOKINGS } from "@/lib/mock-data";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { Customer } from "@/types";
 import {
-  formatINR, formatFullINR, StatusBadge, PageHeader, initials, avatarGradient,
+  formatINR, formatFullINR, StatusBadge, PageHeader, PageShell, MetricCard, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
 import {
-  Card, CardContent, CardHeader, CardTitle, CardDescription,
+  Card, CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,26 +89,6 @@ const ACTIVITY_ICONS: Record<string, React.ElementType> = {
   contract: FileText, payment: FileText,
 };
 
-function StatCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: string; color: string }) {
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center gap-3">
-            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", color)}>
-              <Icon className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-xl font-bold tracking-tight">{value}</p>
-              <p className="text-[11px] text-muted-foreground">{label}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
 function AddCustomerDialog() {
   const { toast } = useToast();
   const addCustomer = useDemoDataStore((s) => s.addCustomer);
@@ -138,7 +116,7 @@ function AddCustomerDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
+        <Button className="bg-primary hover:bg-primary/90">
           <Plus className="w-4 h-4 mr-1" /> Add Customer
         </Button>
       </DialogTrigger>
@@ -181,7 +159,7 @@ function AddCustomerDialog() {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} className="bg-teal-600 hover:bg-teal-700">Add Customer</Button>
+          <Button onClick={submit} className="bg-primary hover:bg-primary/90">Add Customer</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -404,7 +382,7 @@ export function CustomersView() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Customers"
         subtitle="Manage your customer relationships, profiles, and loyalty programs."
@@ -412,10 +390,10 @@ export function CustomersView() {
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {stats.map((s) => <StatCard key={s.label} {...s} />)}
+        {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between mb-3">
             <div className="flex flex-1 gap-2">
@@ -450,7 +428,7 @@ export function CustomersView() {
             </div>
           </div>
 
-          <div className="rounded-lg border max-h-[60vh] overflow-y-auto scroll-thin">
+          <div className="rounded-lg border border-border/80 max-h-[60vh] overflow-y-auto scroll-thin">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -511,6 +489,6 @@ export function CustomersView() {
       </Card>
 
       <ProfileSheet customer={selected} open={sheetOpen} onOpenChange={setSheetOpen} />
-    </div>
+    </PageShell>
   );
 }

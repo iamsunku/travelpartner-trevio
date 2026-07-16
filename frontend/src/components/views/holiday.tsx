@@ -24,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { HOLIDAY_PACKAGES } from "@/lib/mock-data";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { HolidayPackage } from "@/types";
-import { formatFullINR, PageHeader } from "@/components/shared/ui-helpers";
+import { formatFullINR, PageHeader, PageShell } from "@/components/shared/ui-helpers";
 import { PaymentModal, type BookingPaymentMethod } from "@/components/shared/payment-modal";
 import { cn } from "@/lib/utils";
 
@@ -135,7 +135,7 @@ export function HolidayView() {
   };
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Holiday Packages"
         subtitle="Curated domestic & international tours with flights, stays, transfers & sightseeing."
@@ -150,7 +150,7 @@ export function HolidayView() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-xl border bg-card p-4 space-y-3"
+        className="rounded-xl border border-border/80 bg-card p-4 space-y-3 shadow-none"
       >
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
@@ -181,8 +181,8 @@ export function HolidayView() {
                 className={cn(
                   "px-3 py-1.5 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5",
                   typeFilter === t.id
-                    ? "bg-teal-600 text-white border-teal-600 shadow-sm"
-                    : "bg-background hover:border-teal-400 hover:text-teal-700"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background border-border/80 hover:border-primary/30 hover:text-foreground"
                 )}
               >
                 <Icon className="w-3.5 h-3.5" /> {t.label}
@@ -194,7 +194,7 @@ export function HolidayView() {
 
       {/* Package grid */}
       {filtered.length === 0 ? (
-        <Card><CardContent className="p-12 text-center text-muted-foreground">
+        <Card className="border-border/80 shadow-none"><CardContent className="p-12 text-center text-muted-foreground">
           <Palmtree className="w-10 h-10 mx-auto mb-3 opacity-40" />
           <p className="text-sm">No packages match your filters.</p>
           <p className="text-xs mt-1">Try a different destination or category.</p>
@@ -212,11 +212,11 @@ export function HolidayView() {
                 transition={{ delay: i * 0.05 }}
                 whileHover={{ y: -4 }}
               >
-                <Card className="overflow-hidden hover:shadow-xl transition-shadow group h-full flex flex-col">
+                <Card className="overflow-hidden border-border/80 shadow-none hover:border-primary/25 transition-all group h-full flex flex-col">
                   {/* Image header with gradient */}
                   <div className={cn(
                     "relative h-40 bg-gradient-to-br p-4 text-white flex flex-col justify-between",
-                    TYPE_GRADIENTS[p.type] || "from-teal-500 to-emerald-600"
+                    TYPE_GRADIENTS[p.type] || "from-[#2A7BBD] to-[#00A79D]"
                   )}>
                     <div className="absolute inset-0 opacity-30" style={{
                       backgroundImage: "radial-gradient(circle at 20% 30%, rgba(255,255,255,0.3) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(0,0,0,0.2) 0%, transparent 50%)",
@@ -275,7 +275,7 @@ export function HolidayView() {
                         <Button size="sm" variant="outline" onClick={() => setDetailPkg(p)} className="h-7 text-xs">
                           View Details
                         </Button>
-                        <Button size="sm" onClick={() => openPay(p)} className="h-7 text-xs bg-teal-600 hover:bg-teal-700">
+                        <Button size="sm" onClick={() => openPay(p)} className="h-7 text-xs bg-primary hover:bg-primary/90">
                           Book Now
                         </Button>
                       </div>
@@ -295,7 +295,7 @@ export function HolidayView() {
             <>
               <div className={cn(
                 "relative -m-6 mb-0 h-32 bg-gradient-to-br p-5 text-white flex flex-col justify-end",
-                TYPE_GRADIENTS[detailPkg.type] || "from-teal-500 to-emerald-600"
+                TYPE_GRADIENTS[detailPkg.type] || "from-[#2A7BBD] to-[#00A79D]"
               )}>
                 <div className="absolute inset-0 opacity-30" style={{
                   backgroundImage: "radial-gradient(circle at 20% 30%, rgba(255,255,255,0.3) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(0,0,0,0.2) 0%, transparent 50%)",
@@ -380,7 +380,7 @@ export function HolidayView() {
 
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDetailPkg(null)}>Close</Button>
-                <Button onClick={() => openPay(detailPkg)} className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
+                <Button onClick={() => openPay(detailPkg)} className="bg-primary hover:bg-primary/90">
                   Book This Package • {formatFullINR(detailPkg.price)} <ArrowRight className="w-4 h-4" />
                 </Button>
               </DialogFooter>
@@ -416,6 +416,6 @@ export function HolidayView() {
           }
         }}
       />
-    </div>
+    </PageShell>
   );
 }

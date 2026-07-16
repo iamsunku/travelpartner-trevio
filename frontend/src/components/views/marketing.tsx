@@ -34,7 +34,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { PageHeader, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 type CampaignType = "Email" | "WhatsApp" | "SMS";
@@ -54,7 +54,7 @@ interface Campaign {
 }
 
 const CAMPAIGNS: Campaign[] = [
-  { id: "cm-1", name: "Republic Day Flight Sale", type: "Email", audience: 12840, sent: 12840, opened: 5240, clicked: 1420, status: "Completed", date: "2025-01-20", gradient: "from-teal-500 to-emerald-600" },
+  { id: "cm-1", name: "Republic Day Flight Sale", type: "Email", audience: 12840, sent: 12840, opened: 5240, clicked: 1420, status: "Completed", date: "2025-01-20", gradient: "from-[#2A7BBD] to-[#00A79D]" },
   { id: "cm-2", name: "Bali Honeymoon Package — WhatsApp Blast", type: "WhatsApp", audience: 3420, sent: 3380, opened: 2910, clicked: 824, status: "Running", date: "2025-01-19", gradient: "from-emerald-500 to-teal-600" },
   { id: "cm-3", name: "Weekend Goa Getaway Reminder", type: "SMS", audience: 8240, sent: 8240, opened: 6120, clicked: 980, status: "Completed", date: "2025-01-18", gradient: "from-amber-500 to-orange-600" },
   { id: "cm-4", name: "Summer Europe Early Bird", type: "Email", audience: 5420, sent: 0, opened: 0, clicked: 0, status: "Scheduled", date: "2025-02-01", gradient: "from-violet-500 to-purple-600" },
@@ -120,7 +120,7 @@ function CampaignCard({ c, onAction }: { c: Campaign; onAction: (c: Campaign, ac
   const clickRate = c.sent ? Math.round((c.clicked / c.sent) * 100) : 0;
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }}>
-      <Card className="h-full overflow-hidden hover:shadow-md transition-shadow">
+      <Card className="h-full overflow-hidden hover:shadow-sm transition-shadow">
         <div className={cn("h-16 bg-gradient-to-r relative", c.gradient)}>
           <div className="absolute inset-0 bg-black/10" />
           <div className="absolute top-2 right-2">
@@ -246,7 +246,7 @@ export function MarketingView() {
       sent: 0, opened: 0, clicked: 0,
       status: campaignForm.schedule ? "Scheduled" : "Draft",
       date: campaignForm.schedule || new Date().toISOString().slice(0, 10),
-      gradient: ["from-teal-500 to-emerald-600", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600"][campaigns.length % 3],
+      gradient: ["from-[#2A7BBD] to-[#00A79D]", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600"][campaigns.length % 3],
     };
     setCampaigns([newC, ...campaigns]);
     setCampaignOpen(false);
@@ -290,10 +290,18 @@ export function MarketingView() {
 
   const totalAudience = campaigns.reduce((s, c) => s + c.audience, 0);
   const avgOpen = campaigns.length ? Math.round(campaigns.reduce((s, c) => s + (c.sent ? (c.opened / c.sent) * 100 : 0), 0) / campaigns.length) : 0;
+  const activeCoupons = coupons.filter((c) => c.status === "Active").length;
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader title="Marketing" subtitle="Campaigns, coupons, and promotions" />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetricCard icon={Mail} label="Campaigns" value={String(campaigns.length)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
+        <MetricCard icon={Eye} label="Total Reach" value={totalAudience.toLocaleString("en-IN")} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+        <MetricCard icon={MousePointerClick} label="Avg Open Rate" value={`${avgOpen}%`} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
+        <MetricCard icon={Ticket} label="Active Coupons" value={String(activeCoupons)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={3} />
+      </div>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
@@ -320,7 +328,7 @@ export function MarketingView() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card className="lg:col-span-1">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Open Rate Trend</CardTitle>
+                <CardTitle>Open Rate Trend</CardTitle>
                 <CardDescription className="text-xs">Last 7 days · all active campaigns</CardDescription>
               </CardHeader>
               <CardContent>
@@ -328,8 +336,8 @@ export function MarketingView() {
                   <AreaChart data={CAMPAIGN_PERF} margin={{ left: -16, right: 8, top: 8 }}>
                     <defs>
                       <linearGradient id="openGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#0d9488" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#2A7BBD" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#2A7BBD" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="clickGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4} />
@@ -340,7 +348,7 @@ export function MarketingView() {
                     <XAxis dataKey="day" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
-                    <Area type="monotone" dataKey="opens" stroke="#0d9488" strokeWidth={2.5} fill="url(#openGrad)" />
+                    <Area type="monotone" dataKey="opens" stroke="#2A7BBD" strokeWidth={2.5} fill="url(#openGrad)" />
                     <Area type="monotone" dataKey="clicks" stroke="#f59e0b" strokeWidth={2.5} fill="url(#clickGrad)" />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -424,7 +432,7 @@ export function MarketingView() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {promos.map((p) => (
               <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }}>
-                <Card className={cn("overflow-hidden hover:shadow-md transition-shadow", !p.active && "opacity-70")}>
+                <Card className={cn("overflow-hidden hover:shadow-sm transition-shadow", !p.active && "opacity-70")}>
                   <div className={cn("relative h-24 bg-gradient-to-r p-4 flex items-center justify-between", p.gradient)}>
                     <div>
                       <Badge className="bg-white/20 text-white border-0 backdrop-blur-sm">{p.discount}</Badge>
@@ -548,6 +556,6 @@ export function MarketingView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

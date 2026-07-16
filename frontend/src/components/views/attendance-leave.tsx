@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import {
-  CalendarCheck, LogIn, LogOut, Clock, Plus, CheckCircle2, XCircle, Users,
+  CalendarCheck, LogIn, LogOut, Clock, Plus, CheckCircle2, XCircle,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -25,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/app-store";
 import { api, type ApiAttendance, type ApiEmployee, type ApiLeave } from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
-import { PageHeader, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, MetricCard, SectionHeader, StatusBadge } from "@/components/shared/ui-helpers";
 
 const LEAVE_TYPES = ["Casual", "Sick", "Earned", "Unpaid"] as const;
 
@@ -110,42 +109,25 @@ export function AttendanceLeaveView() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Attendance & Leave"
         subtitle="Check in/out, request leave, and track your work hours"
         action={
-          <Button onClick={() => setRequestOpen(true)} className="bg-teal-600 hover:bg-teal-700">
+          <Button onClick={() => setRequestOpen(true)} className="bg-primary hover:bg-primary/90">
             <Plus className="w-4 h-4 mr-1.5" /> Request Leave
           </Button>
         }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { icon: CalendarCheck, label: "Today", value: todayRecord?.status || "Not checked in", color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" },
-          { icon: LogIn, label: "Check-in", value: fmtTime(todayRecord?.checkIn), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" },
-          { icon: LogOut, label: "Check-out", value: fmtTime(todayRecord?.checkOut), color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
-          { icon: Clock, label: "Leave requests", value: `${myLeaves.filter((l) => l.status === "Pending").length} pending`, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" },
-        ].map((s, i) => {
-          const Icon = s.icon;
-          return (
-            <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <Card>
-                <CardContent className="p-4">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${s.color}`}>
-                    <Icon className="w-4.5 h-4.5" />
-                  </div>
-                  <p className="text-lg font-bold mt-2.5 tracking-tight capitalize">{s.value}</p>
-                  <p className="text-[11px] text-muted-foreground">{s.label}</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          );
-        })}
+        <MetricCard icon={CalendarCheck} label="Today" value={todayRecord?.status || "Not checked in"} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+        <MetricCard icon={LogIn} label="Check-in" value={fmtTime(todayRecord?.checkIn)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
+        <MetricCard icon={LogOut} label="Check-out" value={fmtTime(todayRecord?.checkOut)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
+        <MetricCard icon={Clock} label="Leave requests" value={`${myLeaves.filter((l) => l.status === "Pending").length} pending`} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardContent className="p-4 flex flex-wrap gap-2">
           <Button onClick={handleCheckIn} disabled={busy || !!todayRecord?.checkIn} className="bg-emerald-600 hover:bg-emerald-700">
             <LogIn className="w-4 h-4 mr-1.5" /> Check In
@@ -157,7 +139,7 @@ export function AttendanceLeaveView() {
       </Card>
 
       <Tabs defaultValue="attendance">
-        <TabsList>
+        <TabsList className="bg-muted/60">
           <TabsTrigger value="attendance">My Attendance</TabsTrigger>
           <TabsTrigger value="leaves">My Leaves</TabsTrigger>
           {isManager && <TabsTrigger value="roster">Team Attendance</TabsTrigger>}
@@ -165,10 +147,9 @@ export function AttendanceLeaveView() {
         </TabsList>
 
         <TabsContent value="attendance" className="mt-4">
-          <Card>
+          <Card className="border-border/80 shadow-none">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Recent Attendance</CardTitle>
-              <CardDescription className="text-xs">Last {attendance.length} recorded days</CardDescription>
+              <SectionHeader title="Recent Attendance" description={`Last ${attendance.length} recorded days`} />
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -199,9 +180,9 @@ export function AttendanceLeaveView() {
         </TabsContent>
 
         <TabsContent value="leaves" className="mt-4">
-          <Card>
+          <Card className="border-border/80 shadow-none">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">My Leave Requests</CardTitle>
+              <SectionHeader title="My Leave Requests" />
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -235,10 +216,9 @@ export function AttendanceLeaveView() {
 
         {isManager && (
           <TabsContent value="roster" className="mt-4">
-            <Card>
+            <Card className="border-border/80 shadow-none">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2"><Users className="w-4 h-4" /> Today's Attendance</CardTitle>
-                <CardDescription className="text-xs">Who's checked in across your branch, as of now</CardDescription>
+                <SectionHeader title="Today's Attendance" description="Who's checked in across your branch, as of now" />
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
@@ -278,10 +258,9 @@ export function AttendanceLeaveView() {
 
         {isManager && (
           <TabsContent value="approvals" className="mt-4">
-            <Card>
+            <Card className="border-border/80 shadow-none">
               <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2"><Users className="w-4 h-4" /> Team Leave Requests</CardTitle>
-                <CardDescription className="text-xs">Requests from your branch / agency</CardDescription>
+                <SectionHeader title="Team Leave Requests" description="Requests from your branch / agency" />
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
@@ -331,7 +310,7 @@ export function AttendanceLeaveView() {
       </Tabs>
 
       <LeaveRequestDialog open={requestOpen} onOpenChange={setRequestOpen} onCreated={refresh} />
-    </div>
+    </PageShell>
   );
 }
 
@@ -392,7 +371,7 @@ function LeaveRequestDialog({ open, onOpenChange, onCreated }: { open: boolean; 
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">Submit Request</Button>
+          <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90">Submit Request</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

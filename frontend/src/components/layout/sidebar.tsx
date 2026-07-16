@@ -41,10 +41,10 @@ export function Sidebar() {
         </div>
 
         <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 py-4 scroll-thin">
-          <div className="space-y-5 pb-4">
+          <div className="space-y-6 pb-4">
             {sections.map((section) => (
               <div key={section.title}>
-                <p className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                <p className="px-2.5 mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/65">
                   {section.title}
                 </p>
                 <div className="space-y-0.5">
@@ -61,6 +61,9 @@ export function Sidebar() {
                             : "text-sidebar-foreground hover:bg-sidebar-accent"
                         )}
                       >
+                        {active && (
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 rounded-r-full bg-white/90" />
+                        )}
                         <item.icon
                           className={cn(
                             "w-[18px] h-[18px] shrink-0",
@@ -87,11 +90,11 @@ export function Sidebar() {
 
         {user.role !== "super_admin" && (
           <div className="p-3 border-t border-sidebar-border shrink-0">
-            <div className="rounded-xl bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] p-3 text-white relative overflow-hidden">
+            <div className="rounded-xl bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] p-3.5 text-white relative overflow-hidden">
               <div className="absolute -right-4 -top-4 w-16 h-16 rounded-full bg-white/10" />
-              <p className="text-xs font-semibold relative">Enterprise Plan</p>
-              <p className="text-[10px] text-white/80 mt-0.5 relative">Unlock unlimited API calls</p>
-              <Button size="sm" variant="secondary" className="w-full mt-2 h-7 text-xs bg-white text-[#2A7BBD] hover:bg-white/90">
+              <p className="text-[11px] font-semibold relative tracking-tight">Enterprise Plan</p>
+              <p className="text-[10px] text-white/80 mt-0.5 relative leading-relaxed">Unlock unlimited API calls</p>
+              <Button size="sm" variant="secondary" className="w-full mt-2.5 h-7 text-xs bg-white text-[#2A7BBD] hover:bg-white/90">
                 Upgrade Plan
               </Button>
             </div>

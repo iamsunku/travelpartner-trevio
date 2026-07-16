@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from "react";
+"use client";
+
+import { useState, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -14,6 +16,32 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Server,
+  Zap,
+} from "lucide-react";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
+import {
+  PageShell,
+  PageHeader,
+  SectionHeader,
+  MetricCard,
+} from "@/components/shared/ui-helpers";
+import { cn } from "@/lib/utils";
 
 interface Summary {
   totalRequests: number;
@@ -51,6 +79,35 @@ interface UserActivity {
   errorCount: number;
 }
 
+const BRAND_COLORS = ["#2A7BBD", "#00A79D", "#f59e0b", "#ef4444", "#06b6d4", "#8b5cf6"];
+
+const TIME_RANGES = [
+  { value: 24, label: "24h" },
+  { value: 7, label: "7d" },
+  { value: 30, label: "30d" },
+] as const;
+
+function methodBadgeClass(method: string) {
+  switch (method) {
+    case "GET":
+      return "bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400";
+    case "POST":
+      return "bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400";
+    case "PUT":
+      return "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400";
+    case "DELETE":
+      return "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
+function errorRateBadgeClass(rate: number) {
+  if (rate > 10) return "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400";
+  if (rate > 0) return "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400";
+  return "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400";
+}
+
 export function AnalyticsDashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
@@ -61,7 +118,7 @@ export function AnalyticsDashboard() {
 
   useEffect(() => {
     fetchAnalytics();
-    const interval = setInterval(fetchAnalytics, 60000); // Refresh every minute
+    const interval = setInterval(fetchAnalytics, 60000);
     return () => clearInterval(interval);
   }, [hours]);
 
@@ -91,19 +148,25 @@ export function AnalyticsDashboard() {
     }
   }
 
-  if (loading)
+  if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-gray-500">Loading analytics...</div>
-      </div>
+      <PageShell>
+        <div className="flex items-center justify-center h-96">
+          <p className="text-sm text-muted-foreground">Loading analytics...</p>
+        </div>
+      </PageShell>
     );
+  }
 
-  if (!summary)
+  if (!summary) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-gray-500">No analytics data available</div>
-      </div>
+      <PageShell>
+        <div className="flex items-center justify-center h-96">
+          <p className="text-sm text-muted-foreground">No analytics data available</p>
+        </div>
+      </PageShell>
     );
+  }
 
   const statusChartData = Object.entries(summary.statusCodeDistribution).map(
     ([code, count]) => ({
@@ -128,258 +191,250 @@ export function AnalyticsDashboard() {
       avgTime: u.avgResponseTime,
     }));
 
-  const COLORS = [
-    "#3b82f6",
-    "#10b981",
-    "#f59e0b",
-    "#ef4444",
-    "#8b5cf6",
-    "#ec4899",
-  ];
+  const clientServerErrors =
+    (summary.statusCodeDistribution[400] || 0) +
+    (summary.statusCodeDistribution[500] || 0);
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Performance Analytics</h1>
-        <div className="flex gap-2">
-          {[24, 7, 30].map((h) => (
-            <button
-              key={h}
-              onClick={() => setHours(h)}
-              className={`px-4 py-2 rounded ${
-                hours === h
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              }`}
-            >
-              {h}h
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="text-gray-600 text-sm font-medium">Total Requests</div>
-          <div className="text-3xl font-bold mt-2">{summary.totalRequests}</div>
-          <div className="text-green-600 text-xs mt-1">
-            {summary.uptime}% uptime
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="text-gray-600 text-sm font-medium">Errors</div>
-          <div className="text-3xl font-bold mt-2 text-red-600">
-            {summary.errorCount}
-          </div>
-          <div className="text-red-600 text-xs mt-1">
-            {summary.errorRate}% error rate
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="text-gray-600 text-sm font-medium">
-            Avg Response Time
-          </div>
-          <div className="text-3xl font-bold mt-2">
-            {summary.avgResponseTime}ms
-          </div>
-          <div className="text-blue-600 text-xs mt-1">
-            {summary.avgResponseTime < 200 ? "Excellent" : "Good"}
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="text-gray-600 text-sm font-medium">Status 200</div>
-          <div className="text-3xl font-bold mt-2 text-green-600">
-            {summary.statusCodeDistribution[200] || 0}
-          </div>
-          <div className="text-green-600 text-xs mt-1">Successful</div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="text-gray-600 text-sm font-medium">Status 4xx/5xx</div>
-          <div className="text-3xl font-bold mt-2 text-red-600">
-            {(summary.statusCodeDistribution[400] || 0) +
-              (summary.statusCodeDistribution[500] || 0)}
-          </div>
-          <div className="text-red-600 text-xs mt-1">Client & Server</div>
-        </div>
-      </div>
-
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Status Code Distribution */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-4">Status Code Distribution</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={statusChartData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, value }) => `${name}: ${value}`}
-                outerRadius={100}
-                fill="#8884d8"
-                dataKey="value"
+    <PageShell>
+      <PageHeader
+        title="Performance Analytics"
+        subtitle="API performance, errors, and user activity metrics"
+        action={
+          <div className="flex gap-2">
+            {TIME_RANGES.map((range) => (
+              <Button
+                key={range.value}
+                size="sm"
+                variant={hours === range.value ? "default" : "outline"}
+                className={cn(
+                  hours === range.value &&
+                    "bg-gradient-to-r from-[#2A7BBD] to-[#00A79D] hover:opacity-90 border-0"
+                )}
+                onClick={() => setHours(range.value)}
               >
-                {statusChartData.map((_, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={COLORS[index % COLORS.length]}
-                  />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Top Endpoints */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-4">Top Endpoints</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={endpointChartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="requests" fill="#3b82f6" name="Requests" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Response Time Trend */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-lg font-semibold mb-4">Endpoint Response Times</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={endpointChartData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey="avgTime"
-              stroke="#f59e0b"
-              name="Avg Response Time (ms)"
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* User Activity */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-lg font-semibold mb-4">Top Active Users</h2>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={userActivityData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="requests" fill="#10b981" name="Requests" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Endpoint Details Table */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h2 className="text-lg font-semibold mb-4">Endpoint Performance</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700">
-                  Endpoint
-                </th>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700">
-                  Method
-                </th>
-                <th className="px-4 py-2 text-right font-semibold text-gray-700">
-                  Requests
-                </th>
-                <th className="px-4 py-2 text-right font-semibold text-gray-700">
-                  Avg Time
-                </th>
-                <th className="px-4 py-2 text-right font-semibold text-gray-700">
-                  Error Rate
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {endpoints.slice(0, 15).map((ep, idx) => (
-                <tr
-                  key={idx}
-                  className="border-t hover:bg-gray-50"
-                >
-                  <td className="px-4 py-2 text-sm text-gray-700">
-                    {ep.endpoint}
-                  </td>
-                  <td className="px-4 py-2 text-sm">
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
-                      {ep.method}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2 text-sm text-right text-gray-700">
-                    {ep.count}
-                  </td>
-                  <td className="px-4 py-2 text-sm text-right text-gray-700">
-                    {ep.avgResponseTime}ms
-                  </td>
-                  <td className="px-4 py-2 text-sm text-right">
-                    <span
-                      className={`px-2 py-1 rounded text-xs font-semibold ${
-                        ep.errorRate > 10
-                          ? "bg-red-100 text-red-700"
-                          : ep.errorRate > 0
-                            ? "bg-yellow-100 text-yellow-700"
-                            : "bg-green-100 text-green-700"
-                      }`}
-                    >
-                      {ep.errorRate}%
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Recent Errors */}
-      {errors.length > 0 && (
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-4">Recent Errors</h2>
-          <div className="space-y-2">
-            {errors.slice(0, 10).map((err) => (
-              <div
-                key={err.id}
-                className="p-3 bg-red-50 border border-red-200 rounded"
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-semibold text-red-700">
-                      {err.method} {err.endpoint}
-                    </div>
-                    <div className="text-sm text-red-600">
-                      {err.statusCode} - {err.errorMessage}
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {new Date(err.createdAt).toLocaleTimeString()}
-                  </div>
-                </div>
-              </div>
+                {range.label}
+              </Button>
             ))}
           </div>
-        </div>
+        }
+      />
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <MetricCard
+          icon={Activity}
+          label="Total Requests"
+          value={summary.totalRequests.toLocaleString("en-IN")}
+          color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400"
+          subtitle={`${summary.uptime}% uptime`}
+          index={0}
+        />
+        <MetricCard
+          icon={AlertTriangle}
+          label="Errors"
+          value={summary.errorCount.toLocaleString("en-IN")}
+          color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"
+          subtitle={`${summary.errorRate}% error rate`}
+          index={1}
+        />
+        <MetricCard
+          icon={Clock}
+          label="Avg Response Time"
+          value={`${summary.avgResponseTime}ms`}
+          color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400"
+          subtitle={summary.avgResponseTime < 200 ? "Excellent" : "Good"}
+          index={2}
+        />
+        <MetricCard
+          icon={CheckCircle2}
+          label="Status 200"
+          value={(summary.statusCodeDistribution[200] || 0).toLocaleString("en-IN")}
+          color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+          subtitle="Successful"
+          index={3}
+        />
+        <MetricCard
+          icon={Server}
+          label="Status 4xx/5xx"
+          value={clientServerErrors.toLocaleString("en-IN")}
+          color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400"
+          subtitle="Client & Server"
+          index={4}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="border-border/80 shadow-none">
+          <CardHeader className="pb-2">
+            <SectionHeader title="Status Code Distribution" description="Response breakdown by HTTP status" />
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={statusChartData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, value }) => `${name}: ${value}`}
+                  outerRadius={100}
+                  dataKey="value"
+                >
+                  {statusChartData.map((_, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={BRAND_COLORS[index % BRAND_COLORS.length]}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border/80 shadow-none">
+          <CardHeader className="pb-2">
+            <SectionHeader title="Top Endpoints" description="Most requested API routes" />
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={endpointChartData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+                <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} tick={{ fontSize: 10 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
+                <Legend />
+                <Bar dataKey="requests" fill="#2A7BBD" name="Requests" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="border-border/80 shadow-none">
+        <CardHeader className="pb-2">
+          <SectionHeader title="Endpoint Response Times" description="Average latency across top endpoints" />
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={endpointChartData}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+              <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
+              <Legend />
+              <Line
+                type="monotone"
+                dataKey="avgTime"
+                stroke="#00A79D"
+                strokeWidth={2.5}
+                name="Avg Response Time (ms)"
+                dot={{ r: 3 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-none">
+        <CardHeader className="pb-2">
+          <SectionHeader title="Top Active Users" description="Request volume by user" />
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={userActivityData}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
+              <Legend />
+              <Bar dataKey="requests" fill="#00A79D" name="Requests" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-none">
+        <CardHeader className="pb-2">
+          <SectionHeader title="Endpoint Performance" description="Latency and error rates by route" />
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Endpoint</TableHead>
+                  <TableHead>Method</TableHead>
+                  <TableHead className="text-right">Requests</TableHead>
+                  <TableHead className="text-right">Avg Time</TableHead>
+                  <TableHead className="text-right">Error Rate</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {endpoints.slice(0, 15).map((ep, idx) => (
+                  <TableRow key={idx} className="hover:bg-muted/40">
+                    <TableCell className="text-sm max-w-xs truncate">{ep.endpoint}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className={cn("font-medium border-0 text-xs", methodBadgeClass(ep.method))}>
+                        {ep.method}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{ep.count}</TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">{ep.avgResponseTime}ms</TableCell>
+                    <TableCell className="text-right">
+                      <Badge variant="secondary" className={cn("font-medium border-0 text-xs", errorRateBadgeClass(ep.errorRate))}>
+                        {ep.errorRate}%
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {errors.length > 0 && (
+        <Card className="border-border/80 shadow-none">
+          <CardHeader className="pb-2">
+            <SectionHeader
+              title="Recent Errors"
+              description="Latest API failures in the selected window"
+              action={
+                <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">
+                  <Zap className="w-3 h-3 mr-1" />
+                  {errors.length} logged
+                </Badge>
+              }
+            />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {errors.slice(0, 10).map((err) => (
+                <div
+                  key={err.id}
+                  className="p-3 rounded-lg border border-rose-200/80 bg-rose-50/50 dark:bg-rose-500/5 dark:border-rose-500/20"
+                >
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-rose-700 dark:text-rose-400">
+                        {err.method} {err.endpoint}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {err.statusCode} — {err.errorMessage}
+                      </p>
+                    </div>
+                    <span className="text-[11px] text-muted-foreground shrink-0">
+                      {new Date(err.createdAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
-    </div>
+    </PageShell>
   );
 }

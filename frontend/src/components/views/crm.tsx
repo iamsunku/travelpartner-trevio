@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import {
   DndContext,
   DragOverlay,
@@ -26,7 +25,7 @@ import { ENQUIRY_SOURCE_DATA } from "@/lib/mock-data";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { Lead } from "@/types";
 import {
-  formatINR, formatFullINR, StatusBadge, PageHeader, initials, avatarGradient,
+  formatINR, formatFullINR, StatusBadge, PageHeader, PageShell, MetricCard, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
 import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
@@ -87,7 +86,7 @@ function LeadCard({ lead }: { lead: Lead }) {
       {...attributes}
       {...listeners}
       className={cn(
-        "group bg-card border border-border rounded-xl p-3 cursor-grab active:cursor-grabbing hover:shadow-md hover:border-primary/40 transition-all select-none",
+        "group bg-card border border-border/80 rounded-xl p-3 cursor-grab active:cursor-grabbing hover:border-primary/30 transition-all select-none",
         isDragging && "opacity-30"
       )}
     >
@@ -194,7 +193,7 @@ function NewLeadDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
+        <Button className="bg-primary hover:bg-primary/90">
           <Plus className="w-4 h-4 mr-1" /> New Lead
         </Button>
       </DialogTrigger>
@@ -262,7 +261,7 @@ function NewLeadDialog() {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">Create Lead</Button>
+          <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90">Create Lead</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -320,21 +319,7 @@ function LeadsPipeline() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {stats.map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", s.color)}>
-                    <s.icon className="w-4 h-4" />
-                  </div>
-                </div>
-                <p className="text-xl font-bold mt-2 tracking-tight">{s.value}</p>
-                <p className="text-[11px] text-muted-foreground">{s.label}</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+        {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -369,9 +354,9 @@ function EnquiriesTab() {
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">Enquiries by Source</CardTitle>
+          <CardTitle>Enquiries by Source</CardTitle>
           <CardDescription>Total {total} enquiries across all channels (last 30 days)</CardDescription>
         </CardHeader>
         <CardContent>
@@ -417,9 +402,9 @@ function EnquiriesTab() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">All Enquiries</CardTitle>
+          <CardTitle>All Enquiries</CardTitle>
           <CardDescription>{leads.length} enquiries from all sources</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -480,7 +465,7 @@ function EnquiriesTab() {
 
 export function CrmView() {
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="CRM & Sales"
         subtitle="Manage leads, track your pipeline, and convert enquiries into bookings."
@@ -498,6 +483,6 @@ export function CrmView() {
           <EnquiriesTab />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

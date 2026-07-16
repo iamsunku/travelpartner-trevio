@@ -6,17 +6,15 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
-  Plus, ArrowLeftRight, Search, TrendingUp, TrendingDown, CreditCard,
+  Plus, ArrowLeftRight, Search, TrendingUp, CreditCard,
   Smartphone, Building2, Wallet as WalletIcon, Loader2, CheckCircle2,
   ShieldCheck, Lock, IndianRupee, ArrowDownLeft, ArrowUpRight, Award,
 } from "lucide-react";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import {
-  formatINR, formatFullINR, PageHeader,
+  formatINR, formatFullINR, PageShell, PageHeader, MetricCard, SectionHeader,
 } from "@/components/shared/ui-helpers";
-import {
-  Card, CardContent, CardHeader, CardTitle, CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -255,7 +253,7 @@ function AddMoneyDialog() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={proceed} className="bg-teal-600 hover:bg-teal-700">Proceed to Pay</Button>
+            <Button onClick={proceed} className="bg-primary hover:bg-primary/90">Proceed to Pay</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -314,7 +312,7 @@ function TransferDialog() {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} className="bg-teal-600 hover:bg-teal-700">Transfer</Button>
+          <Button onClick={submit} className="bg-primary hover:bg-primary/90">Transfer</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -352,32 +350,31 @@ export function WalletView() {
   ];
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader title="Wallet" subtitle="Manage your prepaid wallet, top-ups, transfers and commission credits." />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Big balance card */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2">
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-700 text-white p-6">
-            <div className="absolute top-0 right-0 w-72 h-72 rounded-full bg-amber-400/20 blur-3xl -translate-y-1/3 translate-x-1/3" />
-            <div className="absolute bottom-0 left-0 w-48 h-48 rounded-full bg-violet-400/20 blur-3xl translate-y-1/3 -translate-x-1/3" />
-            <div className="relative z-10">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-white/70 uppercase tracking-wide flex items-center gap-1">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D] text-white">
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.18),transparent_55%)]" />
+            <div className="absolute -bottom-16 -left-10 w-48 h-48 rounded-full bg-[#00A79D]/30 blur-3xl" />
+            <div className="relative z-10 p-5 lg:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-white/75 text-[11px] font-medium uppercase tracking-[0.14em] flex items-center gap-1.5">
                     <WalletIcon className="w-3.5 h-3.5" /> Available Balance
                   </p>
-                  <p className="text-4xl font-bold mt-2 tracking-tight">{formatFullINR(balance)}</p>
-                  <p className="text-xs text-white/80 mt-1 flex items-center gap-1">
-                    <TrendingUp className="w-3 h-3" /> +{formatINR(commissionThisMonth)} this month
+                  <p className="text-3xl lg:text-[34px] font-semibold mt-2 tracking-tight tabular-nums">{formatFullINR(balance)}</p>
+                  <p className="text-white/85 text-sm mt-2 flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5" /> +{formatINR(commissionThisMonth)} commission this month
                   </p>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <Badge className="bg-white/15 text-white border-white/20">Travel Partner Wallet</Badge>
-                  <p className="text-[10px] text-white/60">WAL-AG-001</p>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <Badge className="bg-white/15 text-white border-white/20 font-medium">Travel Partner Wallet</Badge>
+                  <p className="text-[10px] text-white/60 font-mono">WAL-AG-001</p>
                 </div>
               </div>
-              <div className="flex gap-2 mt-6">
+              <div className="flex flex-wrap gap-2 mt-5">
                 <AddMoneyDialog />
                 <TransferDialog />
               </div>
@@ -385,43 +382,36 @@ export function WalletView() {
           </div>
         </motion.div>
 
-        {/* Side cards */}
-        <div className="space-y-4">
-          <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 border-emerald-200/50 dark:border-emerald-500/20">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 flex items-center justify-center">
-                  <Award className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-[11px] text-muted-foreground">Commission Credited (This Month)</p>
-                  <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatFullINR(commissionThisMonth)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="space-y-3">
+          <MetricCard
+            icon={Award}
+            label="Commission Credited (This Month)"
+            value={formatFullINR(commissionThisMonth)}
+            color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+            index={0}
+          />
           <div className="grid grid-cols-2 gap-3">
-            <Card>
-              <CardContent className="p-3">
-                <div className="flex items-center gap-1.5 text-emerald-600 mb-1"><ArrowDownLeft className="w-3.5 h-3.5" /><span className="text-[10px] font-medium uppercase">Credited</span></div>
-                <p className="text-base font-bold">{formatINR(totalCredited)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-3">
-                <div className="flex items-center gap-1.5 text-rose-600 mb-1"><ArrowUpRight className="w-3.5 h-3.5" /><span className="text-[10px] font-medium uppercase">Debited</span></div>
-                <p className="text-base font-bold">{formatINR(totalDebited)}</p>
-              </CardContent>
-            </Card>
+            <MetricCard
+              icon={ArrowDownLeft}
+              label="Total Credited"
+              value={formatINR(totalCredited)}
+              color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
+              index={1}
+            />
+            <MetricCard
+              icon={ArrowUpRight}
+              label="Total Debited"
+              value={formatINR(totalDebited)}
+              color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400"
+              index={2}
+            />
           </div>
         </div>
       </div>
 
-      {/* Mini balance chart */}
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Wallet Balance · Last 7 Days</CardTitle>
-          <CardDescription>Daily wallet balance trend</CardDescription>
+          <SectionHeader title="Wallet Balance · Last 7 Days" description="Daily wallet balance trend" />
         </CardHeader>
         <CardContent>
           <div className="h-48">
@@ -429,8 +419,8 @@ export function WalletView() {
               <AreaChart data={balanceData} margin={{ left: -10, right: 10, top: 5, bottom: 0 }}>
                 <defs>
                   <linearGradient id="walletBal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0d9488" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#0d9488" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#00A79D" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#00A79D" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted/40" vertical={false} />
@@ -440,18 +430,16 @@ export function WalletView() {
                   contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
                   formatter={(v: number) => [formatFullINR(v), "Balance"]}
                 />
-                <Area type="monotone" dataKey="balance" stroke="#0d9488" strokeWidth={2.5} fill="url(#walletBal)" />
+                <Area type="monotone" dataKey="balance" stroke="#2A7BBD" strokeWidth={2.5} fill="url(#walletBal)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </CardContent>
       </Card>
 
-      {/* Statement */}
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Wallet Statement</CardTitle>
-          <CardDescription>All transactions in chronological order</CardDescription>
+          <SectionHeader title="Wallet Statement" description="All transactions in chronological order" />
         </CardHeader>
         <CardContent className="p-0">
           <div className="flex flex-col sm:flex-row gap-2 px-4 pb-3">
@@ -512,6 +500,6 @@ export function WalletView() {
           <p className="text-[11px] text-muted-foreground mt-2 px-4 pb-4">Showing {filtered.length} of {walletTxns.length} transactions</p>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

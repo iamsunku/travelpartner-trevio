@@ -35,7 +35,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { PageHeader, StatusBadge, initials, avatarGradient } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, MetricCard, StatusBadge, initials, avatarGradient } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 interface Banner {
@@ -64,7 +64,7 @@ interface Offer {
   gradient: string;
 }
 const OFFERS: Offer[] = [
-  { id: "of-1", title: "First Booking Bonus", code: "WELCOME500", discount: "₹500 OFF", validTill: "2025-03-31", status: "Active", gradient: "from-teal-500 to-emerald-600" },
+  { id: "of-1", title: "First Booking Bonus", code: "WELCOME500", discount: "₹500 OFF", validTill: "2025-03-31", status: "Active", gradient: "from-[#2A7BBD] to-[#00A79D]" },
   { id: "of-2", title: "Refer & Earn", code: "REFER1000", discount: "₹1,000 CASHBACK", validTill: "2025-12-31", status: "Active", gradient: "from-amber-500 to-orange-600" },
   { id: "of-3", title: "App-Only Flash Sale", code: "APP15", discount: "15% OFF", validTill: "2025-02-15", status: "Active", gradient: "from-violet-500 to-purple-600" },
   { id: "of-4", title: "Corporate Bulk Discount", code: "CORP25", discount: "25% OFF", validTill: "2024-12-31", status: "Expired", gradient: "from-rose-500 to-pink-600" },
@@ -168,7 +168,7 @@ export function CmsView() {
         id: `bn-${banners.length + 1}`, title: bannerForm.title, position: bannerForm.position,
         order: banners.filter((b) => b.position === bannerForm.position).length + 1,
         active: true,
-        gradient: ["from-teal-500 to-emerald-600", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600", "from-rose-500 to-pink-600"][banners.length % 4],
+        gradient: ["from-[#2A7BBD] to-[#00A79D]", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600", "from-rose-500 to-pink-600"][banners.length % 4],
       };
       setBanners([...banners, newBanner]);
       toast({ title: "Banner added", description: newBanner.title });
@@ -247,9 +247,19 @@ export function CmsView() {
     b.category.toLowerCase().includes(blogSearch.toLowerCase())
   );
 
+  const publishedBlogs = blogs.filter((b) => b.status === "Published").length;
+  const activeBanners = banners.filter((b) => b.active).length;
+
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader title="Content Management" subtitle="Banners, offers, blogs, testimonials, FAQ and SEO" />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MetricCard icon={ImageIcon} label="Live Banners" value={String(activeBanners)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" subtitle={`${banners.length} total`} index={0} />
+        <MetricCard icon={Tag} label="Active Offers" value={String(OFFERS.filter((o) => o.status === "Active").length)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+        <MetricCard icon={FileText} label="Published Posts" value={String(publishedBlogs)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle={`${blogs.length} total`} index={2} />
+        <MetricCard icon={Star} label="Testimonials" value={String(testimonials.filter((t) => t.status === "Published").length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={3} />
+      </div>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap h-auto">
@@ -272,7 +282,7 @@ export function CmsView() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {banners.map((b) => (
               <motion.div key={b.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                <Card className={cn("overflow-hidden hover:shadow-md transition-shadow", !b.active && "opacity-70")}>
+                <Card className={cn("overflow-hidden hover:shadow-sm transition-shadow", !b.active && "opacity-70")}>
                   <div className={cn("relative h-20 bg-gradient-to-r p-3 flex items-center justify-between", b.gradient)}>
                     <div className="absolute inset-0 bg-black/15" />
                     <div className="relative z-10">
@@ -319,7 +329,7 @@ export function CmsView() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {OFFERS.map((o) => (
               <motion.div key={o.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }}>
-                <Card className={cn("overflow-hidden hover:shadow-md transition-shadow", o.status !== "Active" && "opacity-70")}>
+                <Card className={cn("overflow-hidden hover:shadow-sm transition-shadow", o.status !== "Active" && "opacity-70")}>
                   <div className={cn("h-20 bg-gradient-to-br flex items-center justify-center text-white", o.gradient)}>
                     <p className="text-lg font-bold drop-shadow">{o.discount}</p>
                   </div>
@@ -403,7 +413,7 @@ export function CmsView() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {testimonials.map((t) => (
               <motion.div key={t.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }}>
-                <Card className="h-full hover:shadow-md transition-shadow">
+                <Card className="h-full hover:shadow-sm transition-shadow">
                   <CardContent className="p-4 flex flex-col h-full">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5">
@@ -522,7 +532,7 @@ export function CmsView() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Site Indexing</CardTitle>
+                <CardTitle>Site Indexing</CardTitle>
                 <CardDescription className="text-xs">Sitemap & robots.txt status</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -689,6 +699,6 @@ export function CmsView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }

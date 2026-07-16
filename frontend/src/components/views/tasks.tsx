@@ -11,7 +11,6 @@ import {
   Plus, Calendar, Link2, MessageCircle, Paperclip, AlertTriangle,
   CheckCircle2, ListTodo, Loader, Eye, User,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -30,7 +29,7 @@ import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore } from "@/store/app-store";
 import type { Task } from "@/types";
 import {
-  PageHeader, StatusBadge, initials, avatarGradient,
+  PageShell, PageHeader, MetricCard, StatusBadge, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
@@ -99,41 +98,23 @@ export function TasksView() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Tasks"
         subtitle="Drag-and-drop your team's task board"
         action={
-          <Button onClick={() => setAssignOpen(true)} className="bg-teal-600 hover:bg-teal-700">
+          <Button onClick={() => setAssignOpen(true)} className="bg-primary hover:bg-primary/90">
             <Plus className="w-4 h-4 mr-1.5" /> Assign Task
           </Button>
         }
       />
 
-      {/* Stat chips */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {[
-          { icon: ListTodo, label: "Total", value: total, color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" },
-          { icon: ListTodo, label: "To Do", value: todo, color: "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300" },
-          { icon: Loader, label: "In Progress", value: inProgress, color: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" },
-          { icon: AlertTriangle, label: "Overdue", value: overdue, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" },
-          { icon: CheckCircle2, label: "Done (Week)", value: completedThisWeek, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" },
-        ].map((s) => {
-          const Icon = s.icon;
-          return (
-            <Card key={s.label}>
-              <CardContent className="p-3 flex items-center gap-2.5">
-                <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", s.color)}>
-                  <Icon className="w-4.5 h-4.5" />
-                </div>
-                <div>
-                  <p className="text-lg font-bold leading-tight">{s.value}</p>
-                  <p className="text-[10px] text-muted-foreground">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+        <MetricCard icon={ListTodo} label="Total" value={String(total)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+        <MetricCard icon={ListTodo} label="To Do" value={String(todo)} color="bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300" index={1} />
+        <MetricCard icon={Loader} label="In Progress" value={String(inProgress)} color="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" index={2} />
+        <MetricCard icon={AlertTriangle} label="Overdue" value={String(overdue)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
+        <MetricCard icon={CheckCircle2} label="Done (Week)" value={String(completedThisWeek)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={4} />
       </div>
 
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
@@ -153,7 +134,7 @@ export function TasksView() {
 
       <AssignTaskDialog open={assignOpen} onOpenChange={setAssignOpen} />
       <TaskDetailDialog task={detailTask} onClose={() => setDetailTask(null)} />
-    </div>
+    </PageShell>
   );
 }
 
@@ -170,8 +151,8 @@ function Column({
     <div
       ref={setNodeRef}
       className={cn(
-        "rounded-xl border border-border bg-muted/30 p-2.5 transition-colors min-h-[200px]",
-        isOver && "border-teal-400 bg-teal-50 dark:bg-teal-500/10 ring-2 ring-teal-400/30",
+        "rounded-xl border border-border/80 bg-muted/30 p-2.5 transition-colors min-h-[200px]",
+        isOver && "border-primary/40 bg-primary/[0.03] ring-2 ring-primary/20",
       )}
     >
       <div className="flex items-center justify-between mb-2 px-1">
@@ -215,8 +196,8 @@ function TaskCard({ task, onOpen, dragging }: { task: Task; onOpen: () => void; 
       {...listeners}
       onClick={(e) => { if (!isDragging) { e.stopPropagation(); onOpen(); } }}
       className={cn(
-        "group rounded-lg border border-border bg-card p-2.5 cursor-grab active:cursor-grabbing hover:shadow-md hover:border-primary/40 transition-all",
-        dragging && "shadow-lg",
+        "group rounded-lg border border-border/80 bg-card p-2.5 cursor-grab active:cursor-grabbing hover:border-primary/30 transition-all",
+        dragging && "border-primary/40",
       )}
     >
       <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -332,7 +313,7 @@ function AssignTaskDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">Assign Task</Button>
+          <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90">Assign Task</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -423,7 +404,7 @@ function TaskDetailDialog({ task, onClose }: { task: Task | null; onClose: () =>
             {MOCK_ATTACHMENTS.map((a) => (
               <div key={a.name} className="flex items-center justify-between rounded-lg border border-border p-2 hover:bg-muted/40 transition-colors cursor-pointer">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-md bg-teal-100 dark:bg-teal-500/15 text-teal-600 flex items-center justify-center shrink-0">
+                  <div className="w-7 h-7 rounded-md bg-[#2A7BBD]/10 dark:bg-[#2A7BBD]/15 text-[#2A7BBD] dark:text-[#00A79D] flex items-center justify-center shrink-0">
                     <Paperclip className="w-3.5 h-3.5" />
                   </div>
                   <div className="min-w-0">
@@ -473,7 +454,7 @@ function TaskDetailDialog({ task, onClose }: { task: Task | null; onClose: () =>
               onKeyDown={(e) => { if (e.key === "Enter") sendComment(); }}
               className="h-8 text-xs"
             />
-            <Button size="sm" onClick={sendComment} className="h-8 bg-teal-600 hover:bg-teal-700">Send</Button>
+            <Button size="sm" onClick={sendComment} className="h-8 bg-primary hover:bg-primary/90">Send</Button>
           </div>
         </div>
 

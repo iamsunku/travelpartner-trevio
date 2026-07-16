@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import {
   Plane, Building2, Palmtree,
   Search, Eye, Download, XCircle, RefreshCw, FileDown, Ticket,
@@ -10,7 +9,7 @@ import {
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { Booking } from "@/types";
 import {
-  formatINR, formatFullINR, StatusBadge, PageHeader,
+  formatINR, formatFullINR, StatusBadge, PageHeader, PageShell,
 } from "@/components/shared/ui-helpers";
 import {
   Card, CardContent,
@@ -107,7 +106,7 @@ function BookingDetailDialog({
 
         <div className="space-y-3">
           {/* Itinerary */}
-          <div className="rounded-lg border p-3 bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-500/5 dark:to-emerald-500/5">
+          <div className="rounded-lg border p-3 bg-gradient-to-br from-primary/5 to-[#00A79D]/5">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Itinerary</p>
             <div className="flex items-center justify-between">
               <div>
@@ -201,7 +200,7 @@ function BookingDetailDialog({
 
           {/* Actions */}
           <div className="flex flex-wrap gap-2 pt-1">
-            <Button size="sm" className="bg-teal-600 hover:bg-teal-700" onClick={() => action("Ticket generated", `${booking.bookingRef} ticket issued successfully`)}>
+            <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => action("Ticket generated", `${booking.bookingRef} ticket issued successfully`)}>
               <Ticket className="w-3.5 h-3.5 mr-1" /> Generate Ticket
             </Button>
             <Button variant="outline" size="sm" onClick={() => action("Ticket downloaded", `${booking.bookingRef}.pdf saved`)}>
@@ -261,7 +260,7 @@ export function BookingsView() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Bookings"
         subtitle="Manage all your flight, hotel, holiday and other service bookings in one place."
@@ -276,8 +275,8 @@ export function BookingsView() {
             className={cn(
               "px-3 py-1.5 rounded-full text-xs font-medium transition-all border",
               activeTab === tab.key
-                ? "bg-teal-600 text-white border-teal-600 shadow-sm"
-                : "bg-card text-muted-foreground border-border hover:border-teal-400/40 hover:text-foreground"
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-muted-foreground border-border/80 hover:border-primary/30 hover:text-foreground"
             )}
           >
             {tab.label}
@@ -288,7 +287,7 @@ export function BookingsView() {
         ))}
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardContent className="p-4">
           {/* Filters */}
           <div className="flex flex-col lg:flex-row gap-2 mb-3">
@@ -317,7 +316,7 @@ export function BookingsView() {
             </div>
           </div>
 
-          <div className="rounded-lg border max-h-[60vh] overflow-y-auto scroll-thin">
+          <div className="rounded-lg border border-border/80 max-h-[60vh] overflow-y-auto scroll-thin">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -380,6 +379,6 @@ export function BookingsView() {
       </Card>
 
       <BookingDetailDialog booking={selected} open={detailOpen} onOpenChange={setDetailOpen} onUpdateStatus={updateBookingStatus} />
-    </div>
+    </PageShell>
   );
 }

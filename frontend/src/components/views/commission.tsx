@@ -6,17 +6,17 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import {
-  Plane, Building2, Palmtree, Users, Percent, IndianRupee, Edit,
+  Plane, Building2, Palmtree, Users, Percent, Edit,
   CheckCircle2, Clock, Award, TrendingUp, Wallet, ArrowDownLeft,
 } from "lucide-react";
 import { WALLET_TXNS, REVENUE_DATA } from "@/lib/mock-data";
 import { api } from "@/lib/api";
 import { mapApiCommission, type MappedCommission } from "@/lib/api-mappers";
 import {
-  formatINR, formatFullINR, StatusBadge, PageHeader,
+  formatINR, formatFullINR, StatusBadge, PageShell, PageHeader, MetricCard, SectionHeader, BrandHero,
 } from "@/components/shared/ui-helpers";
 import {
-  Card, CardContent, CardHeader, CardTitle, CardDescription,
+  Card, CardContent, CardHeader,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -90,7 +90,7 @@ function EditRuleDialog({ rule, open, onOpenChange }: { rule: typeof RULE_CARDS[
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={save} className="bg-teal-600 hover:bg-teal-700">Save Changes</Button>
+          <Button onClick={save} className="bg-primary hover:bg-primary/90">Save Changes</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -112,7 +112,7 @@ function CommissionRulesTab() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {RULE_CARDS.map((r, i) => (
           <motion.div key={r.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-            <Card className="hover:shadow-md transition-shadow">
+            <Card className="border-border/80 shadow-none hover:border-primary/25 transition-all duration-200">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
                   <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", r.color)}>
@@ -127,7 +127,7 @@ function CommissionRulesTab() {
                 <div className="mt-3 pt-3 border-t flex items-center justify-between">
                   <div>
                     <p className="text-[10px] text-muted-foreground uppercase">{r.type}</p>
-                    <p className="text-base font-bold text-teal-600">{r.rate}</p>
+                    <p className="text-base font-semibold text-[#2A7BBD] dark:text-[#00A79D]">{r.rate}</p>
                   </div>
                   <Badge variant="secondary" className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">Active</Badge>
                 </div>
@@ -137,10 +137,9 @@ function CommissionRulesTab() {
         ))}
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">Airline Commission Rates</CardTitle>
-          <CardDescription>Carrier-wise commission percentage on base fare</CardDescription>
+          <SectionHeader title="Airline Commission Rates" description="Carrier-wise commission percentage on base fare" />
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-lg border max-h-96 overflow-y-auto scroll-thin mx-4 mb-4">
@@ -202,40 +201,15 @@ function MonthlySettlementTab({ data }: { data: MappedCommission | null }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-500/10 dark:to-emerald-500/10 border-teal-200/50 dark:border-teal-500/20">
-          <CardContent className="p-4">
-            <Award className="w-5 h-5 text-teal-600 mb-2" />
-            <p className="text-xl font-bold">{formatINR(totalCommission)}</p>
-            <p className="text-[11px] text-muted-foreground">Total Commission (6 months)</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <Users className="w-5 h-5 text-violet-600 mb-2" />
-            <p className="text-xl font-bold">{formatINR(totalPayouts)}</p>
-            <p className="text-[11px] text-muted-foreground">Employee Payouts</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <Wallet className="w-5 h-5 text-emerald-600 mb-2" />
-            <p className="text-xl font-bold">{formatINR(totalAgency)}</p>
-            <p className="text-[11px] text-muted-foreground">Agency Share</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <Clock className="w-5 h-5 text-amber-600 mb-2" />
-            <p className="text-xl font-bold">{pendingMonths}</p>
-            <p className="text-[11px] text-muted-foreground">Pending Settlements</p>
-          </CardContent>
-        </Card>
+        <MetricCard icon={Award} label="Total Commission (6 months)" value={formatINR(totalCommission)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+        <MetricCard icon={Users} label="Employee Payouts" value={formatINR(totalPayouts)} color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" index={1} />
+        <MetricCard icon={Wallet} label="Agency Share" value={formatINR(totalAgency)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={2} />
+        <MetricCard icon={Clock} label="Pending Settlements" value={String(pendingMonths)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={3} />
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">Monthly Settlement History</CardTitle>
-          <CardDescription>Commission settlement status by month</CardDescription>
+          <SectionHeader title="Monthly Settlement History" description="Commission settlement status by month" />
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-lg border max-h-96 overflow-y-auto scroll-thin mx-4 mb-4">
@@ -285,35 +259,25 @@ function MyCommissionTab({ data }: { data: MappedCommission | null }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="bg-gradient-to-br from-teal-600 to-emerald-700 text-white border-0">
-          <CardContent className="p-4">
-            <Award className="w-5 h-5 text-white/80 mb-2" />
-            <p className="text-2xl font-bold tracking-tight">{formatFullINR(totalEarned)}</p>
-            <p className="text-[11px] text-white/80">Total Commission Earned (Recent)</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <TrendingUp className="w-5 h-5 text-emerald-600 mb-2" />
-            <p className="text-2xl font-bold tracking-tight">{formatINR(lastMonth)}</p>
-            <p className="text-[11px] text-muted-foreground">Last Month ({REVENUE_DATA[REVENUE_DATA.length - 1].month})</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <Percent className="w-5 h-5 text-amber-600 mb-2" />
-            <p className={cn("text-2xl font-bold tracking-tight", growth >= 0 ? "text-emerald-600" : "text-rose-600")}>
-              {growth >= 0 ? "+" : ""}{growth.toFixed(1)}%
-            </p>
-            <p className="text-[11px] text-muted-foreground">Month-over-month Growth</p>
-          </CardContent>
-        </Card>
+        <BrandHero
+          eyebrow="Total Earned"
+          title={formatFullINR(totalEarned)}
+          subtitle="Commission earned in recent months"
+          className="sm:col-span-1"
+        />
+        <MetricCard icon={TrendingUp} label={`Last Month (${REVENUE_DATA[REVENUE_DATA.length - 1].month})`} value={formatINR(lastMonth)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={0} />
+        <MetricCard
+          icon={Percent}
+          label="Month-over-month Growth"
+          value={`${growth >= 0 ? "+" : ""}${growth.toFixed(1)}%`}
+          color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400"
+          index={1}
+        />
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">Commission Earned · Last 12 Months</CardTitle>
-          <CardDescription>Monthly commission credits to your wallet</CardDescription>
+          <SectionHeader title="Commission Earned · Last 12 Months" description="Monthly commission credits to your wallet" />
         </CardHeader>
         <CardContent>
           <div className="h-72">
@@ -321,8 +285,8 @@ function MyCommissionTab({ data }: { data: MappedCommission | null }) {
               <BarChart data={chartData} margin={{ left: -10, right: 10, top: 10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="commBar" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0d9488" />
-                    <stop offset="95%" stopColor="#10b981" />
+                    <stop offset="5%" stopColor="#2A7BBD" />
+                    <stop offset="95%" stopColor="#00A79D" />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted/40" vertical={false} />
@@ -331,7 +295,7 @@ function MyCommissionTab({ data }: { data: MappedCommission | null }) {
                 <Tooltip
                   contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
                   formatter={(v: number) => [formatFullINR(v), "Commission"]}
-                  cursor={{ fill: "rgba(13,148,136,0.05)" }}
+                  cursor={{ fill: "rgba(42,123,189,0.05)" }}
                 />
                 <Bar dataKey="commission" radius={[6, 6, 0, 0]}>
                   {chartData.map((d, i) => (
@@ -343,15 +307,14 @@ function MyCommissionTab({ data }: { data: MappedCommission | null }) {
           </div>
           <p className="text-[11px] text-muted-foreground mt-2 flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> Peak month ·
-            <span className="w-2.5 h-2.5 rounded-sm bg-teal-500" /> Other months
+            <span className="w-2.5 h-2.5 rounded-sm bg-[#00A79D]" /> Other months
           </p>
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardHeader>
-          <CardTitle className="text-base">Recent Commission Credits</CardTitle>
-          <CardDescription>Latest commission payouts to your wallet</CardDescription>
+          <SectionHeader title="Recent Commission Credits" description="Latest commission payouts to your wallet" />
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-lg border max-h-80 overflow-y-auto scroll-thin mx-4 mb-4">
@@ -399,7 +362,7 @@ export function CommissionView() {
   }, []);
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Commission"
         subtitle="Configure commission rules, track monthly settlements and monitor your earnings."
@@ -414,6 +377,6 @@ export function CommissionView() {
         <TabsContent value="settlement" className="mt-4"><MonthlySettlementTab data={data} /></TabsContent>
         <TabsContent value="my" className="mt-4"><MyCommissionTab data={data} /></TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

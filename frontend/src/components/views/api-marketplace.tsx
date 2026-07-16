@@ -16,7 +16,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { PageHeader, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, BrandHero, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 interface Vendor {
@@ -32,7 +32,7 @@ interface Vendor {
 }
 
 const VENDOR_GRADIENTS = [
-  "from-teal-500 to-emerald-600",
+  "from-[#2A7BBD] to-[#00A79D]",
   "from-amber-500 to-orange-600",
   "from-rose-500 to-pink-600",
   "from-cyan-500 to-teal-600",
@@ -66,7 +66,7 @@ const CATEGORY_TABS = [
 function VendorCard({ vendor, onToggle }: { vendor: Vendor; onToggle: (id: string) => void }) {
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }}>
-      <Card className={cn("relative overflow-hidden h-full transition-shadow hover:shadow-md", vendor.connected && "ring-1 ring-teal-500/40")}>
+      <Card className={cn("relative overflow-hidden h-full transition-shadow hover:shadow-sm", vendor.connected && "ring-1 ring-teal-500/40")}>
         <div className={cn("absolute top-0 inset-x-0 h-1 bg-gradient-to-r", vendor.gradient)} />
         <CardContent className="p-4 pt-5 flex flex-col h-full">
           <div className="flex items-start justify-between gap-2">
@@ -165,43 +165,39 @@ export function ApiMarketplaceView() {
   const connectedCount = activeVendors.filter((v) => v.connected).length;
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="API Marketplace"
         subtitle="Connect third-party travel APIs across flights, hotels, activities and transfers"
       />
 
-      {/* Summary card */}
-      <Card className="relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-teal-500/10 blur-3xl translate-x-1/3 -translate-y-1/2" />
-        <CardContent className="p-5 relative z-10">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white">
-                <PlugZap className="w-7 h-7" />
-              </div>
-              <div>
-                <h3 className="text-base font-semibold">Connected APIs</h3>
-                <p className="text-xs text-muted-foreground">Across all categories</p>
-              </div>
+      <BrandHero
+        eyebrow="Integrations"
+        title="Connected APIs"
+        subtitle="Across all categories"
+        actions={
+          <div className="grid grid-cols-3 gap-4 md:gap-8 text-center">
+            <div>
+              <p className="text-2xl font-bold">{allConnected}</p>
+              <p className="text-[11px] text-white/75">Vendors Connected</p>
             </div>
-            <div className="grid grid-cols-3 gap-4 md:gap-8">
-              <div>
-                <p className="text-3xl font-bold text-teal-600">{allConnected}</p>
-                <p className="text-xs text-muted-foreground">Vendors Connected</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-amber-600">{totalCalls.toLocaleString("en-IN")}</p>
-                <p className="text-xs text-muted-foreground">Calls Today</p>
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-emerald-600">{Object.values(state).flat().length}</p>
-                <p className="text-xs text-muted-foreground">Available Vendors</p>
-              </div>
+            <div>
+              <p className="text-2xl font-bold">{totalCalls.toLocaleString("en-IN")}</p>
+              <p className="text-[11px] text-white/75">Calls Today</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{Object.values(state).flat().length}</p>
+              <p className="text-[11px] text-white/75">Available Vendors</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        }
+      />
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <MetricCard icon={PlugZap} label="Connected Vendors" value={String(allConnected)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
+        <MetricCard icon={Zap} label="Calls Today" value={totalCalls.toLocaleString("en-IN")} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+        <MetricCard icon={Globe2} label="Available Vendors" value={String(Object.values(state).flat().length)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
+      </div>
 
       <Tabs value={tab} onValueChange={setTab}>
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
@@ -251,6 +247,6 @@ export function ApiMarketplaceView() {
           </TabsContent>
         ))}
       </Tabs>
-    </div>
+    </PageShell>
   );
 }

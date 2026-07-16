@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { motion } from "framer-motion";
 import {
   Users, UserCheck, UserMinus, Calendar, Plus, Search, Mail, Phone,
   Eye, Pencil, Briefcase, Building2, Award, Target, TrendingUp, Wallet,
@@ -14,7 +13,7 @@ import type { Module, Role } from "@/types";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -35,7 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { Employee } from "@/types";
 import {
-  formatINR, formatFullINR, PageHeader, StatusBadge, initials, avatarGradient,
+  formatINR, formatFullINR, PageShell, PageHeader, MetricCard, StatusBadge, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
@@ -79,45 +78,25 @@ export function EmployeesView() {
   const avgAttendance = Math.round(employees.reduce((s, e) => s + e.attendance, 0) / employees.length);
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Employees"
         subtitle={`${employees.length} team members across ${new Set(employees.map((e) => e.branch)).size} branches`}
         action={
-          <Button onClick={() => setAddOpen(true)} className="bg-teal-600 hover:bg-teal-700">
+          <Button onClick={() => setAddOpen(true)} className="bg-primary hover:bg-primary/90">
             <Plus className="w-4 h-4 mr-1.5" /> Add Employee
           </Button>
         }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { icon: Users, label: "Total Employees", value: employees.length.toString(), color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" },
-          { icon: UserCheck, label: "Active", value: active.toString(), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" },
-          { icon: UserMinus, label: "On Leave", value: onLeave.toString(), color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
-          { icon: Calendar, label: "Avg Attendance", value: `${avgAttendance}%`, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" },
-        ].map((s, i) => {
-          const Icon = s.icon;
-          return (
-            <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", s.color)}>
-                      <Icon className="w-4.5 h-4.5" />
-                    </div>
-                  </div>
-                  <p className="text-xl font-bold mt-2.5 tracking-tight">{s.value}</p>
-                  <p className="text-[11px] text-muted-foreground">{s.label}</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          );
-        })}
+        <MetricCard icon={Users} label="Total Employees" value={employees.length.toString()} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+        <MetricCard icon={UserCheck} label="Active" value={active.toString()} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
+        <MetricCard icon={UserMinus} label="On Leave" value={onLeave.toString()} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
+        <MetricCard icon={Calendar} label="Avg Attendance" value={`${avgAttendance}%`} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
       </div>
 
-      {/* Filter bar */}
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardContent className="p-3">
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
@@ -159,7 +138,7 @@ export function EmployeesView() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardContent className="p-0">
           <div className="max-h-[600px] overflow-y-auto scroll-thin">
             <Table>
@@ -252,7 +231,7 @@ export function EmployeesView() {
       <AddEmployeeDialog open={addOpen} onOpenChange={setAddOpen} />
       <EditEmployeeDialog employee={editing} onClose={() => setEditing(null)} />
       <EmployeeDetailDialog employee={selected} onClose={() => setSelected(null)} />
-    </div>
+    </PageShell>
   );
 }
 
@@ -404,7 +383,7 @@ function AddEmployeeDialog({ open, onOpenChange }: { open: boolean; onOpenChange
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">Add Employee</Button>
+          <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90">Add Employee</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -546,7 +525,7 @@ function EditEmployeeDialog({ employee, onClose }: { employee: Employee | null; 
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={handleSave} disabled={saving} className="bg-teal-600 hover:bg-teal-700">Save Changes</Button>
+          <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90">Save Changes</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -650,8 +629,8 @@ function EmployeeDetailDialog({ employee, onClose }: { employee: Employee | null
             <AreaChart data={PERFORMANCE_TREND} margin={{ left: -28, right: 4, top: 4 }}>
               <defs>
                 <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#0d9488" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#0d9488" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#2A7BBD" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#2A7BBD" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -660,7 +639,7 @@ function EmployeeDetailDialog({ employee, onClose }: { employee: Employee | null
                 contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", fontSize: 11 }}
                 formatter={(v: number) => formatFullINR(v)}
               />
-              <Area type="monotone" dataKey="value" stroke="#0d9488" strokeWidth={2} fill="url(#perfGrad)" />
+              <Area type="monotone" dataKey="value" stroke="#2A7BBD" strokeWidth={2} fill="url(#perfGrad)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -693,7 +672,7 @@ function EmployeeDetailDialog({ employee, onClose }: { employee: Employee | null
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button className="bg-teal-600 hover:bg-teal-700" onClick={onClose}>Edit Profile</Button>
+          <Button className="bg-primary hover:bg-primary/90" onClick={onClose}>Edit Profile</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

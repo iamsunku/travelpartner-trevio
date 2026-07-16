@@ -23,7 +23,7 @@ import {
   REVENUE_DATA, BOOKING_TYPE_DATA, TOP_DESTINATIONS, ENQUIRY_SOURCE_DATA, EMPLOYEES,
 } from "@/lib/mock-data";
 import {
-  formatINR, formatFullINR, PageHeader, StatusBadge, initials, avatarGradient,
+  formatINR, formatFullINR, PageShell, PageHeader, MetricCard, StatusBadge, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
@@ -153,7 +153,7 @@ export function ReportsView() {
   };
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Reports & Analytics"
         subtitle="Track performance across sales, bookings, finance & employees"
@@ -171,42 +171,22 @@ export function ReportsView() {
                 <SelectItem value="this_year">This Year</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleExport} className="bg-teal-600 hover:bg-teal-700">
+            <Button onClick={handleExport} className="bg-primary hover:bg-primary/90">
               <Download className="w-4 h-4 mr-1.5" /> Export
             </Button>
           </>
         }
       />
 
-      {/* KPI strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { icon: DollarSign, label: "Total Revenue", value: formatINR(totalRevenue), change: 18.7, color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" },
-          { icon: Calendar, label: "Total Bookings", value: totalBookings.toLocaleString("en-IN"), change: 12.5, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
-          { icon: TrendingUp, label: "Commission Earned", value: formatINR(totalCommission), change: 22.4, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" },
-          { icon: Users, label: "Avg Order Value", value: formatINR(Math.round(totalRevenue / totalBookings)), change: -3.1, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" },
-        ].map((s, i) => {
-          const Icon = s.icon;
-          const TrendIcon = s.change >= 0 ? TrendingUp : TrendingDown;
-          return (
-            <motion.div key={s.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", s.color)}>
-                      <Icon className="w-4.5 h-4.5" />
-                    </div>
-                    <span className={cn("text-[11px] font-medium flex items-center gap-0.5", s.change >= 0 ? "text-emerald-600" : "text-rose-600")}>
-                      <TrendIcon className="w-3 h-3" />{Math.abs(s.change)}%
-                    </span>
-                  </div>
-                  <p className="text-xl font-bold mt-2.5 tracking-tight">{s.value}</p>
-                  <p className="text-[11px] text-muted-foreground">{s.label}</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-          );
-        })}
+          { icon: DollarSign, label: "Total Revenue", value: formatINR(totalRevenue), change: 18.7, trend: "up" as const, color: "bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" },
+          { icon: Calendar, label: "Total Bookings", value: totalBookings.toLocaleString("en-IN"), change: 12.5, trend: "up" as const, color: "bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" },
+          { icon: TrendingUp, label: "Commission Earned", value: formatINR(totalCommission), change: 22.4, trend: "up" as const, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" },
+          { icon: Users, label: "Avg Order Value", value: formatINR(Math.round(totalRevenue / totalBookings)), change: -3.1, trend: "down" as const, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
+        ].map((s, i) => (
+          <MetricCard key={s.label} icon={s.icon} label={s.label} value={s.value} change={s.change} trend={s.trend} color={s.color} index={i} />
+        ))}
       </div>
 
       <Tabs defaultValue="sales">
@@ -222,7 +202,7 @@ export function ReportsView() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Revenue Trend</CardTitle>
+                <CardTitle>Revenue Trend</CardTitle>
                 <CardDescription className="text-xs">Monthly revenue performance</CardDescription>
               </CardHeader>
               <CardContent>
@@ -230,15 +210,15 @@ export function ReportsView() {
                   <AreaChart data={REVENUE_DATA} margin={{ left: -12, right: 8, top: 8 }}>
                     <defs>
                       <linearGradient id="revAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#0d9488" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#2A7BBD" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#2A7BBD" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 100000}L`} />
                     <Tooltip content={<ChartTooltip formatter={(v: number) => formatFullINR(v)} />} />
-                    <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#0d9488" strokeWidth={2.5} fill="url(#revAreaGrad)" />
+                    <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#2A7BBD" strokeWidth={2.5} fill="url(#revAreaGrad)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -246,7 +226,7 @@ export function ReportsView() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Bookings Volume</CardTitle>
+                <CardTitle>Bookings Volume</CardTitle>
                 <CardDescription className="text-xs">Monthly bookings count</CardDescription>
               </CardHeader>
               <CardContent>
@@ -266,7 +246,7 @@ export function ReportsView() {
           <Card>
             <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
               <div>
-                <CardTitle className="text-base">Sales Summary</CardTitle>
+                <CardTitle>Sales Summary</CardTitle>
                 <CardDescription className="text-xs">Comparative performance across periods</CardDescription>
               </div>
               <Select value={summaryView} onValueChange={(v) => setSummaryView(v as any)}>
@@ -311,7 +291,7 @@ export function ReportsView() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Enquiry Sources</CardTitle>
+              <CardTitle>Enquiry Sources</CardTitle>
               <CardDescription className="text-xs">Where your leads are coming from</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
@@ -334,7 +314,7 @@ export function ReportsView() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Booking Type Distribution</CardTitle>
+                <CardTitle>Booking Type Distribution</CardTitle>
                 <CardDescription className="text-xs">Share of bookings by service</CardDescription>
               </CardHeader>
               <CardContent>
@@ -360,7 +340,7 @@ export function ReportsView() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Bookings by Service</CardTitle>
+                <CardTitle>Bookings by Service</CardTitle>
                 <CardDescription className="text-xs">Volume comparison across services</CardDescription>
               </CardHeader>
               <CardContent>
@@ -372,7 +352,7 @@ export function ReportsView() {
                     <Tooltip content={<ChartTooltip />} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
                     <Bar dataKey="bookings" name="Bookings" radius={[6, 6, 0, 0]}>
                       {bookingsByService.map((_, i) => (
-                        <Cell key={i} fill={["#0d9488", "#f59e0b", "#f43f5e", "#06b6d4", "#8b5cf6", "#10b981"][i % 6]} />
+                        <Cell key={i} fill={["#2A7BBD", "#00A79D", "#f59e0b", "#06b6d4", "#8b5cf6", "#10b981"][i % 6]} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -383,7 +363,7 @@ export function ReportsView() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Top Destinations</CardTitle>
+              <CardTitle>Top Destinations</CardTitle>
               <CardDescription className="text-xs">Best performing routes by booking volume</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 pt-1">
@@ -392,7 +372,7 @@ export function ReportsView() {
                 const pct = Math.round((d.bookings / max) * 100);
                 return (
                   <div key={d.destination} className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-400 to-emerald-500 text-white text-xs font-bold flex items-center justify-center shrink-0">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white text-xs font-bold flex items-center justify-center shrink-0">
                       {i + 1}
                     </div>
                     <div className="w-28 sm:w-36 shrink-0">
@@ -420,7 +400,7 @@ export function ReportsView() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Bookings Trend (6 weeks)</CardTitle>
+              <CardTitle>Bookings Trend (6 weeks)</CardTitle>
               <CardDescription className="text-xs">Weekly bookings by service category</CardDescription>
             </CardHeader>
             <CardContent>
@@ -431,7 +411,7 @@ export function ReportsView() {
                   <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip />} />
                   <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />
-                  <Line type="monotone" dataKey="flight" name="Flights" stroke="#0d9488" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="flight" name="Flights" stroke="#2A7BBD" strokeWidth={2.5} dot={{ r: 3 }} />
                   <Line type="monotone" dataKey="hotel" name="Hotels" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} />
                   <Line type="monotone" dataKey="holiday" name="Holidays" stroke="#f43f5e" strokeWidth={2.5} dot={{ r: 3 }} />
                 </LineChart>
@@ -461,7 +441,7 @@ export function ReportsView() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Revenue vs Commission</CardTitle>
+                <CardTitle>Revenue vs Commission</CardTitle>
                 <CardDescription className="text-xs">Monthly comparison (grouped)</CardDescription>
               </CardHeader>
               <CardContent>
@@ -472,7 +452,7 @@ export function ReportsView() {
                     <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 100000}L`} />
                     <Tooltip content={<ChartTooltip formatter={(v: number) => formatFullINR(v)} />} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
                     <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />
-                    <Bar dataKey="revenue" name="Revenue" fill="#0d9488" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="revenue" name="Revenue" fill="#2A7BBD" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="commission" name="Commission" fill="#f59e0b" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -481,7 +461,7 @@ export function ReportsView() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Payment Method Distribution</CardTitle>
+                <CardTitle>Payment Method Distribution</CardTitle>
                 <CardDescription className="text-xs">By transaction volume</CardDescription>
               </CardHeader>
               <CardContent>
@@ -508,7 +488,7 @@ export function ReportsView() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Refund Trend</CardTitle>
+              <CardTitle>Refund Trend</CardTitle>
               <CardDescription className="text-xs">Refund count & amount over last 6 months</CardDescription>
             </CardHeader>
             <CardContent>
@@ -533,7 +513,7 @@ export function ReportsView() {
           <EmployeeReports />
         </TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }
 
@@ -576,7 +556,7 @@ function EmployeeReports() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Top Performers</CardTitle>
+            <CardTitle>Top Performers</CardTitle>
             <CardDescription className="text-xs">By revenue achieved (INR)</CardDescription>
           </CardHeader>
           <CardContent>
@@ -586,7 +566,7 @@ function EmployeeReports() {
                 <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 100000}L`} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={70} />
                 <Tooltip content={<ChartTooltip formatter={(v: number) => formatFullINR(v)} />} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
-                <Bar dataKey="achieved" name="Achieved" fill="#0d9488" radius={[0, 6, 6, 0]} />
+                <Bar dataKey="achieved" name="Achieved" fill="#00A79D" radius={[0, 6, 6, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -594,7 +574,7 @@ function EmployeeReports() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Target vs Achieved</CardTitle>
+            <CardTitle>Target vs Achieved</CardTitle>
             <CardDescription className="text-xs">Sales team performance against targets</CardDescription>
           </CardHeader>
           <CardContent>
@@ -615,7 +595,7 @@ function EmployeeReports() {
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Attendance Overview</CardTitle>
+          <CardTitle>Attendance Overview</CardTitle>
           <CardDescription className="text-xs">Last 30 days attendance percentage</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2.5 pt-1">

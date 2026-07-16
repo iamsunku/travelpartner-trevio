@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import {
   Building2, Users, Wallet, TrendingUp, Plus, MoreHorizontal, Pencil,
   UserCog, MapPin, Search,
@@ -35,27 +34,10 @@ import { AGENCIES, BRANCHES } from "@/lib/mock-data";
 import { api, type ApiEmployee } from "@/lib/api";
 import { mapApiBranch } from "@/lib/api-mappers";
 import type { Branch } from "@/types";
-import { formatINR, formatFullINR, StatusBadge, PageHeader, initials, avatarGradient } from "@/components/shared/ui-helpers";
+import { formatINR, formatFullINR, StatusBadge, PageShell, PageHeader, SectionHeader, MetricCard, initials, avatarGradient } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
-const BRANCH_COLORS = ["#0d9488", "#f59e0b", "#06b6d4", "#8b5cf6", "#10b981", "#f43f5e", "#fb923c", "#14b8a6"];
-
-function StatCard({ icon: Icon, label, value, color, sub }: { icon: React.ElementType; label: string; value: string; color: string; sub?: string }) {
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <Card className="hover:shadow-md transition-shadow">
-        <CardContent className="p-4">
-          <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", color)}>
-            <Icon className="w-5 h-5" />
-          </div>
-          <p className="text-2xl font-bold mt-3 tracking-tight">{value}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-          {sub && <p className="text-[11px] text-muted-foreground/70 mt-0.5">{sub}</p>}
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
+const BRANCH_COLORS = ["#2A7BBD", "#00A79D", "#f59e0b", "#06b6d4", "#10b981", "#ef4444", "#fb923c", "#14b8a6"];
 
 export function BranchesView() {
   const { toast } = useToast();
@@ -79,9 +61,9 @@ export function BranchesView() {
   const avgRevenue = branches.length ? totalRevenue / branches.length : 0;
 
   const stats = [
-    { icon: Building2, label: "Total Branches", value: String(branches.length), color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", sub: "All agencies" },
-    { icon: Users, label: "Total Employees", value: totalEmployees.toLocaleString("en-IN"), color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400" },
-    { icon: Wallet, label: "Total Revenue", value: formatINR(totalRevenue), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", sub: "All branches" },
+    { icon: Building2, label: "Total Branches", value: String(branches.length), color: "bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400", subtitle: "All agencies" },
+    { icon: Users, label: "Total Employees", value: totalEmployees.toLocaleString("en-IN"), color: "bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" },
+    { icon: Wallet, label: "Total Revenue", value: formatINR(totalRevenue), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "All branches" },
     { icon: TrendingUp, label: "Avg Revenue / Branch", value: formatINR(avgRevenue), color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
   ];
 
@@ -126,7 +108,7 @@ export function BranchesView() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Branches"
         subtitle="Manage branch network and performance"
@@ -176,20 +158,18 @@ export function BranchesView() {
         }
       />
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {stats.map((s) => <StatCard key={s.label} {...s} />)}
+        {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
-      {/* Performance chart + table */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-            <div>
-              <CardTitle className="text-base">Branch Performance</CardTitle>
-              <CardDescription className="text-xs">Revenue contribution by branch</CardDescription>
-            </div>
-            <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">₹{formatINR(totalRevenue).replace("₹", "")}</Badge>
+        <Card className="lg:col-span-2 border-border/80 shadow-none">
+          <CardHeader className="pb-2">
+            <SectionHeader
+              title="Branch Performance"
+              description="Revenue contribution by branch"
+              action={<Badge variant="outline" className="bg-sky-50 text-[#2A7BBD] border-sky-200">₹{formatINR(totalRevenue).replace("₹", "")}</Badge>}
+            />
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
@@ -218,10 +198,9 @@ export function BranchesView() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-border/80 shadow-none">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Employee Distribution</CardTitle>
-            <CardDescription className="text-xs">Headcount per branch</CardDescription>
+            <SectionHeader title="Employee Distribution" description="Headcount per branch" />
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[260px] pr-3">
@@ -275,7 +254,7 @@ export function BranchesView() {
                   <TableRow key={b.id} className="hover:bg-muted/40">
                     <TableCell>
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center text-white">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] flex items-center justify-center text-white">
                           <Building2 className="w-4 h-4" />
                         </div>
                         <span className="font-medium text-sm">{b.name}</span>
@@ -325,7 +304,7 @@ export function BranchesView() {
         onClose={() => setEditBranch(null)}
         onSaved={(updated) => setBranches((prev) => prev.map((b) => (b.id === updated.id ? updated : b)))}
       />
-    </div>
+    </PageShell>
   );
 }
 

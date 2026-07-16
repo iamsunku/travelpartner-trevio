@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  Plus, Search, Send, MessageCircle, HelpCircle, Plane, CreditCard,
-  RefreshCw, FileText, User, Headphones, Bot, ArrowRight,
+  Plus, Search, Send, MessageCircle, Plane, CreditCard,
+  RefreshCw, FileText, User, Headphones, Bot, ArrowRight, CheckCircle2, Clock,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import {
-  PageHeader, StatusBadge, initials, avatarGradient,
+  PageShell, PageHeader, MetricCard, SectionHeader, BrandHero, StatusBadge, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
@@ -105,14 +105,14 @@ export function SupportView() {
   });
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Support"
         subtitle="Tickets, live chat, FAQs & help center"
       />
 
       <Tabs defaultValue="tickets">
-        <TabsList className="w-full sm:w-auto overflow-x-auto">
+        <TabsList className="w-full sm:w-auto overflow-x-auto bg-muted/60">
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
           <TabsTrigger value="chat">Live Chat</TabsTrigger>
           <TabsTrigger value="faq">FAQ</TabsTrigger>
@@ -122,22 +122,13 @@ export function SupportView() {
         {/* TICKETS */}
         <TabsContent value="tickets" className="space-y-4 mt-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: "Open Tickets", value: TICKETS.filter((t) => t.status === "Open").length, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" },
-              { label: "In Progress", value: TICKETS.filter((t) => t.status === "In Progress").length, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
-              { label: "Resolved", value: TICKETS.filter((t) => t.status === "Resolved").length, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" },
-              { label: "Avg Response", value: "1.4h", color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" },
-            ].map((s) => (
-              <Card key={s.label}>
-                <CardContent className="p-4">
-                  <p className={cn("text-xl font-bold tracking-tight", s.color.split(" ")[1])}>{s.value}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{s.label}</p>
-                </CardContent>
-              </Card>
-            ))}
+            <MetricCard icon={MessageCircle} label="Open Tickets" value={String(TICKETS.filter((t) => t.status === "Open").length)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={0} />
+            <MetricCard icon={RefreshCw} label="In Progress" value={String(TICKETS.filter((t) => t.status === "In Progress").length)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={1} />
+            <MetricCard icon={CheckCircle2} label="Resolved" value={String(TICKETS.filter((t) => t.status === "Resolved").length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={2} />
+            <MetricCard icon={Clock} label="Avg Response" value="1.4h" color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={3} />
           </div>
 
-          <Card>
+          <Card className="border-border/80 shadow-none">
             <CardContent className="p-3">
               <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                 <div className="relative flex-1">
@@ -150,14 +141,14 @@ export function SupportView() {
                     {["All", "Open", "In Progress", "Resolved", "Closed"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button onClick={() => setRaiseOpen(true)} className="bg-teal-600 hover:bg-teal-700">
+                <Button onClick={() => setRaiseOpen(true)} className="bg-primary hover:bg-primary/90">
                   <Plus className="w-4 h-4 mr-1.5" /> Raise Ticket
                 </Button>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-border/80 shadow-none">
             <CardContent className="p-0">
               <div className="max-h-[560px] overflow-y-auto scroll-thin">
                 <Table>
@@ -218,12 +209,12 @@ export function SupportView() {
 
         {/* FAQ */}
         <TabsContent value="faq" className="mt-4">
-          <Card>
+          <Card className="border-border/80 shadow-none">
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <HelpCircle className="w-4 h-4 text-teal-600" /> Frequently Asked Questions
-              </CardTitle>
-              <CardDescription>Quick answers to common travel-agent questions</CardDescription>
+              <SectionHeader
+                title="Frequently Asked Questions"
+                description="Quick answers to common travel-agent questions"
+              />
             </CardHeader>
             <CardContent>
               <Accordion type="single" collapsible className="w-full">
@@ -244,27 +235,24 @@ export function SupportView() {
 
         {/* HELP CENTER */}
         <TabsContent value="help" className="mt-4">
-          <Card className="mb-4 bg-gradient-to-r from-teal-600 to-emerald-700 text-white border-0">
-            <CardContent className="p-5">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-bold">Help Center</h3>
-                  <p className="text-sm text-teal-100 mt-0.5">Browse articles, guides & tutorials to master Travel Partner Pro</p>
-                </div>
-                <div className="relative w-full sm:w-72">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-200" />
-                  <Input placeholder="Search articles..." className="pl-8 bg-white/15 border-white/20 text-white placeholder:text-teal-200" />
-                </div>
+          <BrandHero
+            title="Help Center"
+            subtitle="Browse articles, guides & tutorials to master Travel Partner Pro"
+            actions={
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/70" />
+                <Input placeholder="Search articles..." className="pl-8 bg-white/15 border-white/20 text-white placeholder:text-white/60" />
               </div>
-            </CardContent>
-          </Card>
+            }
+            className="mb-4"
+          />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {HELP_CATEGORIES.map((c, i) => {
               const Icon = c.icon;
               return (
                 <motion.div key={c.title} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                  <Card className="hover:shadow-md hover:border-primary/40 transition-all cursor-pointer h-full group">
+                  <Card className="border-border/80 shadow-none hover:border-primary/25 transition-all duration-200 cursor-pointer h-full group">
                     <CardContent className="p-4">
                       <div className="flex items-start gap-3">
                         <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", c.color)}>
@@ -286,7 +274,7 @@ export function SupportView() {
             })}
           </div>
 
-          <Card className="mt-4">
+          <Card className="mt-4 border-border/80 shadow-none">
             <CardContent className="p-4 flex flex-col sm:flex-row items-center gap-3 justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400 flex items-center justify-center">
@@ -299,7 +287,7 @@ export function SupportView() {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline"><MessageCircle className="w-4 h-4 mr-1.5" /> Live Chat</Button>
-                <Button className="bg-teal-600 hover:bg-teal-700"><Plus className="w-4 h-4 mr-1.5" /> Raise Ticket</Button>
+                <Button className="bg-primary hover:bg-primary/90"><Plus className="w-4 h-4 mr-1.5" /> Raise Ticket</Button>
               </div>
             </CardContent>
           </Card>
@@ -307,7 +295,7 @@ export function SupportView() {
       </Tabs>
 
       <RaiseTicketDialog open={raiseOpen} onOpenChange={setRaiseOpen} />
-    </div>
+    </PageShell>
   );
 }
 
@@ -338,10 +326,9 @@ function LiveChat() {
   };
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden border-border/80 shadow-none">
       <div className="flex flex-col h-[600px]">
-        {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b border-border bg-gradient-to-r from-teal-600 to-emerald-700 text-white">
+        <div className="flex items-center justify-between p-3 border-b border-border/80 bg-gradient-to-r from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D] text-white">
           <div className="flex items-center gap-2.5">
             <div className="relative">
               <Avatar className="w-9 h-9 ring-2 ring-white/30">
@@ -353,7 +340,7 @@ function LiveChat() {
             </div>
             <div>
               <p className="text-sm font-semibold">Travel Partner Support</p>
-              <p className="text-[10px] text-teal-100">Online · Avg reply 2 min</p>
+              <p className="text-[10px] text-white/75">Online · Avg reply 2 min</p>
             </div>
           </div>
           <Badge className="bg-white/15 text-white border-0 hover:bg-white/20">Live</Badge>
@@ -370,7 +357,7 @@ function LiveChat() {
             >
               {m.sender === "agent" && (
                 <Avatar className="w-7 h-7 shrink-0">
-                  <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-500 text-white">
+                  <AvatarFallback className="bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white">
                     <Bot className="w-3.5 h-3.5" />
                   </AvatarFallback>
                 </Avatar>
@@ -379,8 +366,8 @@ function LiveChat() {
                 <div className={cn(
                   "rounded-2xl px-3 py-2 text-sm",
                   m.sender === "user"
-                    ? "bg-teal-600 text-white rounded-tr-sm"
-                    : "bg-card border border-border rounded-tl-sm",
+                    ? "bg-primary text-primary-foreground rounded-tr-sm"
+                    : "bg-card border border-border/80 rounded-tl-sm",
                 )}>
                   {m.text}
                 </div>
@@ -391,7 +378,7 @@ function LiveChat() {
           {typing && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-2 max-w-[80%]">
               <Avatar className="w-7 h-7 shrink-0">
-                <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-500 text-white">
+                <AvatarFallback className="bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white">
                   <Bot className="w-3.5 h-3.5" />
                 </AvatarFallback>
               </Avatar>
@@ -416,7 +403,7 @@ function LiveChat() {
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               className="flex-1"
             />
-            <Button onClick={send} className="bg-teal-600 hover:bg-teal-700" size="icon">
+            <Button onClick={send} className="bg-primary hover:bg-primary/90" size="icon">
               <Send className="w-4 h-4" />
             </Button>
           </div>
@@ -474,7 +461,7 @@ function RaiseTicketDialog({ open, onOpenChange }: { open: boolean; onOpenChange
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} className="bg-teal-600 hover:bg-teal-700">Submit Ticket</Button>
+          <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90">Submit Ticket</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

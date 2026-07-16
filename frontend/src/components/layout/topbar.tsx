@@ -53,7 +53,7 @@ export function Topbar() {
 
   return (
     <TooltipProvider delayDuration={300}>
-      <header className="sticky top-0 z-30 h-14 bg-background/95 backdrop-blur-md border-b border-border">
+      <header className="sticky top-0 z-30 h-14 bg-background/90 backdrop-blur-md border-b border-border/80">
         <div className="flex items-center h-full px-4 lg:px-6 gap-3">
           <button
             onClick={toggleSidebar}
@@ -74,9 +74,9 @@ export function Topbar() {
             <Input
               readOnly
               placeholder="Search bookings, customers, flights..."
-              className="pl-9 h-9 bg-muted/50 border-0 focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
+              className="pl-9 h-9 bg-muted/40 border border-border/60 focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
             />
-            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5 hidden lg:block pointer-events-none">
+            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground border border-border/80 rounded px-1.5 py-0.5 hidden lg:block pointer-events-none">
               ⌘K
             </kbd>
           </div>

@@ -32,7 +32,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { formatFullINR, PageHeader } from "@/components/shared/ui-helpers";
+import { formatFullINR, PageHeader, PageShell } from "@/components/shared/ui-helpers";
 import { generateFlights } from "@/lib/mock-data";
 import { api } from "@/lib/api";
 import { mapApiFlight } from "@/lib/api-mappers";
@@ -227,7 +227,7 @@ const AIRLINE_GRADIENTS: Record<string, string> = {
   QP: "from-amber-400 to-orange-500",
   IX: "from-rose-400 to-amber-500",
   EK: "from-red-400 to-rose-600",
-  SQ: "from-teal-400 to-emerald-500",
+  SQ: "from-[#2A7BBD] to-[#00A79D]",
   QR: "from-violet-400 to-fuchsia-500",
   AK: "from-red-400 to-orange-500",
   MH: "from-blue-400 to-red-500",
@@ -274,7 +274,7 @@ function timeToHour(t: string): number {
 }
 
 function airlineGradient(code: string): string {
-  return AIRLINE_GRADIENTS[code] ?? "from-teal-400 to-emerald-500";
+  return AIRLINE_GRADIENTS[code] ?? "from-[#2A7BBD] to-[#00A79D]";
 }
 
 /* ============================ Main View ============================ */
@@ -523,7 +523,7 @@ export function FlightsView() {
 
   /* ============================ Render ============================ */
   return (
-    <div className="space-y-6">
+    <PageShell>
       <PageHeader
         title="Flight Booking"
         subtitle="Search and book domestic & international flights at the best fares"
@@ -1142,7 +1142,7 @@ export function FlightsView() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
 
@@ -1167,12 +1167,12 @@ function SearchPanel(props: {
   const paxLabel = `${props.adults + props.childrenCount} Traveler${props.adults + props.childrenCount > 1 ? "s" : ""}${props.infants ? `, ${props.infants} Infant` : ""}`;
 
   return (
-    <Card className="relative overflow-hidden border-0 shadow-lg">
+    <Card className="relative overflow-hidden border-0 shadow-sm">
       {/* Gradient backdrop */}
-      <div className="absolute inset-0 bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-800" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D]" />
       <div className="absolute inset-0 opacity-30 hero-pattern" />
-      <div className="absolute -top-12 -right-12 w-40 h-40 bg-amber-400/20 rounded-full blur-3xl" />
-      <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-emerald-300/20 rounded-full blur-3xl" />
+      <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+      <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-[#00A79D]/25 rounded-full blur-3xl" />
 
       <CardContent className="relative p-5 sm:p-6 text-white">
         {/* Trip type toggle */}
@@ -1462,13 +1462,13 @@ function PaxStepper({ label, sub, value, onChange, min, max }: {
 
 function EmptyState() {
   return (
-    <Card className="overflow-hidden border-dashed">
+    <Card className="overflow-hidden border-dashed border-border/80">
       <CardContent className="py-12 px-6 text-center">
-        <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-teal-400 to-emerald-500 flex items-center justify-center mb-4 shadow-lg">
-          <Plane className="w-10 h-10 text-white" />
+        <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] flex items-center justify-center mb-4 shadow-sm">
+          <Plane className="w-8 h-8 text-white" />
         </div>
-        <h3 className="text-xl font-bold">Where would you like to fly?</h3>
-        <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+        <h3 className="text-xl font-semibold tracking-tight">Where would you like to fly?</h3>
+        <p className="text-sm text-muted-foreground mt-1.5 max-w-md mx-auto leading-relaxed">
           Search across 500+ airlines for the best fares. Get instant ticketing,
           easy cancellations, and 24/7 customer support.
         </p>
@@ -1478,7 +1478,7 @@ function EmptyState() {
             { icon: ShieldCheck, title: "Secure Booking", desc: "100% safe payments" },
             { icon: CheckCircle2, title: "Instant Ticketing", desc: "Confirmed in seconds" },
           ].map((f) => (
-            <div key={f.title} className="rounded-xl border bg-card p-4 text-left">
+            <div key={f.title} className="rounded-xl border border-border/80 bg-card p-4 text-left">
               <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-2">
                 <f.icon className="w-4 h-4" />
               </div>
@@ -1636,7 +1636,7 @@ function FilterPanel(props: {
 function FlightCard({ flight, onSelect }: { flight: Flight; onSelect: () => void }) {
   const lowSeats = flight.seatsLeft < 8;
   return (
-    <Card className="overflow-hidden hover:shadow-md hover:border-primary/40 transition-all group">
+    <Card className="overflow-hidden hover:shadow-sm hover:border-primary/40 transition-all group">
       <CardContent className="p-4">
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-4">
           {/* Left: flight info */}

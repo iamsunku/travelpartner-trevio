@@ -1,36 +1,17 @@
 "use client";
 
 import { ProductCatalog } from "@/components/shared/product-catalog";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/shared/ui-helpers";
+import type { ProductRecord } from "@/types";
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  INR: "₹",
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  SGD: "S$",
-  AUD: "A$",
-  CAD: "C$",
-  JPY: "¥",
-  CNY: "¥",
-  AED: "د.إ",
-  SAR: "﷼",
-  QAR: "﷼",
-};
-
-function ApprovalStatusBadge(item: any) {
-  const status = item.approvalStatus || "Draft";
-  const badgeColor: Record<string, string> = {
-    Draft: "bg-gray-100 text-gray-800",
-    Pending: "bg-yellow-100 text-yellow-800",
-    Approved: "bg-green-100 text-green-800",
-    Rejected: "bg-red-100 text-red-800",
-  };
-  return (
-    <Badge className={badgeColor[status] || "bg-gray-100 text-gray-800"}>
-      {status}
-    </Badge>
-  );
+function ApprovalStatusBadge(item: ProductRecord) {
+  const status = String(item.approvalStatus || "Draft");
+  const mapped =
+    status === "Approved" ? "Active" :
+    status === "Pending" ? "Pending" :
+    status === "Rejected" ? "Cancelled" :
+    "Draft";
+  return <StatusBadge status={mapped} />;
 }
 
 export function HotelProductsView() {

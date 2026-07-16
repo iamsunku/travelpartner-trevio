@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { ProductCatalog } from "@/components/shared/product-catalog";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageHeader, SectionHeader, StatusBadge } from "@/components/shared/ui-helpers";
+import type { ProductRecord } from "@/types";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Info } from "lucide-react";
@@ -20,30 +21,25 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   CNY: "¥",
 };
 
-function ApprovalStatusBadge(item: any) {
-  const status = item.approvalStatus || "Draft";
-  const badgeColor: Record<string, string> = {
-    Draft: "bg-gray-100 text-gray-800",
-    Pending: "bg-yellow-100 text-yellow-800",
-    Approved: "bg-green-100 text-green-800",
-    Rejected: "bg-red-100 text-red-800",
-  };
-  return (
-    <Badge className={badgeColor[status] || "bg-gray-100 text-gray-800"}>
-      {status}
-    </Badge>
-  );
+function ApprovalStatusBadge(item: ProductRecord) {
+  const status = String(item.approvalStatus || "Draft");
+  const mapped =
+    status === "Approved" ? "Active" :
+    status === "Pending" ? "Pending" :
+    status === "Rejected" ? "Cancelled" :
+    "Draft";
+  return <StatusBadge status={mapped} />;
 }
 
-function ActivityPriceDisplay(item: any) {
-  const currency = item.currency || "INR";
+function ActivityPriceDisplay(item: ProductRecord) {
+  const currency = String(item.currency || "INR");
   const symbol = CURRENCY_SYMBOLS[currency] || currency;
   const price = Number(item.adultPrice ?? 0);
   return `${symbol}${price.toLocaleString("en-IN")}`;
 }
 
-function TransferPriceDisplay(item: any) {
-  const currency = item.currency || "INR";
+function TransferPriceDisplay(item: ProductRecord) {
+  const currency = String(item.currency || "INR");
   const symbol = CURRENCY_SYMBOLS[currency] || currency;
   const privatePrice = Number(item.privatePrice ?? 0);
   const sharedPrice = Number(item.sharedPrice ?? 0);
@@ -65,14 +61,12 @@ export function ActivityPackagesView() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Activities & Experiences</h1>
-        <p className="text-muted-foreground mt-2">
-          Manage tours, activities, and bundled packages with transfers
-        </p>
-      </div>
+      <PageHeader
+        title="Activities & Experiences"
+        subtitle="Manage tours, activities, and bundled packages with transfers"
+      />
 
-      <Alert>
+      <Alert className="border-border/80">
         <Info className="h-4 w-4" />
         <AlertDescription>
           <strong>Bundle Packages:</strong> Create complete travel experiences by combining activities with transfers. Agents can select ticket-only, transfer-only, or complete packages when booking.
@@ -122,9 +116,9 @@ export function ActivityPackagesView() {
         </TabsContent>
       </Tabs>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">How to Create Bundles</CardTitle>
+      <Card className="border-border/80 shadow-none">
+        <CardHeader className="pb-2">
+          <SectionHeader title="How to Create Bundles" description="Step-by-step guide for packaging activities with transfers" />
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-muted-foreground">
           <div className="space-y-2">

@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Search, Copy, Archive, Trash2, Pencil, Download, Upload, CheckCircle } from "lucide-react";
-import { PageHeader, StatusBadge } from "@/components/shared/ui-helpers";
+import { Plus, Search, Copy, Archive, Trash2, Pencil, Download, Upload, CheckCircle, Package } from "lucide-react";
+import { PageShell, PageHeader, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
 import { ProductFormDialog, type ProductKind } from "@/components/shared/product-form-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -248,10 +248,15 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
   };
 
   return (
-    <div className="space-y-6">
+    <PageShell>
       <PageHeader title={title} subtitle={subtitle} />
 
-      <Card>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-xl">
+        <MetricCard icon={Package} label="Total Products" value={total.toLocaleString("en-IN")} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
+        <MetricCard icon={CheckCircle} label="Active" value={items.filter((i) => i.status === "Active").length.toLocaleString("en-IN")} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" subtitle="On this page" index={1} />
+      </div>
+
+      <Card className="border-border/80 shadow-none">
         <CardContent className="p-4 space-y-4">
           <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
             <div className="flex flex-1 gap-2 flex-wrap">
@@ -360,6 +365,6 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
         initial={editing}
         onSubmit={handleSubmit}
       />
-    </div>
+    </PageShell>
   );
 }

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import {
-  formatINR, formatFullINR, StatusBadge, PageHeader,
+  formatINR, formatFullINR, StatusBadge, PageHeader, PageShell, MetricCard,
 } from "@/components/shared/ui-helpers";
 import {
   Card, CardContent,
@@ -281,7 +281,7 @@ function CollectPaymentDialog() {
     <>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
+          <Button className="bg-primary hover:bg-primary/90">
             <Plus className="w-4 h-4 mr-1" /> Collect Payment
           </Button>
         </DialogTrigger>
@@ -315,7 +315,7 @@ function CollectPaymentDialog() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={proceedToPay} className="bg-teal-600 hover:bg-teal-700">Proceed to Pay</Button>
+            <Button onClick={proceedToPay} className="bg-primary hover:bg-primary/90">Proceed to Pay</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -357,15 +357,15 @@ export function PaymentsView() {
   const razorpayPct = Math.round((payments.filter((p) => p.gateway === "Razorpay").length / payments.length) * 100);
 
   const stats = [
-    { icon: IndianRupee, label: "Total Collected", value: formatINR(totalCollected), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", change: "+12.4%" },
+    { icon: IndianRupee, label: "Total Collected", value: formatINR(totalCollected), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", change: 12.4, trend: "up" as const },
     { icon: Clock, label: "Pending", value: formatINR(pending), color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
     { icon: RefreshCw, label: "Refunded", value: formatINR(refunded), color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" },
-    { icon: TrendingUp, label: "Today's Collection", value: formatINR(today), color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", change: "+5.1%" },
+    { icon: TrendingUp, label: "Today's Collection", value: formatINR(today), color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", change: 5.1, trend: "up" as const },
     { icon: ShieldCheck, label: "via Razorpay", value: `${razorpayPct}%`, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" },
   ];
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Payments"
         subtitle="Collect payments, track transactions and manage refunds via integrated gateways."
@@ -373,25 +373,10 @@ export function PaymentsView() {
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {stats.map((s, i) => (
-          <motion.div key={s.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", s.color)}>
-                    <s.icon className="w-4 h-4" />
-                  </div>
-                  {s.change && <span className="text-[11px] text-emerald-600 font-medium">{s.change}</span>}
-                </div>
-                <p className="text-xl font-bold mt-2 tracking-tight">{s.value}</p>
-                <p className="text-[11px] text-muted-foreground">{s.label}</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+        {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardContent className="p-4">
           <div className="flex flex-col lg:flex-row gap-2 mb-3">
             <div className="relative flex-1 max-w-sm">
@@ -432,7 +417,7 @@ export function PaymentsView() {
             </Select>
           </div>
 
-          <div className="rounded-lg border max-h-[60vh] overflow-y-auto scroll-thin">
+          <div className="rounded-lg border border-border/80 max-h-[60vh] overflow-y-auto scroll-thin">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -480,6 +465,6 @@ export function PaymentsView() {
           <p className="text-[11px] text-muted-foreground mt-2">Showing {filtered.length} of {payments.length} transactions</p>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }

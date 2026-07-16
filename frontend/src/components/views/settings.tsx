@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { PageHeader } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import {
@@ -87,7 +87,7 @@ const DATE_FORMATS = ["DD/MM/YYYY", "MM/DD/YYYY", "YYYY-MM-DD", "DD-MMM-YYYY"];
 
 export function SettingsView() {
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader title="Settings" subtitle="Manage your agency profile, users, system & security" />
 
       <Tabs defaultValue="company">
@@ -103,7 +103,7 @@ export function SettingsView() {
         <TabsContent value="system" className="mt-4"><SystemTab /></TabsContent>
         <TabsContent value="security" className="mt-4"><SecurityTab /></TabsContent>
       </Tabs>
-    </div>
+    </PageShell>
   );
 }
 
@@ -152,7 +152,7 @@ function CompanyTab() {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <Card className="lg:col-span-2">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Agency Profile</CardTitle>
+          <CardTitle>Agency Profile</CardTitle>
           <CardDescription>Basic information about your travel agency</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -162,7 +162,7 @@ function CompanyTab() {
               {logo ? (
                 <img src={logo} alt="Logo" className="w-full h-full object-cover" />
               ) : (
-                <AvatarFallback className="bg-gradient-to-br from-teal-500 to-emerald-600 text-white text-2xl font-bold">
+                <AvatarFallback className="bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white text-2xl font-bold">
                   {initials}
                 </AvatarFallback>
               )}
@@ -224,7 +224,7 @@ function CompanyTab() {
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline">Cancel</Button>
-            <Button onClick={handleSave} className="bg-teal-600 hover:bg-teal-700"><Save className="w-4 h-4 mr-1.5" /> Save Changes</Button>
+            <Button onClick={handleSave} className="bg-primary hover:bg-primary/90"><Save className="w-4 h-4 mr-1.5" /> Save Changes</Button>
           </div>
         </CardContent>
       </Card>
@@ -232,7 +232,7 @@ function CompanyTab() {
       <div className="space-y-4">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Subscription</CardTitle>
+            <CardTitle>Subscription</CardTitle>
           </CardHeader>
           <CardContent>
             <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400 mb-2">Enterprise Plan</Badge>
@@ -249,7 +249,7 @@ function CompanyTab() {
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Compliance</CardTitle>
+            <CardTitle>Compliance</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-xs">
             <div className="flex items-center justify-between"><span className="text-muted-foreground">IATA Accredited</span><Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">Verified</Badge></div>
@@ -327,7 +327,7 @@ function UsersTab() {
     <div className="space-y-4">
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Roles & Access</CardTitle>
+          <CardTitle>Roles & Access</CardTitle>
           <CardDescription>Define what each role can do — enforced by backend CRUD checks</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -366,7 +366,7 @@ function UsersTab() {
       <Card>
         <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
           <div>
-            <CardTitle className="text-base">Permissions Matrix — <span className="text-teal-600">{ROLE_LABELS[selectedRole]}</span></CardTitle>
+            <CardTitle>Permissions Matrix — <span className="text-teal-600">{ROLE_LABELS[selectedRole]}</span></CardTitle>
             <CardDescription>View / Add / Edit / Delete — saved to backend and checked on product write APIs</CardDescription>
           </div>
           <Button size="sm" onClick={saveMatrix} disabled={saving}>
@@ -541,7 +541,7 @@ function SystemTab() {
 
       <Card className="lg:col-span-2">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">System Information</CardTitle>
+          <CardTitle>System Information</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

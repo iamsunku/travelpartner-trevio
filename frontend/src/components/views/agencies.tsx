@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import {
   Building2, Plus, Search, MoreHorizontal, Eye, Pencil, Ban, CheckCircle2,
   Settings2, Wallet, TrendingUp, Plane, Hotel, Crown, Sparkles, Rocket,
@@ -37,7 +36,7 @@ import { api } from "@/lib/api";
 import { mapApiAgency } from "@/lib/api-mappers";
 import type { Agency } from "@/types";
 import {
-  formatINR, formatFullINR, StatusBadge, PageHeader, initials, avatarGradient,
+  formatINR, formatFullINR, StatusBadge, PageShell, PageHeader, SectionHeader, MetricCard, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
@@ -61,27 +60,6 @@ const PLAN_META: Record<Agency["plan"], { icon: React.ElementType; color: string
     features: ["Unlimited Branches", "Unlimited Employees", "500K API calls / month", "24/7 Dedicated Manager", "Custom Integrations", "SLA 99.99%", "White-label included"],
   },
 };
-
-function StatCard({
-  icon: Icon, label, value, color, sub,
-}: { icon: React.ElementType; label: string; value: string; color: string; sub?: string }) {
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <Card className="hover:shadow-md transition-shadow">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", color)}>
-              <Icon className="w-5 h-5" />
-            </div>
-          </div>
-          <p className="text-2xl font-bold mt-3 tracking-tight">{value}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
-          {sub && <p className="text-[11px] text-muted-foreground/70 mt-0.5">{sub}</p>}
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
 
 function AllocationBar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
   const pct = Math.min(100, Math.round((value / total) * 100));
@@ -193,7 +171,7 @@ export function AgenciesView() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Agencies"
         subtitle="Manage all travel agencies on the platform"
@@ -271,13 +249,12 @@ export function AgenciesView() {
         }
       />
 
-      {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <StatCard icon={Building2} label="Total Agencies" value={String(stats.total)} color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" sub="On platform" />
-        <StatCard icon={CheckCircle2} label="Active" value={String(stats.active)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" />
-        <StatCard icon={Ban} label="Suspended" value={String(stats.suspended)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" />
-        <StatCard icon={Sparkles} label="Trial" value={String(stats.trial)} color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" />
-        <StatCard icon={Wallet} label="Platform Revenue" value={formatINR(stats.revenue)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" sub="This month" />
+        <MetricCard icon={Building2} label="Total Agencies" value={String(stats.total)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" subtitle="On platform" index={0} />
+        <MetricCard icon={CheckCircle2} label="Active" value={String(stats.active)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+        <MetricCard icon={Ban} label="Suspended" value={String(stats.suspended)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
+        <MetricCard icon={Sparkles} label="Trial" value={String(stats.trial)} color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" index={3} />
+        <MetricCard icon={Wallet} label="Platform Revenue" value={formatINR(stats.revenue)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="This month" index={4} />
       </div>
 
       {/* Filters */}
@@ -377,15 +354,13 @@ export function AgenciesView() {
         </CardContent>
       </Card>
 
-      {/* Subscription plans */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-base font-semibold">Subscription Plans</h2>
-            <p className="text-xs text-muted-foreground">Compare plan tiers offered to agencies.</p>
-          </div>
-          <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">3 Tiers</Badge>
-        </div>
+        <SectionHeader
+          title="Subscription Plans"
+          description="Compare plan tiers offered to agencies."
+          action={<Badge variant="outline" className="bg-sky-50 text-[#2A7BBD] border-sky-200">3 Tiers</Badge>}
+        />
+        <div className="mt-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {(Object.keys(PLAN_META) as Agency["plan"][]).map((plan) => {
             const meta = PLAN_META[plan];
@@ -420,6 +395,7 @@ export function AgenciesView() {
             );
           })}
         </div>
+        </div>
       </div>
 
       {/* Detail Dialog */}
@@ -434,7 +410,7 @@ export function AgenciesView() {
         onClose={() => setEditAgency(null)}
         onSaved={(updated) => setAgencies((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))}
       />
-    </div>
+    </PageShell>
   );
 }
 

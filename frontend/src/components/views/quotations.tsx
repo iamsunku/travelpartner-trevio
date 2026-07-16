@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import {
   FileText, Send, FileDown, Plus, Trash2, CheckCircle2, Clock,
   XCircle, AlertCircle, Mail, MessageCircle, Eye, TrendingUp, Wallet,
@@ -10,10 +9,10 @@ import {
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { Quotation } from "@/types";
 import {
-  formatINR, formatFullINR, StatusBadge, PageHeader,
+  formatINR, formatFullINR, StatusBadge, PageHeader, PageShell, MetricCard,
 } from "@/components/shared/ui-helpers";
 import {
-  Card, CardContent, CardHeader, CardTitle, CardDescription,
+  Card, CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,25 +43,6 @@ const SERVICE_COLORS: Record<string, string> = {
 };
 
 interface QuoteItem { id: string; description: string; qty: number; price: number; }
-
-function StatCard({ icon: Icon, label, value, color, change }: { icon: React.ElementType; label: string; value: string; color: string; change?: string }) {
-  return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", color)}>
-              <Icon className="w-4 h-4" />
-            </div>
-            {change && <span className="text-[11px] text-emerald-600 font-medium">{change}</span>}
-          </div>
-          <p className="text-xl font-bold mt-2 tracking-tight">{value}</p>
-          <p className="text-[11px] text-muted-foreground">{label}</p>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
 
 function CreateQuotationDialog() {
   const { toast } = useToast();
@@ -124,7 +104,7 @@ function CreateQuotationDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700">
+        <Button className="bg-primary hover:bg-primary/90">
           <Plus className="w-4 h-4 mr-1" /> Create Quotation
         </Button>
       </DialogTrigger>
@@ -214,7 +194,7 @@ function CreateQuotationDialog() {
 
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => save(true)}>Save as Draft</Button>
-          <Button onClick={() => save(false)} className="bg-teal-600 hover:bg-teal-700">
+          <Button onClick={() => save(false)} className="bg-primary hover:bg-primary/90">
             <Send className="w-4 h-4 mr-1" /> Send to Customer
           </Button>
         </DialogFooter>
@@ -329,7 +309,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             <Button variant="outline" size="sm" onClick={() => action("Email sent", `Quotation emailed to ${quote.customerName}`)}><Mail className="w-3.5 h-3.5 mr-1" /> Send Email</Button>
             <Button variant="outline" size="sm" onClick={() => action("WhatsApp sent", `Quotation shared via WhatsApp to ${quote.customerName}`)}><MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp</Button>
             {approvalStep < 2 && (
-              <Button size="sm" className="bg-teal-600 hover:bg-teal-700 ml-auto" onClick={requestApproval}>
+              <Button size="sm" className="bg-primary hover:bg-primary/90 ml-auto" onClick={requestApproval}>
                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> {approvalStep === 0 ? "Request Approval" : "Mark Approved"}
               </Button>
             )}
@@ -373,7 +353,7 @@ export function QuotationsView() {
   }
 
   return (
-    <div className="space-y-5">
+    <PageShell>
       <PageHeader
         title="Quotations"
         subtitle="Create, send and track quotations with GST, approvals and customer responses."
@@ -386,10 +366,10 @@ export function QuotationsView() {
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        {stats.map((s) => <StatCard key={s.label} {...s} />)}
+        {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
-      <Card>
+      <Card className="border-border/80 shadow-none">
         <CardContent className="p-4">
           <Input
             placeholder="Search by quote no or customer..."
@@ -397,7 +377,7 @@ export function QuotationsView() {
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-sm mb-3 h-9"
           />
-          <div className="rounded-lg border max-h-[60vh] overflow-y-auto scroll-thin">
+          <div className="rounded-lg border border-border/80 max-h-[60vh] overflow-y-auto scroll-thin">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>
@@ -452,6 +432,6 @@ export function QuotationsView() {
       </Card>
 
       <QuoteDetailDialog quote={selected} open={detailOpen} onOpenChange={setDetailOpen} />
-    </div>
+    </PageShell>
   );
 }
