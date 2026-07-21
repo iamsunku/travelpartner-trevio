@@ -11,6 +11,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { DestinationSelect } from "@/components/shared/destination-select";
 import type { ProductRecord } from "@/types";
 
 export type ProductKind = "hotels" | "activities" | "transfers";
@@ -25,7 +26,7 @@ interface ProductFormDialogProps {
 
 const EMPTY = {
   hotels: {
-    name: "", description: "", starCategory: "3", address: "", city: "", country: "India",
+    destinationId: "", name: "", description: "", starCategory: "3", address: "", city: "", country: "India",
     mapsUrl: "", amenities: "", checkInTime: "14:00", checkOutTime: "11:00",
     contactPerson: "", contactPhone: "", contactEmail: "", website: "",
     currency: "INR", cancellationPolicy: "", status: "Active",
@@ -33,13 +34,13 @@ const EMPTY = {
     mealPlan: "CP", priceSingle: "", priceDouble: "", priceExtraAdult: "", priceExtraChild: "",
   },
   activities: {
-    name: "", description: "", duration: "", location: "", meetingPoint: "",
+    destinationId: "", name: "", description: "", duration: "", location: "", meetingPoint: "",
     inclusions: "", exclusions: "", operatingHours: "", minChildAge: "3",
     adultPrice: "", childPrice: "", currency: "INR", cancellationPolicy: "",
     rateValidFrom: "", rateValidTo: "", status: "Active",
   },
   transfers: {
-    name: "", transferType: "Private", vehicleType: "Sedan",
+    destinationId: "", name: "", transferType: "Private", vehicleType: "Sedan",
     pickupLocation: "", dropLocation: "", pickupTime: "",
     privatePrice: "", sharedPrice: "", currency: "INR",
     rateValidFrom: "", rateValidTo: "", cancellationPolicy: "", status: "Active",
@@ -70,6 +71,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
       const room = rooms[0] ?? {};
       const pricing = (room.pricing as Record<string, number>) ?? {};
       setForm({
+        destinationId: String(initial.destinationId ?? ""),
         name: String(initial.name ?? ""),
         description: String(initial.description ?? ""),
         starCategory: String(initial.starCategory ?? 3),
@@ -100,6 +102,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
       });
     } else if (kind === "activities") {
       setForm({
+        destinationId: String(initial.destinationId ?? ""),
         name: String(initial.name ?? ""),
         description: String(initial.description ?? ""),
         duration: String(initial.duration ?? ""),
@@ -119,6 +122,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
       });
     } else {
       setForm({
+        destinationId: String(initial.destinationId ?? ""),
         name: String(initial.name ?? ""),
         transferType: String(initial.transferType ?? "Private"),
         vehicleType: String(initial.vehicleType ?? "Sedan"),
@@ -139,10 +143,10 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
   const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
   async function handleSave() {
-    if (!form.name.trim()) return;
+    if (!form.name.trim() || !form.destinationId) return;
     setSaving(true);
     try {
-      let payload: Record<string, unknown> = { status: form.status, currency: form.currency };
+      let payload: Record<string, unknown> = { status: form.status, currency: form.currency, destinationId: form.destinationId || null };
       if (kind === "hotels") {
         payload = {
           ...payload,
@@ -228,6 +232,11 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
 
         {kind === "hotels" && (
           <div className="grid sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Field label="Destination *">
+                <DestinationSelect value={form.destinationId} onChange={(v) => set("destinationId", v)} required />
+              </Field>
+            </div>
             <Field label="Hotel Name *"><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
             <Field label="Star Category">
               <Select value={form.starCategory} onValueChange={(v) => set("starCategory", v)}>
@@ -274,6 +283,11 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
 
         {kind === "activities" && (
           <div className="grid sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Field label="Destination *">
+                <DestinationSelect value={form.destinationId} onChange={(v) => set("destinationId", v)} required />
+              </Field>
+            </div>
             <Field label="Activity Name *"><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
             <Field label="Duration"><Input value={form.duration} onChange={(e) => set("duration", e.target.value)} placeholder="6 hours" /></Field>
             <div className="sm:col-span-2"><Field label="Description"><Textarea rows={2} value={form.description} onChange={(e) => set("description", e.target.value)} /></Field></div>
@@ -304,6 +318,11 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
 
         {kind === "transfers" && (
           <div className="grid sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Field label="Destination *">
+                <DestinationSelect value={form.destinationId} onChange={(v) => set("destinationId", v)} required />
+              </Field>
+            </div>
             <Field label="Transfer Name *"><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
             <Field label="Transfer Type">
               <Select value={form.transferType} onValueChange={(v) => set("transferType", v)}>
@@ -339,7 +358,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={saving || !form.name.trim()} onClick={handleSave}>
+          <Button disabled={saving || !form.name.trim() || !form.destinationId} onClick={handleSave}>
             {saving ? "Saving..." : initial ? "Update" : "Create"}
           </Button>
         </DialogFooter>

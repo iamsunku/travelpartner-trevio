@@ -12,6 +12,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
 import type { ProductRecord } from "@/types";
+import type { DestinationOption } from "@/components/shared/destination-select";
+
+export function DestinationNameCell({ item }: { item: ProductRecord }) {
+  return <span>{item.destination?.name ?? "—"}</span>;
+}
 
 interface ProductCatalogProps {
   title: string;
@@ -52,8 +57,11 @@ function splitCsvLine(line: string): string[] {
 }
 
 function rowToPayload(kind: ProductKind, row: Record<string, string>): Record<string, unknown> {
+  const destinationId = row.destinationId || row["Destination ID"] || null;
+  const base = destinationId ? { destinationId } : {};
   if (kind === "hotels") {
     return {
+      ...base,
       name: row.name || row["Hotel Name"],
       city: row.city || row.City || "",
       country: row.country || row.Country || "India",
@@ -81,6 +89,7 @@ function rowToPayload(kind: ProductKind, row: Record<string, string>): Record<st
   }
   if (kind === "activities") {
     return {
+      ...base,
       name: row.name || row.Activity,
       location: row.location || row.Location || null,
       duration: row.duration || row.Duration || null,
@@ -94,6 +103,7 @@ function rowToPayload(kind: ProductKind, row: Record<string, string>): Record<st
     };
   }
   return {
+    ...base,
     name: row.name || row.Transfer,
     transferType: row.transferType || row.Type || "Private",
     vehicleType: row.vehicleType || row.Vehicle || null,
@@ -114,6 +124,8 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("All");
+  const [destinationId, setDestinationId] = useState("All");
+  const [destinations, setDestinations] = useState<DestinationOption[]>([]);
   const [sort, setSort] = useState("createdAt");
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -129,6 +141,7 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
         order: "desc",
         ...(q ? { q } : {}),
         ...(status !== "All" ? { status } : {}),
+        ...(destinationId !== "All" ? { destinationId } : {}),
       });
       const data = await apiFetch<{ items: ProductRecord[]; total: number }>(`${apiPath}?${params}`);
       setItems(data.items);
@@ -138,9 +151,29 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, q, sort, status, toast]);
+  }, [apiPath, page, q, sort, status, destinationId, toast]);
+
+  useEffect(() => {
+    apiFetch<{ items: DestinationOption[] }>("/api/destinations?pageSize=100&status=Active")
+      .then((data) => setDestinations(data.items))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || loading) return;
+    const productId = new URLSearchParams(window.location.search).get("productId");
+    if (!productId) return;
+    const found = items.find((i) => i.id === productId);
+    if (found) {
+      setEditing(found);
+      setFormOpen(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("productId");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [items, loading]);
 
   const handleDuplicate = async (id: string) => {
     try {
@@ -271,6 +304,15 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
                   <SelectItem value="Active">Active</SelectItem>
                   <SelectItem value="Draft">Draft</SelectItem>
                   <SelectItem value="Archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={destinationId} onValueChange={(v) => { setDestinationId(v); setPage(1); }}>
+                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Destination" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Destinations</SelectItem>
+                  {destinations.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Select value={sort} onValueChange={setSort}>

@@ -35,15 +35,22 @@ export async function apiFetch<T>(
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers }).catch(() => {
+    throw new ApiError("Unable to reach the server. Check your connection and try again.", 0);
+  });
 
   if (!res.ok) {
-    let message = res.statusText;
+    let message = res.statusText || "Request failed";
     try {
       const body = await res.json();
-      message = body.error || message;
+      message = body.error || body.message || message;
     } catch {
       /* ignore */
+    }
+    if (res.status === 401) message = "Your session has expired. Please sign in again.";
+    else if (res.status === 403) message = "You don't have permission to perform this action.";
+    else if (res.status >= 500 && message === (res.statusText || "Request failed")) {
+      message = "Something went wrong on our end. Please try again shortly.";
     }
     throw new ApiError(message, res.status);
   }
@@ -144,7 +151,32 @@ export const api = {
   getWallet: (agencyId: string) =>
     apiFetch<{ balance: number; transactions: ApiWalletTxn[] }>(`/api/wallet?agencyId=${agencyId}`),
 
-  getDashboard: () => apiFetch<{ stats: { bookings: number; agencies: number; customers: number; leads: number; payments: number } }>("/api/dashboard"),
+  getDashboard: () => apiFetch<{
+    stats: { bookings: number; agencies: number; customers: number; leads: number; payments: number; packages?: number };
+    destinationInsights?: {
+      topDestinations: Array<{
+        id: string; name: string; country: string; thumbnail?: string | null;
+        productCount: number; hotelCount: number; activityCount: number; transferCount: number;
+      }>;
+      productsPerDestination: Array<{
+        id: string; name: string; country: string; thumbnail?: string | null;
+        productCount: number; hotelCount: number; activityCount: number; transferCount: number;
+      }>;
+    };
+    packageInsights?: {
+      totalPackages: number;
+      featuredPackages: Array<{
+        id: string; packageName: string; packageCode: string; heroImage?: string | null;
+        finalPrice: number; currency: string; durationDays: number; durationNights: number;
+        destination?: { name: string };
+      }>;
+      topSellingPackages: Array<{
+        id: string; packageName: string; packageCode: string; heroImage?: string | null;
+        finalPrice: number; currency: string; durationDays: number;
+        destination?: { name: string }; componentCount: number;
+      }>;
+    };
+  }>("/api/dashboard"),
 
   getLeads: () => apiFetch<{ leads: ApiLead[]; total: number }>("/api/leads"),
 

@@ -1,11 +1,11 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { db as prisma } from "../lib/db.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 
 export const analyticsRouter = express.Router();
 
 // Middleware: Only super_admin can view analytics
-const requireAdmin = async (req: AuthRequest, res: Response, next) => {
+const requireAdmin = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     if (req.auth?.role !== "super_admin") {
       return res.status(403).json({ error: "Admin access required" });

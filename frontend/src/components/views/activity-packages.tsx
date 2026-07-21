@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ProductCatalog } from "@/components/shared/product-catalog";
+import { useState, useEffect } from "react";
+import { ProductCatalog, DestinationNameCell } from "@/components/shared/product-catalog";
 import { PageHeader, SectionHeader, StatusBadge } from "@/components/shared/ui-helpers";
 import type { ProductRecord } from "@/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -59,6 +59,11 @@ function TransferPriceDisplay(item: ProductRecord) {
 export function ActivityPackagesView() {
   const [activeTab, setActiveTab] = useState("activities");
 
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab === "transfers" || tab === "activities") setActiveTab(tab);
+  }, []);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -87,6 +92,7 @@ export function ActivityPackagesView() {
             apiPath="/api/products/activities"
             columns={[
               { key: "name", label: "Activity" },
+              { key: "destination", label: "Destination", render: (i) => <DestinationNameCell item={i} /> },
               { key: "location", label: "Location" },
               { key: "duration", label: "Duration" },
               { key: "adultPrice", label: "Adult Price", render: ActivityPriceDisplay },
@@ -104,6 +110,7 @@ export function ActivityPackagesView() {
             apiPath="/api/products/transfers"
             columns={[
               { key: "name", label: "Transfer" },
+              { key: "destination", label: "Destination", render: (i) => <DestinationNameCell item={i} /> },
               { key: "transferType", label: "Type" },
               { key: "pickupLocation", label: "Pickup" },
               { key: "dropLocation", label: "Drop" },

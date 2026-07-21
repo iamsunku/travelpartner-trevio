@@ -10,8 +10,8 @@ export type Role =
   | "product_executive";
 
 export type Module =
-  | "flights" | "hotels" | "activities" | "transfers" | "holiday" | "bookings" | "crm" | "customers"
-  | "quotations" | "payments" | "wallet" | "commission" | "finance"
+  | "flights" | "hotels" | "activities" | "transfers" | "holiday" | "destinations" | "packages" | "bookings" | "crm" | "customers"
+  | "trip-planner" | "travel-proposals" | "quotations" | "quote-templates" | "payments" | "wallet" | "commission" | "finance"
   | "reports" | "analytics" | "employees" | "attendance" | "leaves" | "tasks"
   | "support" | "notifications" | "marketing" | "cms" | "api-management"
   | "settings" | "audit-logs" | "agencies" | "branches" | "api-marketplace"
@@ -275,13 +275,263 @@ export interface Quotation {
 export interface ProductRecord {
   id: string;
   name: string;
-  status: "Active" | "Archived" | "Draft";
+  status: "Active" | "Archived" | "Draft" | "Inactive";
+  destinationId?: string | null;
+  destination?: { id: string; name: string; country?: string; region?: string | null; thumbnail?: string | null; heroImage?: string | null } | null;
+  supplier?: { id: string; name: string } | null;
+  supplierId?: string | null;
   city?: string;
   location?: string;
+  country?: string;
+  region?: string;
   currency?: string;
+  language?: string;
+  bestTimeToVisit?: string;
+  thumbnail?: string;
+  heroImage?: string;
   createdAt?: string;
   updatedAt?: string;
+  createdByName?: string;
+  updatedByName?: string;
   [key: string]: unknown;
+}
+
+export interface DestinationRecord extends ProductRecord {
+  slug: string;
+  shortDescription?: string;
+  longDescription?: string;
+  timeZone?: string;
+  visaRequired?: boolean;
+  visaDetails?: string;
+  passportValidity?: string;
+  climate?: string;
+  averageBudget?: string;
+  popularAttractions?: string[];
+  localTransport?: string;
+  foodSpecialities?: string[];
+  shopping?: string;
+  nightlife?: string;
+  adventureActivities?: string[];
+  familyFriendly?: boolean;
+  coupleFriendly?: boolean;
+  seniorFriendly?: boolean;
+  galleryImages?: string[];
+  bannerImage?: string;
+  videoUrl?: string;
+  imageAltText?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  keywords?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface TravelPackageRecord {
+  id: string;
+  packageCode: string;
+  packageName: string;
+  destinationId: string;
+  destination?: { id: string; name: string; country?: string; thumbnail?: string | null; heroImage?: string | null };
+  durationDays: number;
+  durationNights: number;
+  packageType: string;
+  description?: string | null;
+  highlights?: string[];
+  status: "Draft" | "Published" | "Archived";
+  startingPrice: number;
+  currency: string;
+  heroImage?: string | null;
+  bannerImage?: string | null;
+  isFeatured: boolean;
+  hotelCost: number;
+  activityCost: number;
+  transferCost: number;
+  markup: number;
+  tax: number;
+  discount: number;
+  finalPrice: number;
+  currentVersion: number;
+  metadata?: Record<string, unknown>;
+  createdByName?: string | null;
+  updatedByName?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  _count?: { hotels: number; activities: number; transfers: number };
+  hotels?: PackageLinkedItem[];
+  activities?: PackageLinkedItem[];
+  transfers?: PackageLinkedItem[];
+  days?: PackageDayRecord[];
+  productOptions?: PackageProductOptionRecord[];
+}
+
+export type PackageProductType = "HOTEL" | "ACTIVITY" | "TRANSFER";
+
+export interface PackageProductOptionRecord {
+  id: string;
+  packageId?: string;
+  productType: PackageProductType;
+  productId: string;
+  optionGroup: string;
+  isDefault: boolean;
+  sortOrder: number;
+  priceAdjustment: number;
+  status: "Active" | "Inactive";
+  notes?: string | null;
+  product?: ProductRecord & { basePrice?: number };
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type TimelineItemType = "HOTEL" | "ACTIVITY" | "TRANSFER" | "TEXT";
+
+export interface MealPlan {
+  breakfast?: boolean;
+  lunch?: boolean;
+  dinner?: boolean;
+  snacks?: boolean;
+}
+
+export interface PackageTimelineItemRecord {
+  id: string;
+  packageDayId?: string;
+  itemType: TimelineItemType;
+  referenceId?: string | null;
+  optionGroup?: string | null;
+  title: string;
+  description?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  sortOrder: number;
+  icon?: string | null;
+  notes?: string | null;
+}
+
+export interface PackageDayRecord {
+  id: string;
+  packageId?: string;
+  dayNumber: number;
+  title: string;
+  description?: string | null;
+  mealPlan?: MealPlan;
+  coverImage?: string | null;
+  gallery?: string[];
+  sortOrder?: number;
+  items: PackageTimelineItemRecord[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ItineraryProductRef {
+  id: string;
+  name: string;
+  description?: string;
+  image?: string;
+  duration?: string;
+  subtitle?: string;
+}
+
+export interface PackageLinkedItem {
+  id: string;
+  sortOrder: number;
+  hotelProduct?: ProductRecord;
+  activityProduct?: ProductRecord;
+  transferProduct?: ProductRecord;
+}
+
+export interface PackageVersionRecord {
+  id: string;
+  packageId: string;
+  versionNumber: number;
+  snapshot: Record<string, unknown>;
+  changeSummary?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export type TravelRequirementStatus = "Draft" | "Qualified" | "Quoted" | "Booked" | "Cancelled";
+
+export interface TravelRequirementRecord {
+  id: string;
+  requirementCode: string;
+  customerId?: string | null;
+  leadId?: string | null;
+  destinationId: string;
+  destination?: { id: string; name: string; country?: string; thumbnail?: string | null };
+  customer?: { id: string; name: string; email?: string; phone?: string } | null;
+  lead?: { id: string; customerName: string; email?: string; phone?: string; stage?: string } | null;
+  travelStartDate: string;
+  travelEndDate: string;
+  days: number;
+  nights: number;
+  adults: number;
+  children: number;
+  infants: number;
+  budgetMin: number;
+  budgetMax: number;
+  hotelCategory?: string | null;
+  packageType?: string | null;
+  preferredMealPlan?: Record<string, boolean>;
+  preferredTransfer?: string | null;
+  flightRequired: boolean;
+  visaRequired: boolean;
+  insuranceRequired: boolean;
+  specialRequests?: string | null;
+  status: TravelRequirementStatus;
+  selectedPackageId?: string | null;
+  markup: number;
+  createdByName?: string | null;
+  updatedByName?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  selections?: TravelRequirementSelectionRecord[];
+  history?: TravelRequirementHistoryRecord[];
+}
+
+export interface TravelRequirementSelectionRecord {
+  id: string;
+  requirementId: string;
+  packageId: string;
+  hotelOptionGroup?: string | null;
+  activityOptionGroup?: string | null;
+  transferOptionGroup?: string | null;
+  markup: number;
+  hotelCost: number;
+  activityCost: number;
+  transferCost: number;
+  sellingPrice: number;
+  matchScore?: number | null;
+  matchReasons?: string[];
+  isSelected: boolean;
+}
+
+export interface TravelRequirementHistoryRecord {
+  id: string;
+  requirementId: string;
+  action: string;
+  summary?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface PackageMatchRecord {
+  packageId: string;
+  score: number;
+  reasons: string[];
+  package: {
+    id: string;
+    packageCode: string;
+    packageName: string;
+    destination?: { id: string; name: string; country?: string; thumbnail?: string | null };
+    durationDays: number;
+    durationNights: number;
+    packageType: string;
+    startingPrice: number;
+    finalPrice: number;
+    currency: string;
+    heroImage?: string | null;
+    hotelOptionGroups?: string[];
+    activityOptionGroups?: string[];
+    transferOptionGroups?: string[];
+  };
 }
 
 export interface Notification {
@@ -317,17 +567,205 @@ export interface Leave {
   createdAt: string;
 }
 
+export type QuoteSectionType =
+  | "COVER" | "OVERVIEW" | "DESTINATION_HIGHLIGHTS" | "ITINERARY" | "HOTELS" | "FLIGHTS" | "TRANSFERS"
+  | "PRICING" | "INCLUSIONS" | "EXCLUSIONS" | "VISA" | "TERMS" | "CANCELLATION" | "NOTES" | "CONTACT" | "CUSTOM_HTML";
+
+export type QuoteTemplateStatus = "Draft" | "Active" | "Archived";
+
+export interface QuoteTemplateSectionRecord {
+  id: string;
+  templateId?: string;
+  sectionType: QuoteSectionType;
+  sortOrder: number;
+  isVisible: boolean;
+  customTitle?: string | null;
+  settings?: Record<string, unknown>;
+}
+
+export interface QuoteTemplateHistoryRecord {
+  id: string;
+  templateId: string;
+  action: string;
+  summary?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface QuoteTemplateRecord {
+  id: string;
+  agencyId?: string | null;
+  templateName: string;
+  description?: string | null;
+  theme: string;
+  primaryColor: string;
+  secondaryColor: string;
+  fontFamily: string;
+  logo?: string | null;
+  watermark?: string | null;
+  headerStyle?: Record<string, unknown>;
+  footerStyle?: Record<string, unknown>;
+  pageSize: string;
+  orientation: string;
+  backgroundImage?: string | null;
+  showPageNumbers: boolean;
+  isDefault: boolean;
+  status: QuoteTemplateStatus;
+  createdByName?: string | null;
+  updatedByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sections?: QuoteTemplateSectionRecord[];
+  history?: QuoteTemplateHistoryRecord[];
+  _count?: { sections: number };
+}
+
+export interface AgencyBrandingRecord {
+  id: string;
+  agencyId: string;
+  primaryColor: string;
+  secondaryColor: string;
+  fontFamily: string;
+  logo?: string | null;
+  watermark?: string | null;
+  footerText?: string | null;
+  backgroundImage?: string | null;
+  headerHtml?: string | null;
+  showPageNumbers: boolean;
+  updatedAt: string;
+}
+
+export interface QuotePreviewMockData {
+  quoteNumber: string;
+  quoteDate: string;
+  validUntil: string;
+  agency: { name: string; tagline: string; phone: string; email: string; website: string };
+  customer: { name: string; email: string; phone: string; pax: string };
+  package: { name: string; destination: string; duration: string; travelDates: string; heroImage: string };
+  highlights: string[];
+  days: { dayNumber: number; title: string; items: { time: string; title: string; description: string }[] }[];
+  hotels: { name: string; category: string; nights: number; room: string; mealPlan: string }[];
+  flights: { route: string; airline: string; flightNo: string; date: string; class: string }[];
+  transfers: { name: string; type: string; notes: string }[];
+  pricing: {
+    hotelCost: number; activityCost: number; transferCost: number; flightCost: number;
+    markup: number; discount: number; tax: number; total: number; currency: string;
+  };
+  inclusions: string[];
+  exclusions: string[];
+  visa: { required: boolean; details: string };
+  terms: string;
+  cancellation: string;
+  notes: string;
+  contact: { executive: string; designation: string; phone: string; email: string };
+  customHtml: string;
+}
+
+export type ProposalStatus =
+  | "Draft" | "Internal Review" | "Approved" | "Sent" | "Viewed"
+  | "Accepted" | "Booked" | "Rejected" | "Expired" | "Cancelled";
+
+export interface ProposalSnapshotRecord {
+  id: string;
+  proposalId: string;
+  versionNumber: number;
+  snapshot: ProposalSnapshotData;
+  changeSummary?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface ProposalHistoryRecord {
+  id: string;
+  proposalId: string;
+  action: string;
+  summary?: string | null;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  versionNumber?: number | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
+export interface ProposalSnapshotData {
+  capturedAt: string;
+  requirement?: Record<string, unknown> | null;
+  customer?: Record<string, unknown> | null;
+  lead?: Record<string, unknown> | null;
+  destination?: Record<string, unknown> | null;
+  package: Record<string, unknown>;
+  productOptions: Record<string, unknown>[];
+  productPrices: Record<string, number>;
+  productSelections: {
+    hotelOptionGroup: string | null;
+    activityOptionGroup: string | null;
+    transferOptionGroup: string | null;
+  };
+  pricing: {
+    hotelCost: number;
+    activityCost: number;
+    transferCost: number;
+    packageBase: number;
+    markup: number;
+    discount: number;
+    tax: number;
+    total: number;
+    currency: string;
+  };
+  template?: Record<string, unknown> | null;
+  branding?: Record<string, unknown> | null;
+  terms: {
+    inclusions: string[];
+    exclusions: string[];
+    termsText: string;
+    cancellationText: string;
+    visaRequired: boolean;
+    visaDetails: string;
+  };
+}
+
+export interface TravelProposalRecord {
+  id: string;
+  agencyId?: string | null;
+  proposalNumber: string;
+  travelRequirementId?: string | null;
+  customerId?: string | null;
+  leadId?: string | null;
+  selectedPackageId?: string | null;
+  selectedTemplateId?: string | null;
+  proposalStatus: ProposalStatus;
+  currency: string;
+  validUntil?: string | null;
+  notes?: string | null;
+  internalNotes?: string | null;
+  currentVersion: number;
+  createdByName?: string | null;
+  updatedByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  customer?: { id: string; name: string; email?: string; phone?: string } | null;
+  lead?: { id: string; customerName: string; email?: string; phone?: string } | null;
+  travelRequirement?: { id: string; requirementCode: string } | null;
+  history?: ProposalHistoryRecord[];
+}
+
 export type ViewKey =
   | "dashboard"
   | "flights"
   | "hotels"
   | "hotel-products"
+  | "destinations"
   | "activity-packages"
+  | "packages"
   | "product-approvals"
   | "holiday"
   | "attendance"
   | "customers"
   | "crm"
+  | "trip-planner"
+  | "travel-proposals"
+  | "quote-templates"
+  | "branding"
   | "quotations"
   | "bookings"
   | "payments"

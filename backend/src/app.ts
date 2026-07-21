@@ -5,6 +5,7 @@ import helmet from "helmet";
 import bcrypt from "bcryptjs";
 import rateLimit from "express-rate-limit";
 import { pinoHttp } from "pino-http";
+import type { Prisma } from "@prisma/client";
 import { validateEnv } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import { db } from "./lib/db.js";
@@ -13,6 +14,11 @@ import { requireAuth, optionalAuth, requireRole, requirePermission, requireAnyPe
 import { generateFlights, generateHotels } from "./lib/mock-data.js";
 import { effectivePermissions } from "./lib/permissions.js";
 import { mountProductRoutes } from "./routes/products.js";
+import { mountDestinationRoutes } from "./routes/destinations.js";
+import { mountPackageRoutes } from "./routes/packages.js";
+import { mountTripPlannerRoutes } from "./routes/trip-planner.js";
+import { mountQuoteTemplateRoutes } from "./routes/quote-templates.js";
+import { mountTravelProposalRoutes } from "./routes/travel-proposals.js";
 import { analyticsMiddleware } from "./middleware/analytics.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import {
@@ -831,7 +837,76 @@ app.get("/api/dashboard", requireAuth, async (req: AuthRequest, res) => {
       db.lead.count({ where: scope }),
       db.payment.count({ where: { ...scope, status: "Success" } }),
     ]);
-    res.json({ stats: { bookings, agencies, customers, leads, payments } });
+
+    const destinationWhere: Prisma.DestinationWhereInput = {
+      ...scope,
+      deletedAt: null,
+    };
+    const destinations = await db.destination.findMany({
+      where: destinationWhere,
+      select: {
+        id: true,
+        name: true,
+        country: true,
+        thumbnail: true,
+        heroImage: true,
+        _count: { select: { hotelProducts: true, activityProducts: true, transferProducts: true } },
+      },
+    });
+    const destinationInsights = destinations
+      .map((d) => ({
+        id: d.id,
+        name: d.name,
+        country: d.country,
+        thumbnail: d.thumbnail || d.heroImage,
+        hotelCount: d._count.hotelProducts,
+        activityCount: d._count.activityProducts,
+        transferCount: d._count.transferProducts,
+        productCount: d._count.hotelProducts + d._count.activityProducts + d._count.transferProducts,
+      }))
+      .sort((a, b) => b.productCount - a.productCount);
+
+    const packageWhere: Prisma.TravelPackageWhereInput = { ...scope, deletedAt: null };
+    const [packageCount, featuredPackages, topPackages] = await Promise.all([
+      db.travelPackage.count({ where: packageWhere }),
+      db.travelPackage.findMany({
+        where: { ...packageWhere, isFeatured: true, status: "Published" },
+        take: 6,
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true, packageName: true, packageCode: true, heroImage: true,
+          finalPrice: true, currency: true, durationDays: true, durationNights: true,
+          destination: { select: { name: true } },
+        },
+      }),
+      db.travelPackage.findMany({
+        where: { ...packageWhere, status: "Published" },
+        take: 6,
+        orderBy: { finalPrice: "desc" },
+        select: {
+          id: true, packageName: true, packageCode: true, heroImage: true,
+          finalPrice: true, currency: true, durationDays: true,
+          destination: { select: { name: true } },
+          _count: { select: { hotels: true, activities: true, transfers: true } },
+        },
+      }),
+    ]);
+
+    res.json({
+      stats: { bookings, agencies, customers, leads, payments, packages: packageCount },
+      destinationInsights: {
+        topDestinations: destinationInsights.slice(0, 6),
+        productsPerDestination: destinationInsights,
+      },
+      packageInsights: {
+        totalPackages: packageCount,
+        featuredPackages,
+        topSellingPackages: topPackages.map((p) => ({
+          ...p,
+          componentCount: p._count.hotels + p._count.activities + p._count.transfers,
+        })),
+      },
+    });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -1705,6 +1780,11 @@ app.patch("/api/leaves/:id", requireAuth, requireRole("super_admin", "agency_adm
 });
 
 mountProductRoutes(app, agencyScope);
+mountDestinationRoutes(app, agencyScope);
+mountPackageRoutes(app, agencyScope);
+mountTripPlannerRoutes(app, agencyScope);
+mountQuoteTemplateRoutes(app, agencyScope);
+mountTravelProposalRoutes(app, agencyScope);
 
 // Analytics routes
 app.use("/api/analytics", analyticsRouter);

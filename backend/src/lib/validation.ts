@@ -220,3 +220,340 @@ export const leaveSchema = z.object({
 export const leaveStatusSchema = z.object({
   status: z.enum(["Approved", "Rejected"]),
 });
+
+const destinationStatusEnum = z.enum(["Draft", "Active", "Inactive", "Archived"]);
+
+export const destinationSchema = z.object({
+  name: z.string().min(1, "Destination name is required"),
+  country: z.string().min(1, "Country is required"),
+  region: z.string().optional().nullable(),
+  city: z.string().optional().nullable(),
+  slug: z.string().optional().nullable(),
+  shortDescription: z.string().optional().nullable(),
+  longDescription: z.string().optional().nullable(),
+  currency: z.string().default("INR"),
+  language: z.string().optional().nullable(),
+  timeZone: z.string().optional().nullable(),
+  visaRequired: z.boolean().optional().default(false),
+  visaDetails: z.string().optional().nullable(),
+  passportValidity: z.string().optional().nullable(),
+  bestTimeToVisit: z.string().optional().nullable(),
+  climate: z.string().optional().nullable(),
+  averageBudget: z.string().optional().nullable(),
+  popularAttractions: z.array(z.string()).optional().default([]),
+  localTransport: z.string().optional().nullable(),
+  foodSpecialities: z.array(z.string()).optional().default([]),
+  shopping: z.string().optional().nullable(),
+  nightlife: z.string().optional().nullable(),
+  adventureActivities: z.array(z.string()).optional().default([]),
+  familyFriendly: z.boolean().optional().default(true),
+  coupleFriendly: z.boolean().optional().default(true),
+  seniorFriendly: z.boolean().optional().default(false),
+  heroImage: z.string().optional().nullable(),
+  galleryImages: z.array(z.string()).optional().default([]),
+  bannerImage: z.string().optional().nullable(),
+  thumbnail: z.string().optional().nullable(),
+  videoUrl: z.string().optional().nullable(),
+  imageAltText: z.string().optional().nullable(),
+  seoTitle: z.string().optional().nullable(),
+  seoDescription: z.string().optional().nullable(),
+  keywords: z.array(z.string()).optional().default([]),
+  status: destinationStatusEnum.optional().default("Draft"),
+  metadata: z.record(z.string(), z.unknown()).optional().default({}),
+  branchId: z.string().optional().nullable(),
+});
+
+export const destinationUpdateSchema = destinationSchema.partial();
+
+export const destinationBulkDeleteSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+});
+
+export const destinationBulkStatusSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+  status: destinationStatusEnum,
+});
+
+export const destinationImportSchema = z.object({
+  rows: z.array(destinationSchema).min(1),
+});
+
+const packageItemSchema = z.object({
+  id: z.string().min(1),
+  sortOrder: z.number().int().min(0).optional(),
+});
+
+const packageStatusEnum = z.enum(["Draft", "Published", "Archived"]);
+
+export const packageTimelineItemSchema = z.object({
+  itemType: z.enum(["HOTEL", "ACTIVITY", "TRANSFER", "TEXT"]),
+  referenceId: z.string().optional().nullable(),
+  optionGroup: z.string().optional().nullable(),
+  title: z.string().min(1),
+  description: z.string().optional().nullable(),
+  startTime: z.string().optional().nullable(),
+  endTime: z.string().optional().nullable(),
+  sortOrder: z.number().int().min(0).optional().default(0),
+  icon: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+});
+
+export const packageDaySchema = z.object({
+  dayNumber: z.number().int().min(1),
+  title: z.string().min(1),
+  description: z.string().optional().nullable(),
+  mealPlan: z.object({
+    breakfast: z.boolean().optional(),
+    lunch: z.boolean().optional(),
+    dinner: z.boolean().optional(),
+    snacks: z.boolean().optional(),
+  }).optional().default({}),
+  coverImage: z.string().optional().nullable(),
+  gallery: z.array(z.string()).optional().default([]),
+  sortOrder: z.number().int().min(0).optional(),
+  items: z.array(packageTimelineItemSchema).optional().default([]),
+});
+
+export const packageItinerarySchema = z.object({
+  days: z.array(packageDaySchema).min(1),
+});
+
+export const packageDayReorderSchema = z.object({
+  dayNumbers: z.array(z.number().int().min(1)).min(1),
+});
+
+export const packageTimelineReorderSchema = z.object({
+  itemIds: z.array(z.string().min(1)).min(1),
+});
+
+export const packageProductTypeEnum = z.enum(["HOTEL", "ACTIVITY", "TRANSFER"]);
+
+export const packageProductOptionSchema = z.object({
+  productType: packageProductTypeEnum,
+  productId: z.string().min(1),
+  optionGroup: z.string().min(1),
+  isDefault: z.boolean().optional().default(false),
+  sortOrder: z.number().int().min(0).optional().default(0),
+  priceAdjustment: z.number().int().optional().default(0),
+  status: z.enum(["Active", "Inactive"]).optional().default("Active"),
+  notes: z.string().optional().nullable(),
+});
+
+export const packageProductOptionsSchema = z.object({
+  options: z.array(packageProductOptionSchema),
+});
+
+export const packageOptionReorderSchema = z.object({
+  optionIds: z.array(z.string().min(1)).min(1),
+});
+
+export const travelPackageSchema = z.object({
+  packageName: z.string().min(1, "Package name is required"),
+  destinationId: z.string().min(1, "Destination is required"),
+  packageType: z.string().default("Standard"),
+  durationDays: z.number().int().min(1).default(1),
+  durationNights: z.number().int().min(0).default(0),
+  description: z.string().optional().nullable(),
+  highlights: z.array(z.string()).optional().default([]),
+  status: packageStatusEnum.optional().default("Draft"),
+  startingPrice: z.number().int().min(0).optional().default(0),
+  currency: z.string().default("INR"),
+  heroImage: z.string().optional().nullable(),
+  bannerImage: z.string().optional().nullable(),
+  isFeatured: z.boolean().optional().default(false),
+  hotelCost: z.number().int().min(0).optional().default(0),
+  activityCost: z.number().int().min(0).optional().default(0),
+  transferCost: z.number().int().min(0).optional().default(0),
+  markup: z.number().int().min(0).optional().default(0),
+  tax: z.number().int().min(0).optional().default(0),
+  discount: z.number().int().min(0).optional().default(0),
+  finalPrice: z.number().int().min(0).optional().default(0),
+  metadata: z.record(z.string(), z.unknown()).optional().default({}),
+  hotels: z.array(packageItemSchema).optional().default([]),
+  activities: z.array(packageItemSchema).optional().default([]),
+  transfers: z.array(packageItemSchema).optional().default([]),
+  productOptions: z.array(packageProductOptionSchema).optional().default([]),
+  days: z.array(packageDaySchema).optional().default([]),
+});
+
+export const travelPackageUpdateSchema = travelPackageSchema.partial();
+
+export const packageBulkStatusSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+  status: packageStatusEnum,
+});
+
+export const travelRequirementStatusEnum = z.enum(["Draft", "Qualified", "Quoted", "Booked", "Cancelled"]);
+
+export const travelRequirementSchema = z.object({
+  customerId: z.string().optional().nullable(),
+  leadId: z.string().optional().nullable(),
+  destinationId: z.string().min(1, "Destination is required"),
+  travelStartDate: z.string().min(1, "Start date is required"),
+  travelEndDate: z.string().min(1, "End date is required"),
+  days: z.number().int().min(1).default(1),
+  nights: z.number().int().min(0).default(0),
+  adults: z.number().int().min(1, "At least 1 adult required").default(1),
+  children: z.number().int().min(0).default(0),
+  infants: z.number().int().min(0).default(0),
+  budgetMin: z.number().int().min(0).optional().default(0),
+  budgetMax: z.number().int().min(0).optional().default(0),
+  hotelCategory: z.string().optional().nullable(),
+  packageType: z.string().optional().nullable(),
+  preferredMealPlan: z.object({
+    breakfast: z.boolean().optional(),
+    lunch: z.boolean().optional(),
+    dinner: z.boolean().optional(),
+    snacks: z.boolean().optional(),
+  }).optional().default({}),
+  preferredTransfer: z.string().optional().nullable(),
+  flightRequired: z.boolean().optional().default(false),
+  visaRequired: z.boolean().optional().default(false),
+  insuranceRequired: z.boolean().optional().default(false),
+  specialRequests: z.string().optional().nullable(),
+  status: travelRequirementStatusEnum.optional().default("Draft"),
+  markup: z.number().int().min(0).optional().default(0),
+});
+
+export const travelRequirementUpdateSchema = travelRequirementSchema.partial();
+
+export const travelRequirementMatchSchema = z.object({
+  destinationId: z.string().min(1),
+  days: z.number().int().min(1),
+  nights: z.number().int().min(0).optional().default(0),
+  budgetMin: z.number().int().min(0).optional().default(0),
+  budgetMax: z.number().int().min(0).optional().default(0),
+  hotelCategory: z.string().optional().nullable(),
+  packageType: z.string().optional().nullable(),
+  adults: z.number().int().min(1).optional().default(1),
+});
+
+export const travelRequirementPriceSchema = z.object({
+  packageId: z.string().min(1),
+  hotelOptionGroup: z.string().optional().nullable(),
+  activityOptionGroup: z.string().optional().nullable(),
+  transferOptionGroup: z.string().optional().nullable(),
+  markup: z.number().int().min(0).optional().default(0),
+});
+
+export const travelRequirementSelectionSchema = z.object({
+  packageId: z.string().min(1),
+  hotelOptionGroup: z.string().optional().nullable(),
+  activityOptionGroup: z.string().optional().nullable(),
+  transferOptionGroup: z.string().optional().nullable(),
+  markup: z.number().int().min(0).optional().default(0),
+  matchScore: z.number().optional().nullable(),
+  matchReasons: z.array(z.string()).optional().default([]),
+});
+
+export const quoteSectionTypeEnum = z.enum([
+  "COVER", "OVERVIEW", "DESTINATION_HIGHLIGHTS", "ITINERARY", "HOTELS", "FLIGHTS", "TRANSFERS",
+  "PRICING", "INCLUSIONS", "EXCLUSIONS", "VISA", "TERMS", "CANCELLATION", "NOTES", "CONTACT", "CUSTOM_HTML",
+]);
+
+export const quoteTemplateSectionSchema = z.object({
+  sectionType: quoteSectionTypeEnum,
+  sortOrder: z.number().int().min(0).optional().default(0),
+  isVisible: z.boolean().optional().default(true),
+  customTitle: z.string().optional().nullable(),
+  settings: z.record(z.string(), z.unknown()).optional().default({}),
+});
+
+export const quoteTemplateSchema = z.object({
+  templateName: z.string().min(1, "Template name is required"),
+  description: z.string().optional().nullable(),
+  theme: z.string().optional().default("Classic"),
+  primaryColor: z.string().optional().default("#2A7BBD"),
+  secondaryColor: z.string().optional().default("#00A79D"),
+  fontFamily: z.string().optional().default("Inter"),
+  logo: z.string().optional().nullable(),
+  watermark: z.string().optional().nullable(),
+  headerStyle: z.record(z.string(), z.unknown()).optional().default({}),
+  footerStyle: z.record(z.string(), z.unknown()).optional().default({}),
+  pageSize: z.enum(["A4", "Letter"]).optional().default("A4"),
+  orientation: z.enum(["portrait", "landscape"]).optional().default("portrait"),
+  backgroundImage: z.string().optional().nullable(),
+  showPageNumbers: z.boolean().optional().default(true),
+  status: z.enum(["Draft", "Active", "Archived"]).optional().default("Draft"),
+  sections: z.array(quoteTemplateSectionSchema).optional().default([]),
+});
+
+export const quoteTemplateUpdateSchema = quoteTemplateSchema.partial();
+
+export const agencyBrandingSchema = z.object({
+  primaryColor: z.string().optional().default("#2A7BBD"),
+  secondaryColor: z.string().optional().default("#00A79D"),
+  fontFamily: z.string().optional().default("Inter"),
+  logo: z.string().optional().nullable(),
+  watermark: z.string().optional().nullable(),
+  footerText: z.string().optional().nullable(),
+  backgroundImage: z.string().optional().nullable(),
+  headerHtml: z.string().optional().nullable(),
+  showPageNumbers: z.boolean().optional().default(true),
+});
+
+export const proposalStatusEnum = z.enum([
+  "Draft", "Internal Review", "Approved", "Sent", "Viewed", "Accepted", "Booked", "Rejected", "Expired", "Cancelled",
+]);
+
+export const proposalSnapshotEditsSchema = z.object({
+  productSelections: z.object({
+    hotelOptionGroup: z.string().optional().nullable(),
+    activityOptionGroup: z.string().optional().nullable(),
+    transferOptionGroup: z.string().optional().nullable(),
+  }).optional(),
+  markup: z.number().int().min(0).optional(),
+  discount: z.number().int().min(0).optional(),
+  tax: z.number().int().min(0).optional(),
+  terms: z.object({
+    inclusions: z.array(z.string()).optional(),
+    exclusions: z.array(z.string()).optional(),
+    termsText: z.string().optional(),
+    cancellationText: z.string().optional(),
+    visaRequired: z.boolean().optional(),
+    visaDetails: z.string().optional(),
+  }).optional(),
+}).optional();
+
+export const travelProposalSchema = z.object({
+  travelRequirementId: z.string().optional().nullable(),
+  customerId: z.string().optional().nullable(),
+  leadId: z.string().optional().nullable(),
+  selectedPackageId: z.string().min(1),
+  selectedTemplateId: z.string().optional().nullable(),
+  currency: z.string().optional().default("INR"),
+  validUntil: z.string().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  internalNotes: z.string().optional().nullable(),
+  markup: z.number().int().min(0).optional().default(0),
+  discount: z.number().int().min(0).optional().default(0),
+  tax: z.number().int().min(0).optional().default(0),
+  hotelOptionGroup: z.string().optional().nullable(),
+  activityOptionGroup: z.string().optional().nullable(),
+  transferOptionGroup: z.string().optional().nullable(),
+});
+
+export const travelProposalUpdateSchema = z.object({
+  notes: z.string().optional().nullable(),
+  internalNotes: z.string().optional().nullable(),
+  validUntil: z.string().optional().nullable(),
+  selectedTemplateId: z.string().optional().nullable(),
+  currency: z.string().optional(),
+  changeSummary: z.string().optional(),
+  snapshotEdits: proposalSnapshotEditsSchema,
+}).partial();
+
+export const travelProposalStatusSchema = z.object({
+  status: proposalStatusEnum,
+});
+
+export const travelProposalFromRequirementSchema = z.object({
+  selectedPackageId: z.string().optional(),
+  selectedTemplateId: z.string().optional().nullable(),
+  validDays: z.number().int().min(1).max(90).optional().default(7),
+  notes: z.string().optional().nullable(),
+  internalNotes: z.string().optional().nullable(),
+  discount: z.number().int().min(0).optional().default(0),
+  tax: z.number().int().min(0).optional().default(0),
+  currency: z.string().optional().default("INR"),
+});

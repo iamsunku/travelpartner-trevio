@@ -1,57 +1,77 @@
 "use client";
 
 import { useEffect } from "react";
+import dynamic from "next/dynamic";
 import { useAppStore, useAuthStore } from "@/store/app-store";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { Footer } from "@/components/layout/footer";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { useApiSync } from "@/hooks/use-api-sync";
-import { DashboardView } from "@/components/views/dashboard";
-import { FlightsView } from "@/components/views/flights";
-import { HotelsView } from "@/components/views/hotels";
-import { HolidayView } from "@/components/views/holiday";
-import { CrmView } from "@/components/views/crm";
-import { CustomersView } from "@/components/views/customers";
-import { QuotationsView } from "@/components/views/quotations";
-import { BookingsView } from "@/components/views/bookings";
-import { PaymentsView } from "@/components/views/payments";
-import { WalletView } from "@/components/views/wallet";
-import { CommissionView } from "@/components/views/commission";
-import { ReportsView } from "@/components/views/reports";
-import { EmployeesView } from "@/components/views/employees";
-import { TasksView } from "@/components/views/tasks";
-import { SupportView } from "@/components/views/support";
-import { NotificationsView } from "@/components/views/notifications";
-import { SettingsView } from "@/components/views/settings";
-import { AgenciesView } from "@/components/views/agencies";
-import { BranchesView } from "@/components/views/branches";
-import { ApiMarketplaceView } from "@/components/views/api-marketplace";
-import { ApiManagementView } from "@/components/views/api-management";
-import { MonitoringView } from "@/components/views/monitoring";
-import { MarketingView } from "@/components/views/marketing";
-import { CmsView } from "@/components/views/cms";
-import { FinanceView } from "@/components/views/finance";
-import { AuditLogsView } from "@/components/views/audit-logs";
-import { AnalyticsView } from "@/components/views/analytics";
-import { HotelProductsView } from "@/components/views/hotel-products";
-import { ActivityPackagesView } from "@/components/views/activity-packages";
-import { ProductApprovalsView } from "@/components/views/product-approvals";
-import { AttendanceLeaveView } from "@/components/views/attendance-leave";
+import { PageLoadingSkeleton } from "@/components/shared/enterprise";
 import type { ViewKey } from "@/types";
 import { Construction } from "lucide-react";
 import { canAccessView } from "@/lib/nav-config";
+
+const viewLoading = () => <PageLoadingSkeleton />;
+
+const lazy = (loader: () => Promise<{ [key: string]: React.ComponentType }>, exportName: string) =>
+  dynamic(() => loader().then((m) => ({ default: m[exportName] })), { loading: viewLoading });
+
+const DashboardView = lazy(() => import("@/components/views/dashboard"), "DashboardView");
+const FlightsView = lazy(() => import("@/components/views/flights"), "FlightsView");
+const HotelsView = lazy(() => import("@/components/views/hotels"), "HotelsView");
+const HolidayView = lazy(() => import("@/components/views/holiday"), "HolidayView");
+const CrmView = lazy(() => import("@/components/views/crm"), "CrmView");
+const CustomersView = lazy(() => import("@/components/views/customers"), "CustomersView");
+const QuotationsView = lazy(() => import("@/components/views/quotations"), "QuotationsView");
+const BookingsView = lazy(() => import("@/components/views/bookings"), "BookingsView");
+const PaymentsView = lazy(() => import("@/components/views/payments"), "PaymentsView");
+const WalletView = lazy(() => import("@/components/views/wallet"), "WalletView");
+const CommissionView = lazy(() => import("@/components/views/commission"), "CommissionView");
+const ReportsView = lazy(() => import("@/components/views/reports"), "ReportsView");
+const EmployeesView = lazy(() => import("@/components/views/employees"), "EmployeesView");
+const TasksView = lazy(() => import("@/components/views/tasks"), "TasksView");
+const SupportView = lazy(() => import("@/components/views/support"), "SupportView");
+const NotificationsView = lazy(() => import("@/components/views/notifications"), "NotificationsView");
+const SettingsView = lazy(() => import("@/components/views/settings"), "SettingsView");
+const AgenciesView = lazy(() => import("@/components/views/agencies"), "AgenciesView");
+const BranchesView = lazy(() => import("@/components/views/branches"), "BranchesView");
+const ApiMarketplaceView = lazy(() => import("@/components/views/api-marketplace"), "ApiMarketplaceView");
+const ApiManagementView = lazy(() => import("@/components/views/api-management"), "ApiManagementView");
+const MonitoringView = lazy(() => import("@/components/views/monitoring"), "MonitoringView");
+const MarketingView = lazy(() => import("@/components/views/marketing"), "MarketingView");
+const CmsView = lazy(() => import("@/components/views/cms"), "CmsView");
+const FinanceView = lazy(() => import("@/components/views/finance"), "FinanceView");
+const AuditLogsView = lazy(() => import("@/components/views/audit-logs"), "AuditLogsView");
+const AnalyticsView = lazy(() => import("@/components/views/analytics"), "AnalyticsView");
+const PackagesView = lazy(() => import("@/components/views/packages"), "PackagesView");
+const TripPlannerView = lazy(() => import("@/components/views/trip-planner"), "TripPlannerView");
+const BrandingView = lazy(() => import("@/components/views/branding"), "BrandingView");
+const QuoteTemplatesView = lazy(() => import("@/components/views/quote-templates"), "QuoteTemplatesView");
+const TravelProposalsView = lazy(() => import("@/components/views/travel-proposals"), "TravelProposalsView");
+const DestinationsView = lazy(() => import("@/components/views/destinations"), "DestinationsView");
+const HotelProductsView = lazy(() => import("@/components/views/hotel-products"), "HotelProductsView");
+const ActivityPackagesView = lazy(() => import("@/components/views/activity-packages"), "ActivityPackagesView");
+const ProductApprovalsView = lazy(() => import("@/components/views/product-approvals"), "ProductApprovalsView");
+const AttendanceLeaveView = lazy(() => import("@/components/views/attendance-leave"), "AttendanceLeaveView");
 
 const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   dashboard: DashboardView,
   flights: FlightsView,
   hotels: HotelsView,
   "hotel-products": HotelProductsView,
+  destinations: DestinationsView,
+  packages: PackagesView,
   "activity-packages": ActivityPackagesView,
   "product-approvals": ProductApprovalsView,
   holiday: HolidayView,
   customers: CustomersView,
   crm: CrmView,
+  "trip-planner": TripPlannerView,
+  "travel-proposals": TravelProposalsView,
+  branding: BrandingView,
+  "quote-templates": QuoteTemplatesView,
   quotations: QuotationsView,
   bookings: BookingsView,
   payments: PaymentsView,
@@ -93,11 +113,17 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen flex bg-background">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
+      >
+        Skip to main content
+      </a>
       <GlobalSearch />
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
-        <main className="flex-1 p-4 lg:p-6 max-w-[1600px] w-full mx-auto">
+        <main id="main-content" className="flex-1 p-4 lg:p-6 max-w-[1600px] w-full mx-auto" tabIndex={-1}>
           <ViewComponent />
         </main>
         <Footer />
@@ -106,14 +132,12 @@ export function AppShell() {
   );
 }
 
-export function ComingSoon({ title }: { title: string }) {
+export function PlaceholderView({ title }: { title: string }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#2A7BBD]/15 to-[#00A79D]/15 border border-border/80 flex items-center justify-center mb-4">
-        <Construction className="w-7 h-7 text-primary" />
-      </div>
-      <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-      <p className="text-sm text-muted-foreground mt-1.5 max-w-sm leading-relaxed">This module is being assembled.</p>
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <Construction className="w-12 h-12 text-muted-foreground/40 mb-4" />
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <p className="text-sm text-muted-foreground mt-1">This module is under development.</p>
     </div>
   );
 }

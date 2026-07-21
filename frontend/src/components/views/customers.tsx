@@ -2,15 +2,19 @@
 
 import { useMemo, useState } from "react";
 import {
-  Users, Building2, User, Crown, Plus, Search, Phone, Mail, MapPin,
+  Users, Building2, User, Crown, Plus, Phone, Mail, MapPin,
   Calendar, Award, BookOpen, FileText, StickyNote, Activity, Plane,
   Star,
 } from "lucide-react";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { Customer } from "@/types";
 import {
-  formatINR, formatFullINR, StatusBadge, PageHeader, PageShell, MetricCard, initials, avatarGradient,
+  formatINR, formatFullINR, StatusBadge, PageShell, MetricCard, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
+import {
+  CatalogTable, CatalogTableHead, CatalogToolbar, EmptyState, EnterprisePageHeader,
+} from "@/components/shared/enterprise";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   Card, CardContent,
 } from "@/components/ui/card";
@@ -23,7 +27,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
-  Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+  Table, TableBody, TableRow, TableHead, TableCell,
 } from "@/components/ui/table";
 import {
   Tabs, TabsList, TabsTrigger, TabsContent,
@@ -351,7 +355,8 @@ function ProfileSheet({ customer, open, onOpenChange }: { customer: Customer | n
 
 export function CustomersView() {
   const customers = useDemoDataStore((s) => s.customers);
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const search = useDebouncedValue(searchInput, 250);
   const [typeFilter, setTypeFilter] = useState("all");
   const [tierFilter, setTierFilter] = useState("all");
   const [selected, setSelected] = useState<Customer | null>(null);
@@ -383,110 +388,107 @@ export function CustomersView() {
 
   return (
     <PageShell>
-      <PageHeader
+      <EnterprisePageHeader
         title="Customers"
-        subtitle="Manage your customer relationships, profiles, and loyalty programs."
-        action={<AddCustomerDialog />}
+        subtitle="Manage customer relationships, profiles, and loyalty programs."
+        breadcrumbs={[{ label: "Sales & CRM" }, { label: "Customers" }]}
+        actions={<AddCustomerDialog />}
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
-      <Card className="border-border/80 shadow-none">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center justify-between mb-3">
-            <div className="flex flex-1 gap-2">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by name, email, city..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-8 h-9"
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder="Type" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="Individual">Individual</SelectItem>
-                  <SelectItem value="Corporate">Corporate</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={tierFilter} onValueChange={setTierFilter}>
-                <SelectTrigger className="w-[130px] h-9"><SelectValue placeholder="Tier" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Tiers</SelectItem>
-                  <SelectItem value="Silver">Silver</SelectItem>
-                  <SelectItem value="Gold">Gold</SelectItem>
-                  <SelectItem value="Platinum">Platinum</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+      <CatalogToolbar
+        searchValue={searchInput}
+        onSearchChange={setSearchInput}
+        searchPlaceholder="Search by name, email, or city…"
+        filters={
+          <>
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-[130px] h-9" aria-label="Filter by customer type"><SelectValue placeholder="Type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="Individual">Individual</SelectItem>
+                <SelectItem value="Corporate">Corporate</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={tierFilter} onValueChange={setTierFilter}>
+              <SelectTrigger className="w-[130px] h-9" aria-label="Filter by loyalty tier"><SelectValue placeholder="Tier" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tiers</SelectItem>
+                <SelectItem value="Silver">Silver</SelectItem>
+                <SelectItem value="Gold">Gold</SelectItem>
+                <SelectItem value="Platinum">Platinum</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
 
-          <div className="rounded-lg border border-border/80 max-h-[60vh] overflow-y-auto scroll-thin">
-            <Table>
-              <TableHeader className="sticky top-0 bg-card z-10">
-                <TableRow>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Tier</TableHead>
-                  <TableHead className="text-center">Bookings</TableHead>
-                  <TableHead className="text-right">Total Spent</TableHead>
-                  <TableHead className="text-right">Loyalty</TableHead>
-                  <TableHead>Last Booking</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((c) => (
-                  <TableRow key={c.id} className="cursor-pointer hover:bg-muted/40" onClick={() => openCustomer(c)}>
-                    <TableCell>
-                      <div className="flex items-center gap-2.5">
-                        <Avatar className="w-8 h-8">
-                          <AvatarFallback className={cn("text-[10px] font-semibold text-white bg-gradient-to-br", avatarGradient(c.name))}>
-                            {initials(c.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{c.name}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>
-                        </div>
+      {filtered.length === 0 ? (
+        <EmptyState
+          title="No customers found"
+          description={search || typeFilter !== "all" || tierFilter !== "all"
+            ? "Try adjusting your search or filters."
+            : "Add your first customer using the button above."}
+        />
+      ) : (
+        <CatalogTable>
+          <Table>
+            <CatalogTableHead>
+              <TableRow>
+                <TableHead>Customer</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Tier</TableHead>
+                <TableHead className="text-center">Bookings</TableHead>
+                <TableHead className="text-right">Total Spent</TableHead>
+                <TableHead className="text-right">Loyalty</TableHead>
+                <TableHead>Last Booking</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </CatalogTableHead>
+            <TableBody>
+              {filtered.map((c) => (
+                <TableRow key={c.id} className="cursor-pointer hover:bg-muted/40" onClick={() => openCustomer(c)}>
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <Avatar className="w-8 h-8">
+                        <AvatarFallback className={cn("text-[10px] font-semibold text-white bg-gradient-to-br", avatarGradient(c.name))}>
+                          {initials(c.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{c.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{c.email}</p>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className={cn("text-[10px]", c.type === "Corporate" ? "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400" : "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-400")}>
-                        {c.type === "Corporate" ? <Building2 className="w-3 h-3 mr-1" /> : <User className="w-3 h-3 mr-1" />}
-                        {c.type}
-                      </Badge>
-                    </TableCell>
-                    <TableCell><StatusBadge status={c.tier} /></TableCell>
-                    <TableCell className="text-center text-sm font-medium">{c.totalBookings}</TableCell>
-                    <TableCell className="text-right text-sm font-semibold">{formatFullINR(c.totalSpent)}</TableCell>
-                    <TableCell className="text-right text-xs">{c.loyaltyPoints.toLocaleString("en-IN")}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{c.lastBooking ? new Date(c.lastBooking).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "—"}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="h-7 text-teal-600 hover:text-teal-700" onClick={(e) => { e.stopPropagation(); openCustomer(c); }}>
-                        View
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">No customers found.</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          <p className="text-[11px] text-muted-foreground mt-2">Showing {filtered.length} of {customers.length} customers · Click a row to view full profile</p>
-        </CardContent>
-      </Card>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className={cn("text-[10px]", c.type === "Corporate" ? "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400" : "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-400")}>
+                      {c.type === "Corporate" ? <Building2 className="w-3 h-3 mr-1" /> : <User className="w-3 h-3 mr-1" />}
+                      {c.type}
+                    </Badge>
+                  </TableCell>
+                  <TableCell><StatusBadge status={c.tier} /></TableCell>
+                  <TableCell className="text-center text-sm font-medium">{c.totalBookings}</TableCell>
+                  <TableCell className="text-right text-sm font-semibold">{formatFullINR(c.totalSpent)}</TableCell>
+                  <TableCell className="text-right text-xs">{c.loyaltyPoints.toLocaleString("en-IN")}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{c.lastBooking ? new Date(c.lastBooking).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "—"}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" className="h-7 text-teal-600 hover:text-teal-700" onClick={(e) => { e.stopPropagation(); openCustomer(c); }}>
+                      View
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CatalogTable>
+      )}
+      {filtered.length > 0 && (
+        <p className="text-[11px] text-muted-foreground mt-2">Showing {filtered.length} of {customers.length} customers · Click a row to view full profile</p>
+      )}
 
       <ProfileSheet customer={selected} open={sheetOpen} onOpenChange={setSheetOpen} />
     </PageShell>

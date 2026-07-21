@@ -1,8 +1,8 @@
 import type { Module, Role, User } from "@/types";
 
 export const MODULES: Module[] = [
-  "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
-  "quotations", "payments", "wallet", "commission", "finance",
+  "flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages", "bookings", "crm", "customers",
+  "trip-planner", "travel-proposals", "quotations", "quote-templates", "payments", "wallet", "commission", "finance",
   "reports", "analytics", "employees", "attendance", "leaves", "tasks",
   "support", "notifications", "marketing", "cms", "api-management",
   "settings", "audit-logs", "agencies", "branches", "api-marketplace",
@@ -14,20 +14,20 @@ export type CrudAction = "view" | "add" | "edit" | "delete";
 export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
   super_admin: [...MODULES],
   agency_admin: [
-    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
-    "quotations", "payments", "wallet", "commission", "finance",
+    "flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages", "bookings", "crm", "customers",
+    "trip-planner", "travel-proposals", "quotations", "quote-templates", "payments", "wallet", "commission", "finance",
     "reports", "analytics", "employees", "attendance", "leaves", "tasks", "support",
     "notifications", "marketing", "cms", "api-management", "settings",
     "audit-logs", "branches", "suppliers",
   ],
   branch_manager: [
-    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
-    "quotations", "payments", "reports", "employees", "attendance",
+    "flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages", "bookings", "crm", "customers",
+    "trip-planner", "travel-proposals", "quotations", "payments", "reports", "employees", "attendance",
     "leaves", "tasks", "support", "notifications",
   ],
   employee: [
-    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
-    "quotations", "payments", "reports", "tasks", "support",
+    "flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages", "bookings", "crm", "customers",
+    "trip-planner", "travel-proposals", "quotations", "payments", "reports", "tasks", "support",
     "notifications", "attendance", "leaves",
   ],
   accountant: [
@@ -35,11 +35,11 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
     "attendance", "leaves", "support", "notifications",
   ],
   sales_executive: [
-    "flights", "hotels", "activities", "transfers", "holiday", "bookings", "crm", "customers",
-    "quotations", "payments", "reports", "tasks", "support", "notifications", "attendance", "leaves",
+    "flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages", "bookings", "crm", "customers",
+    "trip-planner", "travel-proposals", "quotations", "payments", "reports", "tasks", "support", "notifications", "attendance", "leaves",
   ],
   product_executive: [
-    "hotels", "activities", "transfers", "holiday", "suppliers", "reports", "notifications",
+    "hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers", "reports", "notifications",
   ],
 };
 
@@ -53,8 +53,8 @@ export const ROLE_CRUD: Record<Role, Record<string, CrudAction[]>> = {
   branch_manager: Object.fromEntries(MODULES.map((m) => [m, SALES])),
   employee: Object.fromEntries(MODULES.map((m) => [m, SALES])),
   accountant: Object.fromEntries(MODULES.map((m) => [m, ["payments", "wallet", "commission", "finance", "reports"].includes(m) ? SALES : READ])),
-  sales_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "suppliers"].includes(m) ? READ : SALES])),
-  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "suppliers"].includes(m) ? FULL : READ])),
+  sales_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "destinations", "packages", "suppliers"].includes(m) ? READ : SALES])),
+  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers"].includes(m) ? FULL : READ])),
 };
 
 export function effectivePermissions(user: Pick<User, "role" | "permissions">): Module[] {
@@ -72,8 +72,8 @@ export function hasCrudPermission(user: Pick<User, "role" | "permissions">, modu
 
 export const MODULE_LABELS: Record<Module, string> = {
   flights: "Flights", hotels: "Hotels", activities: "Activities", transfers: "Transfers",
-  holiday: "Holiday Packages", bookings: "Booking Management", crm: "CRM / Leads", customers: "Customers",
-  quotations: "Quotations", payments: "Payments", wallet: "Wallet",
+  holiday: "Holiday Packages", destinations: "Destinations", packages: "Package Builder", bookings: "Booking Management", crm: "CRM / Leads", customers: "Customers",
+  "trip-planner": "Trip Planner", "travel-proposals": "Travel Proposals", quotations: "Quotations", "quote-templates": "Quote Templates", payments: "Payments", wallet: "Wallet",
   commission: "Commission", finance: "Finance / GST", reports: "Reports & Analytics",
   analytics: "Platform Analytics", employees: "Employees", attendance: "Attendance",
   leaves: "Leave Approvals", tasks: "Task Management", support: "Support",

@@ -21,7 +21,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { TOP_DESTINATIONS, RECENT_ACTIVITIES } from "@/lib/mock-data";
-import { formatINR, formatFullINR, StatusBadge, avatarGradient, initials } from "@/components/shared/ui-helpers";
+import { formatINR, formatFullINR, StatusBadge, avatarGradient, initials, MetricCard, BrandHero, SectionHeader, PageShell } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 const fadeUp = {
@@ -33,83 +33,6 @@ function greetingForHour(hour: number) {
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
-}
-
-function SectionHeader({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
-        {description && (
-          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-        )}
-      </div>
-      {action}
-    </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  change,
-  trend,
-  color,
-  subtitle,
-  index = 0,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  change?: number;
-  trend?: "up" | "down";
-  color: string;
-  subtitle?: string;
-  index?: number;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.03, duration: 0.35 }}
-    >
-      <Card className="group relative overflow-hidden border-border/80 shadow-none hover:border-primary/25 hover:shadow-sm transition-all duration-200">
-        <div className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-[#2A7BBD] to-[#00A79D] opacity-0 group-hover:opacity-100 transition-opacity" />
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", color)}>
-              <Icon className="w-4 h-4" />
-            </div>
-            {change !== undefined && trend && (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-                  trend === "up"
-                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
-                    : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400"
-                )}
-              >
-                {trend === "up" ? <ArrowUpRight className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                {Math.abs(change)}%
-              </span>
-            )}
-          </div>
-          <p className="text-[22px] font-semibold mt-3 tracking-tight tabular-nums leading-none">{value}</p>
-          <p className="text-xs font-medium text-foreground/80 mt-2">{label}</p>
-          {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
 }
 
 function QuickAction({
@@ -139,37 +62,6 @@ function QuickAction({
       </div>
       <span className="text-[11px] font-medium text-center leading-tight text-foreground/90">{label}</span>
     </button>
-  );
-}
-
-function DashboardHero({
-  eyebrow,
-  title,
-  subtitle,
-  actions,
-}: {
-  eyebrow: string;
-  title: string;
-  subtitle: React.ReactNode;
-  actions?: React.ReactNode;
-}) {
-  return (
-    <motion.div
-      {...fadeUp}
-      transition={{ duration: 0.4 }}
-      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D] text-white"
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.18),transparent_55%)]" />
-      <div className="absolute -bottom-16 -left-10 w-48 h-48 rounded-full bg-[#00A79D]/30 blur-3xl" />
-      <div className="relative z-10 flex flex-col lg:flex-row lg:items-end justify-between gap-5 p-5 lg:p-7">
-        <div className="max-w-xl">
-          <p className="text-white/75 text-[11px] font-medium uppercase tracking-[0.14em]">{eyebrow}</p>
-          <h1 className="text-2xl lg:text-[28px] font-semibold tracking-tight mt-1.5">{title}</h1>
-          <p className="text-white/85 text-sm mt-2 leading-relaxed">{subtitle}</p>
-        </div>
-        {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
-      </div>
-    </motion.div>
   );
 }
 
@@ -214,11 +106,40 @@ function AgencyDashboard() {
   const walletBalance = useDemoDataStore((s) => s.walletBalance);
   const payments = useDemoDataStore((s) => s.payments);
   const userName = useAuthStore((s) => s.user?.name);
+  const [destinationInsights, setDestinationInsights] = useState<{
+    topDestinations: Array<{ id: string; name: string; country: string; productCount: number; hotelCount: number; activityCount: number; transferCount: number }>;
+    productsPerDestination: Array<{ id: string; name: string; country: string; productCount: number; hotelCount: number; activityCount: number; transferCount: number }>;
+  } | null>(null);
+  const [packageInsights, setPackageInsights] = useState<{
+    totalPackages: number;
+    featuredPackages: Array<{ id: string; packageName: string; finalPrice: number; currency: string; destination?: { name: string } }>;
+    topSellingPackages: Array<{ id: string; packageName: string; finalPrice: number; currency: string; destination?: { name: string }; componentCount: number }>;
+  } | null>(null);
   const recentBookings = bookings.slice(0, 6);
   const myTasks = tasks.filter((t) => t.assignedTo === userName).slice(0, 4);
   const pendingPayments = payments.filter((p) => p.status === "Pending");
   const pendingPaymentsTotal = pendingPayments.reduce((s, p) => s + p.amount, 0);
   const greeting = useMemo(() => greetingForHour(new Date().getHours()), []);
+
+  useEffect(() => {
+    api.getDashboard()
+      .then((data) => {
+        if (data.destinationInsights) setDestinationInsights(data.destinationInsights);
+        if (data.packageInsights) setPackageInsights(data.packageInsights);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const topDestinationsDisplay = destinationInsights?.topDestinations?.length
+    ? destinationInsights.topDestinations.map((d) => ({
+        destination: d.name,
+        bookings: d.productCount,
+        revenue: d.productCount * 10000,
+        growth: 0,
+        id: d.id,
+      }))
+    : TOP_DESTINATIONS.map((d) => ({ ...d, id: undefined as string | undefined }));
+
   const pieData = financeStats?.byService?.map((s: { service: string; revenue: number }) => ({
     name: s.service,
     value: s.revenue,
@@ -237,7 +158,7 @@ function AgencyDashboard() {
 
   return (
     <div className="space-y-6">
-      <DashboardHero
+      <BrandHero
         eyebrow={greeting}
         title={userName || "Welcome"}
         subtitle={
@@ -272,7 +193,7 @@ function AgencyDashboard() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {stats.map((s, i) => (
-            <StatCard key={s.label} {...s} index={i} />
+            <MetricCard key={s.label} {...s} index={i} />
           ))}
         </div>
       </section>
@@ -485,14 +406,42 @@ function AgencyDashboard() {
 
       <Card className="border-border/80 shadow-none">
         <CardHeader className="pb-3 pt-5 px-5">
-          <SectionHeader title="Top destinations" description="Best performing routes this month" />
+          <SectionHeader title="Products per destination" description="Linked hotels, activities, and transfers" />
+        </CardHeader>
+        <CardContent className="px-5 pb-5">
+          {destinationInsights?.productsPerDestination?.length ? (
+            <div className="space-y-2">
+              {destinationInsights.productsPerDestination.slice(0, 8).map((d) => (
+                <div key={d.id} className="flex items-center justify-between gap-3 p-2 rounded-lg border border-border/80">
+                  <button type="button" className="text-sm font-medium text-left hover:text-[#2A7BBD]" onClick={() => setView("destinations")}>
+                    {d.name}
+                  </button>
+                  <div className="flex gap-3 text-xs text-muted-foreground tabular-nums">
+                    <span>{d.hotelCount} hotels</span>
+                    <span>{d.activityCount} activities</span>
+                    <span>{d.transferCount} transfers</span>
+                    <span className="font-semibold text-foreground">{d.productCount} total</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Link products to destinations to see distribution here.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border/80 shadow-none">
+        <CardHeader className="pb-3 pt-5 px-5">
+          <SectionHeader title="Top destinations" description="Destinations with the most linked products" />
         </CardHeader>
         <CardContent className="px-5 pb-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {TOP_DESTINATIONS.map((d, i) => (
+            {topDestinationsDisplay.map((d, i) => (
               <div
                 key={d.destination}
-                className="flex items-center gap-3 p-3 rounded-xl border border-border/80 hover:border-primary/30 hover:bg-primary/[0.02] transition-colors"
+                className="flex items-center gap-3 p-3 rounded-xl border border-border/80 hover:border-primary/30 hover:bg-primary/[0.02] transition-colors cursor-pointer"
+                onClick={() => d.id && setView("destinations")}
               >
                 <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] flex items-center justify-center text-white text-[11px] font-semibold shrink-0 tabular-nums">
                   {String(i + 1).padStart(2, "0")}
@@ -500,18 +449,57 @@ function AgencyDashboard() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{d.destination}</p>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {d.bookings} bookings · {formatINR(d.revenue)}
+                    {destinationInsights ? `${d.bookings} products` : `${d.bookings} bookings · ${formatINR(d.revenue)}`}
                   </p>
                 </div>
-                <span className="text-xs font-semibold text-emerald-600 flex items-center gap-0.5 tabular-nums">
-                  <TrendingUp className="w-3 h-3" />
-                  {d.growth}%
-                </span>
+                {!destinationInsights && (
+                  <span className="text-xs font-semibold text-emerald-600 flex items-center gap-0.5 tabular-nums">
+                    <TrendingUp className="w-3 h-3" />
+                    {d.growth}%
+                  </span>
+                )}
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="border-border/80 shadow-none">
+          <CardHeader className="pb-3 pt-5 px-5">
+            <SectionHeader title="Featured packages" description={`${packageInsights?.totalPackages ?? 0} packages in catalog`} />
+          </CardHeader>
+          <CardContent className="px-5 pb-5 space-y-2">
+            {packageInsights?.featuredPackages?.length ? packageInsights.featuredPackages.map((p) => (
+              <button key={p.id} type="button" className="w-full flex items-center justify-between p-2 rounded-lg border border-border/80 hover:border-primary/30 text-left" onClick={() => setView("packages")}>
+                <span className="text-sm font-medium">{p.packageName}</span>
+                <span className="text-xs text-[#2A7BBD] font-semibold tabular-nums">₹{p.finalPrice.toLocaleString("en-IN")}</span>
+              </button>
+            )) : (
+              <p className="text-sm text-muted-foreground">Mark packages as featured to highlight them here.</p>
+            )}
+          </CardContent>
+        </Card>
+        <Card className="border-border/80 shadow-none">
+          <CardHeader className="pb-3 pt-5 px-5">
+            <SectionHeader title="Top packages" description="Published packages by value" />
+          </CardHeader>
+          <CardContent className="px-5 pb-5 space-y-2">
+            {packageInsights?.topSellingPackages?.length ? packageInsights.topSellingPackages.map((p, i) => (
+              <button key={p.id} type="button" className="w-full flex items-center gap-3 p-2 rounded-lg border border-border/80 hover:border-primary/30 text-left" onClick={() => setView("packages")}>
+                <span className="w-6 h-6 rounded bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white text-[10px] font-bold flex items-center justify-center">{i + 1}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{p.packageName}</p>
+                  <p className="text-[11px] text-muted-foreground">{p.destination?.name} · {p.componentCount} components</p>
+                </div>
+                <span className="text-xs font-semibold text-[#2A7BBD] tabular-nums">₹{p.finalPrice.toLocaleString("en-IN")}</span>
+              </button>
+            )) : (
+              <p className="text-sm text-muted-foreground">Publish packages to see top listings.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -538,7 +526,7 @@ function SuperAdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <DashboardHero
+      <BrandHero
         eyebrow="Platform overview"
         title="Super Admin Console"
         subtitle={
@@ -569,14 +557,14 @@ function SuperAdminDashboard() {
           <SectionHeader title="Platform metrics" description="Agency network health and commercial performance" />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          <StatCard icon={Building2} label="Active Agencies" value={String(agencies.filter((a) => a.status === "Active").length)} change={9.1} trend="up" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle={`${agencies.length} total onboarded`} index={0} />
-          <StatCard icon={DollarSign} label="Platform Revenue" value={formatINR(totalRevenue)} change={14.2} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="This month" index={1} />
-          <StatCard icon={Wallet} label="Agency Wallets" value={formatINR(totalWallet)} change={7.8} trend="up" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" subtitle="Total balance" index={2} />
-          <StatCard icon={TrendingUp} label="Commission Earned" value={formatINR(totalCommission)} change={19.4} trend="up" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All agencies" index={3} />
-          <StatCard icon={Plane} label="Total Bookings" value={totalBookings.toLocaleString()} change={11.6} trend="up" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="All time" index={4} />
-          <StatCard icon={Users} label="Total Customers" value="12,847" change={8.9} trend="up" color="bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400" subtitle="Across agencies" index={5} />
-          <StatCard icon={Server} label="API Health" value="99.9%" change={0.1} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="All vendors" index={6} />
-          <StatCard icon={AlertTriangle} label="Active Alerts" value="2" change={50} trend="down" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="1 critical" index={7} />
+          <MetricCard icon={Building2} label="Active Agencies" value={String(agencies.filter((a) => a.status === "Active").length)} change={9.1} trend="up" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle={`${agencies.length} total onboarded`} index={0} />
+          <MetricCard icon={DollarSign} label="Platform Revenue" value={formatINR(totalRevenue)} change={14.2} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="This month" index={1} />
+          <MetricCard icon={Wallet} label="Agency Wallets" value={formatINR(totalWallet)} change={7.8} trend="up" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" subtitle="Total balance" index={2} />
+          <MetricCard icon={TrendingUp} label="Commission Earned" value={formatINR(totalCommission)} change={19.4} trend="up" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All agencies" index={3} />
+          <MetricCard icon={Plane} label="Total Bookings" value={totalBookings.toLocaleString()} change={11.6} trend="up" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="All time" index={4} />
+          <MetricCard icon={Users} label="Total Customers" value="12,847" change={8.9} trend="up" color="bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400" subtitle="Across agencies" index={5} />
+          <MetricCard icon={Server} label="API Health" value="99.9%" change={0.1} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="All vendors" index={6} />
+          <MetricCard icon={AlertTriangle} label="Active Alerts" value="2" change={50} trend="down" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="1 critical" index={7} />
         </div>
       </section>
 
@@ -765,7 +753,7 @@ function EmployeeDashboard() {
 
   return (
     <div className="space-y-6">
-      <DashboardHero
+      <BrandHero
         eyebrow={greeting}
         title={user?.name || "Welcome"}
         subtitle={
@@ -786,10 +774,10 @@ function EmployeeDashboard() {
           <SectionHeader title="My performance" description="Bookings, tasks, commission, and customers" />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard icon={Target} label="My Bookings" value={String(allMyBookings.length)} color="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" subtitle="All time" index={0} />
-          <StatCard icon={TrendingUp} label="My Tasks" value={String(myTasks.length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="Assigned to you" index={1} />
-          <StatCard icon={Wallet} label="My Commission" value={formatINR(myCommission)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All time" index={2} />
-          <StatCard icon={Users} label="My Customers" value={String(myCustomerCount)} color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle="From your bookings" index={3} />
+          <MetricCard icon={Target} label="My Bookings" value={String(allMyBookings.length)} color="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" subtitle="All time" index={0} />
+          <MetricCard icon={TrendingUp} label="My Tasks" value={String(myTasks.length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="Assigned to you" index={1} />
+          <MetricCard icon={Wallet} label="My Commission" value={formatINR(myCommission)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All time" index={2} />
+          <MetricCard icon={Users} label="My Customers" value={String(myCustomerCount)} color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle="From your bookings" index={3} />
         </div>
       </section>
 

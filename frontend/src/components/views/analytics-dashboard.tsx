@@ -114,6 +114,7 @@ export function AnalyticsDashboard() {
   const [errors, setErrors] = useState<ApiError[]>([]);
   const [userActivity, setUserActivity] = useState<UserActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [hours, setHours] = useState(24);
 
   useEffect(() => {
@@ -124,6 +125,7 @@ export function AnalyticsDashboard() {
 
   async function fetchAnalytics() {
     try {
+      setFetchError(null);
       const token = localStorage.getItem("token");
       const headers = { Authorization: `Bearer ${token}` };
 
@@ -142,8 +144,8 @@ export function AnalyticsDashboard() {
         setUserActivity((await activityRes.json()).activity || []);
 
       setLoading(false);
-    } catch (error) {
-      console.error("Failed to fetch analytics:", error);
+    } catch {
+      setFetchError("Unable to load analytics data. Please try again.");
       setLoading(false);
     }
   }
@@ -161,8 +163,13 @@ export function AnalyticsDashboard() {
   if (!summary) {
     return (
       <PageShell>
-        <div className="flex items-center justify-center h-96">
-          <p className="text-sm text-muted-foreground">No analytics data available</p>
+        <div className="flex flex-col items-center justify-center h-96 gap-2">
+          <p className="text-sm text-muted-foreground">{fetchError ?? "No analytics data available"}</p>
+          {fetchError && (
+            <Button variant="outline" size="sm" onClick={() => { setLoading(true); fetchAnalytics(); }}>
+              Retry
+            </Button>
+          )}
         </div>
       </PageShell>
     );

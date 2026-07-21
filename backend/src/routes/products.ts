@@ -13,9 +13,28 @@ function parseListQuery(req: AuthRequest) {
   const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 20));
   const q = (req.query.q as string)?.trim();
   const status = req.query.status as string | undefined;
+  const destinationId = req.query.destinationId as string | undefined;
   const sort = (req.query.sort as string) || "createdAt";
   const order = (req.query.order as string) === "asc" ? "asc" : "desc";
-  return { page, pageSize, q, status, sort, order, skip: (page - 1) * pageSize };
+  return { page, pageSize, q, status, destinationId, sort, order, skip: (page - 1) * pageSize };
+}
+
+const PRODUCT_RELATIONS = {
+  destination: { select: { id: true, name: true, country: true, region: true, slug: true, thumbnail: true, heroImage: true } },
+  supplier: { select: { id: true, name: true } },
+};
+
+async function assertValidDestination(req: AuthRequest, destinationId: unknown, agencyScope: ScopeFn): Promise<string | null> {
+  if (!destinationId || typeof destinationId !== "string") return "destinationId is required";
+  const dest = await db.destination.findFirst({
+    where: { id: destinationId, ...agencyScope(req), deletedAt: null },
+  });
+  if (!dest) return "Invalid destination";
+  return null;
+}
+
+function applyDestinationFilter(where: Record<string, unknown>, destinationId?: string) {
+  if (destinationId && destinationId !== "All") where.destinationId = destinationId;
 }
 
 function paramId(req: AuthRequest): string {
@@ -37,18 +56,20 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
 
   app.get(base, requireAuth, requireCrudPermission("hotels", "view"), async (req: AuthRequest, res: Response) => {
     try {
-      const { page, pageSize, q, status, sort, order, skip } = parseListQuery(req);
+      const { page, pageSize, q, status, destinationId, sort, order, skip } = parseListQuery(req);
       const where: Record<string, unknown> = { ...agencyScope(req) };
       if (status && status !== "All") where.status = status;
+      applyDestinationFilter(where, destinationId);
       if (q) {
         where.OR = [
           { name: { contains: q, mode: "insensitive" } },
           { city: { contains: q, mode: "insensitive" } },
           { country: { contains: q, mode: "insensitive" } },
+          { destination: { name: { contains: q, mode: "insensitive" } } },
         ];
       }
       const [items, total] = await Promise.all([
-        db.hotelProduct.findMany({ where, orderBy: { [sort]: order }, skip, take: pageSize }),
+        db.hotelProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [sort]: order }, skip, take: pageSize }),
         db.hotelProduct.count({ where }),
       ]);
       res.json({ items, total, page, pageSize });
@@ -60,8 +81,11 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
 
   app.post(base, requireAuth, requireCrudPermission("hotels", "add"), async (req: AuthRequest, res: Response) => {
     try {
+      const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
+      if (destError) { res.status(400).json({ error: destError }); return; }
       const item = await db.hotelProduct.create({
         data: { ...req.body, agencyId: req.auth?.agencyId, createdById: req.auth?.userId, updatedById: req.auth?.userId },
+        include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
       res.status(201).json({ item });
@@ -108,9 +132,14 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
       const id = paramId(req);
       const existing = await db.hotelProduct.findFirst({ where: { id, ...agencyScope(req) } });
       if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      if (req.body.destinationId !== undefined) {
+        const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
+        if (destError) { res.status(400).json({ error: destError }); return; }
+      }
       const item = await db.hotelProduct.update({
         where: { id },
         data: { ...req.body, updatedById: req.auth?.userId },
+        include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
       res.json({ item });
@@ -163,17 +192,19 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
 
   app.get(base, requireAuth, requireCrudPermission("activities", "view"), async (req: AuthRequest, res: Response) => {
     try {
-      const { page, pageSize, q, status, sort, order, skip } = parseListQuery(req);
+      const { page, pageSize, q, status, destinationId, sort, order, skip } = parseListQuery(req);
       const where: Record<string, unknown> = { ...agencyScope(req) };
       if (status && status !== "All") where.status = status;
+      applyDestinationFilter(where, destinationId);
       if (q) {
         where.OR = [
           { name: { contains: q, mode: "insensitive" } },
           { location: { contains: q, mode: "insensitive" } },
+          { destination: { name: { contains: q, mode: "insensitive" } } },
         ];
       }
       const [items, total] = await Promise.all([
-        db.activityProduct.findMany({ where, orderBy: { [sort]: order }, skip, take: pageSize }),
+        db.activityProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [sort]: order }, skip, take: pageSize }),
         db.activityProduct.count({ where }),
       ]);
       res.json({ items, total, page, pageSize });
@@ -185,8 +216,11 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
 
   app.post(base, requireAuth, requireCrudPermission("activities", "add"), async (req: AuthRequest, res: Response) => {
     try {
+      const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
+      if (destError) { res.status(400).json({ error: destError }); return; }
       const item = await db.activityProduct.create({
         data: { ...req.body, agencyId: req.auth?.agencyId, createdById: req.auth?.userId, updatedById: req.auth?.userId },
+        include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
       res.status(201).json({ item });
@@ -233,9 +267,14 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
       const id = paramId(req);
       const existing = await db.activityProduct.findFirst({ where: { id, ...agencyScope(req) } });
       if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      if (req.body.destinationId !== undefined) {
+        const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
+        if (destError) { res.status(400).json({ error: destError }); return; }
+      }
       const item = await db.activityProduct.update({
         where: { id },
         data: { ...req.body, updatedById: req.auth?.userId },
+        include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
       res.json({ item });
@@ -298,7 +337,7 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
     }
   });
 
-  app.post(`${base}/:id/approve`, requireAuth, requirePermission("admin-approval"), async (req: AuthRequest, res: Response) => {
+  app.post(`${base}/:id/approve`, requireAuth, requirePermission("activities"), async (req: AuthRequest, res: Response) => {
     try {
       const id = paramId(req);
       const existing = await db.activityProduct.findFirst({ where: { id } });
@@ -335,7 +374,7 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
     }
   });
 
-  app.post(`${base}/:id/reject`, requireAuth, requirePermission("admin-approval"), async (req: AuthRequest, res: Response) => {
+  app.post(`${base}/:id/reject`, requireAuth, requirePermission("activities"), async (req: AuthRequest, res: Response) => {
     try {
       const id = paramId(req);
       const existing = await db.activityProduct.findFirst({ where: { id } });
@@ -378,18 +417,20 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
 
   app.get(base, requireAuth, requireCrudPermission("transfers", "view"), async (req: AuthRequest, res: Response) => {
     try {
-      const { page, pageSize, q, status, sort, order, skip } = parseListQuery(req);
+      const { page, pageSize, q, status, destinationId, sort, order, skip } = parseListQuery(req);
       const where: Record<string, unknown> = { ...agencyScope(req) };
       if (status && status !== "All") where.status = status;
+      applyDestinationFilter(where, destinationId);
       if (q) {
         where.OR = [
           { name: { contains: q, mode: "insensitive" } },
           { pickupLocation: { contains: q, mode: "insensitive" } },
           { dropLocation: { contains: q, mode: "insensitive" } },
+          { destination: { name: { contains: q, mode: "insensitive" } } },
         ];
       }
       const [items, total] = await Promise.all([
-        db.transferProduct.findMany({ where, orderBy: { [sort]: order }, skip, take: pageSize }),
+        db.transferProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [sort]: order }, skip, take: pageSize }),
         db.transferProduct.count({ where }),
       ]);
       res.json({ items, total, page, pageSize });
@@ -401,8 +442,11 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
 
   app.post(base, requireAuth, requireCrudPermission("transfers", "add"), async (req: AuthRequest, res: Response) => {
     try {
+      const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
+      if (destError) { res.status(400).json({ error: destError }); return; }
       const item = await db.transferProduct.create({
         data: { ...req.body, agencyId: req.auth?.agencyId, createdById: req.auth?.userId, updatedById: req.auth?.userId },
+        include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
       res.status(201).json({ item });
@@ -449,9 +493,14 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
       const id = paramId(req);
       const existing = await db.transferProduct.findFirst({ where: { id, ...agencyScope(req) } });
       if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      if (req.body.destinationId !== undefined) {
+        const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
+        if (destError) { res.status(400).json({ error: destError }); return; }
+      }
       const item = await db.transferProduct.update({
         where: { id },
         data: { ...req.body, updatedById: req.auth?.userId },
+        include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
       res.json({ item });
@@ -514,7 +563,7 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
     }
   });
 
-  app.post(`${base}/:id/approve`, requireAuth, requirePermission("admin-approval"), async (req: AuthRequest, res: Response) => {
+  app.post(`${base}/:id/approve`, requireAuth, requirePermission("activities"), async (req: AuthRequest, res: Response) => {
     try {
       const id = paramId(req);
       const existing = await db.transferProduct.findFirst({ where: { id } });
@@ -551,7 +600,7 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
     }
   });
 
-  app.post(`${base}/:id/reject`, requireAuth, requirePermission("admin-approval"), async (req: AuthRequest, res: Response) => {
+  app.post(`${base}/:id/reject`, requireAuth, requirePermission("activities"), async (req: AuthRequest, res: Response) => {
     try {
       const id = paramId(req);
       const existing = await db.transferProduct.findFirst({ where: { id } });

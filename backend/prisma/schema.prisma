@@ -101,6 +101,8 @@ model Customer {
 
   bookings      Booking[]
   leads         Lead[]
+  travelRequirements TravelRequirement[]
+  travelProposals    TravelProposal[]
 }
 
 model Booking {
@@ -180,6 +182,8 @@ model Lead {
   assignedToUser User?  @relation(fields: [assignedToId], references: [id])
   customer       Customer? @relation(fields: [customerId], references: [id])
   customerId     String?
+  travelRequirements TravelRequirement[]
+  travelProposals    TravelProposal[]
 
   @@index([agencyId])
   @@index([branchId])
@@ -474,6 +478,7 @@ model HotelProduct {
   id              String   @id @default(cuid())
   agencyId        String?
   supplierId      String?
+  destinationId   String?
   name            String
   description     String?
   starCategory    Int      @default(3)
@@ -508,8 +513,11 @@ model HotelProduct {
   updatedAt       DateTime @updatedAt
 
   supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  destination     Destination? @relation(fields: [destinationId], references: [id])
+  packageHotels     PackageHotel[]
 
   @@index([agencyId])
+  @@index([destinationId])
   @@index([city])
   @@index([status])
   @@index([approvalStatus])
@@ -519,6 +527,7 @@ model ActivityProduct {
   id              String   @id @default(cuid())
   agencyId        String?
   supplierId      String?
+  destinationId   String?
   name            String
   description     String?
   images          Json     @default("[]")
@@ -547,8 +556,11 @@ model ActivityProduct {
   updatedAt       DateTime @updatedAt
 
   supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  destination     Destination? @relation(fields: [destinationId], references: [id])
+  packageActivities PackageActivity[]
 
   @@index([agencyId])
+  @@index([destinationId])
   @@index([status])
   @@index([approvalStatus])
 }
@@ -557,6 +569,7 @@ model TransferProduct {
   id              String   @id @default(cuid())
   agencyId        String?
   supplierId      String?
+  destinationId   String?
   name            String
   transferType    String   // Private|Shared|Both
   vehicleType     String?
@@ -581,8 +594,11 @@ model TransferProduct {
   updatedAt       DateTime @updatedAt
 
   supplier        Supplier? @relation(fields: [supplierId], references: [id])
+  destination     Destination? @relation(fields: [destinationId], references: [id])
+  packageTransfers  PackageTransfer[]
 
   @@index([agencyId])
+  @@index([destinationId])
   @@index([status])
   @@index([approvalStatus])
 }
@@ -655,5 +671,486 @@ model PerformanceMetric {
   @@unique([metric, date, hour])
   @@index([metric])
   @@index([date])
+}
+
+model Destination {
+  id                 String    @id @default(uuid())
+  agencyId           String?
+  branchId           String?
+
+  name               String
+  country            String
+  region             String?
+  city               String?
+  slug               String
+  shortDescription   String?
+  longDescription    String?   @db.Text
+
+  currency           String    @default("INR")
+  language           String?
+  timeZone           String?
+  visaRequired       Boolean   @default(false)
+  visaDetails        String?   @db.Text
+  passportValidity   String?
+  bestTimeToVisit    String?
+  climate            String?
+  averageBudget      String?
+
+  popularAttractions Json      @default("[]")
+  localTransport     String?   @db.Text
+  foodSpecialities   Json      @default("[]")
+  shopping           String?   @db.Text
+  nightlife          String?   @db.Text
+  adventureActivities Json     @default("[]")
+  familyFriendly     Boolean   @default(true)
+  coupleFriendly     Boolean   @default(true)
+  seniorFriendly     Boolean   @default(false)
+
+  heroImage          String?
+  galleryImages      Json      @default("[]")
+  bannerImage        String?
+  thumbnail          String?
+  videoUrl           String?
+  imageAltText       String?
+
+  seoTitle           String?
+  seoDescription     String?
+  keywords           Json      @default("[]")
+
+  status             String    @default("Draft") // Draft|Active|Inactive|Archived
+  metadata           Json      @default("{}")
+
+  createdById        String?
+  updatedById        String?
+  createdByName      String?
+  updatedByName      String?
+
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  hotelProducts      HotelProduct[]
+  activityProducts   ActivityProduct[]
+  transferProducts   TransferProduct[]
+  travelPackages     TravelPackage[]
+  travelRequirements TravelRequirement[]
+
+  @@unique([agencyId, slug])
+  @@index([agencyId])
+  @@index([branchId])
+  @@index([country])
+  @@index([region])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model TravelPackage {
+  id               String    @id @default(uuid())
+  agencyId         String?
+  branchId         String?
+  packageCode      String
+  packageName      String
+  destinationId    String
+  durationDays     Int       @default(1)
+  durationNights   Int       @default(0)
+  packageType      String    @default("Standard")
+  description      String?   @db.Text
+  highlights       Json      @default("[]")
+  status           String    @default("Draft") // Draft|Published|Archived
+  startingPrice    Int       @default(0)
+  currency         String    @default("INR")
+  heroImage        String?
+  bannerImage      String?
+  isFeatured       Boolean   @default(false)
+  hotelCost        Int       @default(0)
+  activityCost     Int       @default(0)
+  transferCost     Int       @default(0)
+  markup           Int       @default(0)
+  tax              Int       @default(0)
+  discount         Int       @default(0)
+  finalPrice       Int       @default(0)
+  currentVersion   Int       @default(1)
+  metadata         Json      @default("{}")
+  createdById      String?
+  updatedById      String?
+  createdByName    String?
+  updatedByName    String?
+  deletedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  destination      Destination @relation(fields: [destinationId], references: [id])
+  hotels           PackageHotel[]
+  activities       PackageActivity[]
+  transfers        PackageTransfer[]
+  versions         PackageVersion[]
+  days             PackageDay[]
+  productOptions   PackageProductOption[]
+
+  @@unique([agencyId, packageCode])
+  @@index([agencyId])
+  @@index([destinationId])
+  @@index([status])
+  @@index([packageType])
+  @@index([isFeatured])
+  @@index([deletedAt])
+}
+
+model PackageHotel {
+  id             String        @id @default(cuid())
+  packageId      String
+  hotelProductId String
+  sortOrder      Int           @default(0)
+
+  package        TravelPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  hotelProduct   HotelProduct  @relation(fields: [hotelProductId], references: [id])
+
+  @@unique([packageId, hotelProductId])
+  @@index([packageId])
+}
+
+model PackageActivity {
+  id                String           @id @default(cuid())
+  packageId         String
+  activityProductId String
+  sortOrder         Int              @default(0)
+
+  package           TravelPackage    @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  activityProduct   ActivityProduct  @relation(fields: [activityProductId], references: [id])
+
+  @@unique([packageId, activityProductId])
+  @@index([packageId])
+}
+
+model PackageTransfer {
+  id                String           @id @default(cuid())
+  packageId         String
+  transferProductId String
+  sortOrder         Int              @default(0)
+
+  package           TravelPackage    @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  transferProduct   TransferProduct  @relation(fields: [transferProductId], references: [id])
+
+  @@unique([packageId, transferProductId])
+  @@index([packageId])
+}
+
+model PackageProductOption {
+  id              String   @id @default(uuid())
+  packageId       String
+  productType     String   // HOTEL|ACTIVITY|TRANSFER
+  productId       String
+  optionGroup     String
+  isDefault       Boolean  @default(false)
+  sortOrder       Int      @default(0)
+  priceAdjustment Int      @default(0)
+  status          String   @default("Active") // Active|Inactive
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  package         TravelPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, productType, productId])
+  @@index([packageId])
+  @@index([packageId, productType, optionGroup])
+}
+
+model PackageVersion {
+  id             String        @id @default(cuid())
+  packageId      String
+  versionNumber  Int
+  snapshot       Json
+  changeSummary  String?
+  createdById    String?
+  createdByName  String?
+  createdAt      DateTime      @default(now())
+
+  package        TravelPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, versionNumber])
+  @@index([packageId])
+}
+
+model PackageDay {
+  id          String   @id @default(uuid())
+  packageId   String
+  dayNumber   Int
+  title       String
+  description String?  @db.Text
+  mealPlan    Json     @default("{}")
+  coverImage  String?
+  gallery     Json     @default("[]")
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  package     TravelPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  items       PackageTimelineItem[]
+
+  @@unique([packageId, dayNumber])
+  @@index([packageId])
+}
+
+model PackageTimelineItem {
+  id          String   @id @default(uuid())
+  packageDayId String
+  itemType    String   // HOTEL|ACTIVITY|TRANSFER|TEXT
+  referenceId String?
+  optionGroup String?
+  title       String
+  description String?  @db.Text
+  startTime   String?
+  endTime     String?
+  sortOrder   Int      @default(0)
+  icon        String?
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  day         PackageDay @relation(fields: [packageDayId], references: [id], onDelete: Cascade)
+
+  @@index([packageDayId])
+  @@index([itemType])
+}
+
+model TravelRequirement {
+  id                 String    @id @default(uuid())
+  agencyId           String?
+  branchId           String?
+  requirementCode    String
+  customerId         String?
+  leadId             String?
+  destinationId      String
+  travelStartDate    DateTime
+  travelEndDate      DateTime
+  days               Int       @default(1)
+  nights             Int       @default(0)
+  adults             Int       @default(1)
+  children           Int       @default(0)
+  infants            Int       @default(0)
+  budgetMin          Int       @default(0)
+  budgetMax          Int       @default(0)
+  hotelCategory      String?
+  packageType        String?
+  preferredMealPlan  Json      @default("{}")
+  preferredTransfer  String?
+  flightRequired     Boolean   @default(false)
+  visaRequired       Boolean   @default(false)
+  insuranceRequired  Boolean   @default(false)
+  specialRequests    String?   @db.Text
+  status             String    @default("Draft") // Draft|Qualified|Quoted|Booked|Cancelled
+  selectedPackageId  String?
+  markup             Int       @default(0)
+  metadata           Json      @default("{}")
+  createdById        String?
+  updatedById        String?
+  createdByName      String?
+  updatedByName      String?
+  deletedAt          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  customer           Customer?   @relation(fields: [customerId], references: [id])
+  lead               Lead?       @relation(fields: [leadId], references: [id])
+  destination        Destination @relation(fields: [destinationId], references: [id])
+  selections         TravelRequirementSelection[]
+  history            TravelRequirementHistory[]
+  travelProposals    TravelProposal[]
+
+  @@unique([agencyId, requirementCode])
+  @@index([agencyId])
+  @@index([customerId])
+  @@index([leadId])
+  @@index([destinationId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model TravelRequirementSelection {
+  id                   String   @id @default(uuid())
+  requirementId        String
+  packageId            String
+  hotelOptionGroup     String?
+  activityOptionGroup  String?
+  transferOptionGroup  String?
+  markup               Int      @default(0)
+  hotelCost            Int      @default(0)
+  activityCost         Int      @default(0)
+  transferCost         Int      @default(0)
+  sellingPrice         Int      @default(0)
+  matchScore           Float?
+  matchReasons         Json     @default("[]")
+  isSelected           Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  requirement          TravelRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@unique([requirementId, packageId])
+  @@index([requirementId])
+  @@index([packageId])
+}
+
+model TravelRequirementHistory {
+  id             String   @id @default(uuid())
+  requirementId  String
+  action         String
+  summary        String?
+  createdByName  String?
+  createdAt      DateTime @default(now())
+
+  requirement    TravelRequirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+
+  @@index([requirementId])
+}
+
+model QuoteTemplate {
+  id              String    @id @default(uuid())
+  agencyId        String?
+  templateName    String
+  description     String?   @db.Text
+  theme           String    @default("Classic")
+  primaryColor    String    @default("#2A7BBD")
+  secondaryColor  String    @default("#00A79D")
+  fontFamily      String    @default("Inter")
+  logo            String?
+  watermark       String?
+  headerStyle     Json      @default("{}")
+  footerStyle     Json      @default("{}")
+  pageSize        String    @default("A4")
+  orientation     String    @default("portrait")
+  backgroundImage String?
+  showPageNumbers Boolean   @default(true)
+  isDefault       Boolean   @default(false)
+  status          String    @default("Draft") // Draft|Active|Archived
+  createdById     String?
+  updatedById     String?
+  createdByName   String?
+  updatedByName   String?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  sections        QuoteTemplateSection[]
+  history         QuoteTemplateHistory[]
+
+  @@index([agencyId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model QuoteTemplateSection {
+  id          String   @id @default(uuid())
+  templateId  String
+  sectionType String
+  sortOrder   Int      @default(0)
+  isVisible   Boolean  @default(true)
+  customTitle String?
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  template    QuoteTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@index([sectionType])
+}
+
+model QuoteTemplateHistory {
+  id            String   @id @default(uuid())
+  templateId    String
+  action        String
+  summary       String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  template      QuoteTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+model AgencyBranding {
+  id              String   @id @default(uuid())
+  agencyId        String   @unique
+  primaryColor    String   @default("#2A7BBD")
+  secondaryColor  String   @default("#00A79D")
+  fontFamily      String   @default("Inter")
+  logo            String?
+  watermark       String?
+  footerText      String?
+  backgroundImage String?
+  headerHtml      String?  @db.Text
+  showPageNumbers Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
+}
+
+model TravelProposal {
+  id                   String    @id @default(uuid())
+  agencyId             String?
+  proposalNumber       String
+  travelRequirementId  String?
+  customerId           String?
+  leadId               String?
+  selectedPackageId    String?
+  selectedTemplateId   String?
+  proposalStatus       String    @default("Draft") // Draft|Internal Review|Approved|Sent|Viewed|Accepted|Booked|Rejected|Expired|Cancelled
+  currency             String    @default("INR")
+  validUntil           DateTime?
+  notes                String?   @db.Text
+  internalNotes        String?   @db.Text
+  currentVersion       Int       @default(1)
+  createdById          String?
+  updatedById          String?
+  createdByName        String?
+  updatedByName        String?
+  deletedAt            DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  customer             Customer?           @relation(fields: [customerId], references: [id])
+  lead                 Lead?               @relation(fields: [leadId], references: [id])
+  travelRequirement    TravelRequirement?  @relation(fields: [travelRequirementId], references: [id])
+  snapshots            ProposalSnapshot[]
+  history              ProposalHistory[]
+
+  @@unique([agencyId, proposalNumber])
+  @@index([agencyId])
+  @@index([travelRequirementId])
+  @@index([customerId])
+  @@index([leadId])
+  @@index([proposalStatus])
+  @@index([deletedAt])
+}
+
+model ProposalSnapshot {
+  id            String   @id @default(uuid())
+  proposalId    String
+  versionNumber Int
+  snapshot      Json
+  changeSummary String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  proposal      TravelProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, versionNumber])
+  @@index([proposalId])
+}
+
+model ProposalHistory {
+  id            String   @id @default(uuid())
+  proposalId    String
+  action        String
+  summary       String?
+  fromStatus    String?
+  toStatus      String?
+  versionNumber Int?
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  proposal      TravelProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
 }
 

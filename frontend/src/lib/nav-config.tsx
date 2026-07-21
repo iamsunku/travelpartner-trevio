@@ -1,11 +1,11 @@
 "use client";
 
 import {
-  LayoutDashboard, Plane, Hotel, Palmtree, MapPin, Car, Package,
+  LayoutDashboard, Plane, Hotel, Palmtree, MapPin, Car, Package, Globe, Layers,
   Users, Target, FileSpreadsheet, Ticket, CreditCard, Wallet, Percent,
   BarChart3, UserCog, CheckSquare, LifeBuoy, Bell, Megaphone, LayoutGrid,
   Receipt, KeyRound, Settings, History, Building2, GitBranch, Store,
-  Activity, LineChart, CalendarCheck, CheckCircle, type LucideIcon,
+  Activity, LineChart, CalendarCheck, CheckCircle, Palette, FileText, type LucideIcon,
 } from "lucide-react";
 import type { Module, Role, User, ViewKey } from "@/types";
 import { hasPermission } from "@/lib/permissions";
@@ -42,8 +42,10 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Products",
     items: [
-      { key: "hotel-products", label: "Hotel Products", icon: Package, module: "hotels" },
+      { key: "destinations", label: "Destinations", icon: Globe, module: "destinations" },
+      { key: "hotel-products", label: "Hotels", icon: Hotel, module: "hotels" },
       { key: "activity-packages", label: "Activities & Transfers", icon: MapPin, module: "activities" },
+      { key: "packages", label: "Packages", icon: Layers, module: "packages" },
       { key: "product-approvals", label: "Rate Approvals", icon: CheckCircle, module: "activities" },
     ],
   },
@@ -52,6 +54,8 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "crm", label: "CRM / Leads", icon: Target, module: "crm" },
       { key: "customers", label: "Customers", icon: Users, module: "customers" },
+      { key: "trip-planner", label: "Trip Planner", icon: MapPin, module: "trip-planner" },
+      { key: "travel-proposals", label: "Travel Proposals", icon: FileSpreadsheet, module: "travel-proposals" },
       { key: "quotations", label: "Quotations", icon: FileSpreadsheet, module: "quotations" },
     ],
   },
@@ -79,6 +83,13 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: "tasks", label: "Task Management", icon: CheckSquare, module: "tasks" },
       { key: "support", label: "Support", icon: LifeBuoy, module: "support" },
       { key: "notifications", label: "Notifications", icon: Bell, module: "notifications", badge: "3" },
+    ],
+  },
+  {
+    title: "Settings",
+    items: [
+      { key: "branding", label: "Branding", icon: Palette, module: "quote-templates" },
+      { key: "quote-templates", label: "Quote Templates", icon: FileText, module: "quote-templates" },
     ],
   },
   {

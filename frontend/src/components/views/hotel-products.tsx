@@ -1,6 +1,6 @@
 "use client";
 
-import { ProductCatalog } from "@/components/shared/product-catalog";
+import { ProductCatalog, DestinationNameCell } from "@/components/shared/product-catalog";
 import { StatusBadge } from "@/components/shared/ui-helpers";
 import type { ProductRecord } from "@/types";
 
@@ -23,6 +23,7 @@ export function HotelProductsView() {
       apiPath="/api/products/hotels"
       columns={[
         { key: "name", label: "Hotel Name" },
+        { key: "destination", label: "Destination", render: (i) => <DestinationNameCell item={i} /> },
         { key: "city", label: "City" },
         { key: "country", label: "Country" },
         { key: "starCategory", label: "Stars", render: (i) => `${i.starCategory ?? 3}★` },

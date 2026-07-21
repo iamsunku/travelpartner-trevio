@@ -5,6 +5,8 @@ import { persist } from "zustand/middleware";
 import type { User, ViewKey } from "@/types";
 import { api, ApiError } from "@/lib/api";
 import { mapApiUser } from "@/lib/api-mappers";
+import { SEARCH_ITEMS } from "@/lib/search-config";
+import { pushRecentView } from "@/lib/recent-views";
 
 interface AuthState {
   user: User | null;
@@ -76,6 +78,8 @@ export const useAppStore = create<AppState>()(
       sidebarOpen: false,
       theme: "light",
       setView: (view) => {
+        const label = SEARCH_ITEMS.find((s) => s.key === view)?.label ?? view;
+        pushRecentView(view, label);
         set({ activeView: view, sidebarOpen: false });
         updateUrlView(view);
       },

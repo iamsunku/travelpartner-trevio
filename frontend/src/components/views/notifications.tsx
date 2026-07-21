@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
-  Bell, CheckCheck, Plane, CreditCard, Server, Users, Briefcase, Target,
+  Bell, CheckCheck, Plane, CreditCard, Server, Users, Briefcase, Target, FileSpreadsheet,
   AlertTriangle, Filter,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -23,10 +23,14 @@ const TYPE_META: Record<string, { icon: React.ElementType; color: string; label:
   api: { icon: Server, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400", label: "API" },
   customer: { icon: Users, color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400", label: "Customer" },
   internal: { icon: Briefcase, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400", label: "Internal" },
+  proposal: { icon: FileSpreadsheet, color: "bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400", label: "Proposal" },
+  requirement: { icon: Target, color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400", label: "Trip Requirement" },
+  reminder: { icon: Bell, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400", label: "Reminder" },
+  mention: { icon: Users, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400", label: "Mention" },
   task: { icon: Target, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400", label: "Task" },
 };
 
-const FILTER_TABS = ["all", "booking", "payment", "api", "customer", "internal", "task"] as const;
+const FILTER_TABS = ["all", "booking", "payment", "proposal", "requirement", "api", "customer", "internal", "task"] as const;
 
 const PRIORITY_DOT: Record<string, string> = {
   high: "bg-rose-500", medium: "bg-amber-500", low: "bg-emerald-500",
