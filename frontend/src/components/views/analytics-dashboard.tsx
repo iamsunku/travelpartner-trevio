@@ -41,6 +41,7 @@ import {
   SectionHeader,
   MetricCard,
 } from "@/components/shared/ui-helpers";
+import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 interface Summary {
@@ -126,26 +127,20 @@ export function AnalyticsDashboard() {
   async function fetchAnalytics() {
     try {
       setFetchError(null);
-      const token = localStorage.getItem("token");
-      const headers = { Authorization: `Bearer ${token}` };
+      const [summaryData, endpointsData, errorsData, activityData] = await Promise.all([
+        apiFetch<Summary>("/api/analytics/summary"),
+        apiFetch<{ stats?: Endpoint[] }>(`/api/analytics/endpoints?hours=${hours}`),
+        apiFetch<{ errors?: ApiError[] }>(`/api/analytics/errors?hours=${hours}`),
+        apiFetch<{ activity?: UserActivity[] }>(`/api/analytics/user-activity?hours=${hours}`),
+      ]);
 
-      const [summaryRes, endpointsRes, errorsRes, activityRes] =
-        await Promise.all([
-          fetch("/api/analytics/summary", { headers }),
-          fetch(`/api/analytics/endpoints?hours=${hours}`, { headers }),
-          fetch(`/api/analytics/errors?hours=${hours}`, { headers }),
-          fetch(`/api/analytics/user-activity?hours=${hours}`, { headers }),
-        ]);
-
-      if (summaryRes.ok) setSummary(await summaryRes.json());
-      if (endpointsRes.ok) setEndpoints((await endpointsRes.json()).stats || []);
-      if (errorsRes.ok) setErrors((await errorsRes.json()).errors || []);
-      if (activityRes.ok)
-        setUserActivity((await activityRes.json()).activity || []);
-
+      setSummary(summaryData);
+      setEndpoints(endpointsData.stats || []);
+      setErrors(errorsData.errors || []);
+      setUserActivity(activityData.activity || []);
       setLoading(false);
-    } catch {
-      setFetchError("Unable to load analytics data. Please try again.");
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : "Unable to load analytics data. Please try again.");
       setLoading(false);
     }
   }

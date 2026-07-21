@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Save, Send, Star, CheckCircle, Archive } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Download, Eye, FileText, RefreshCw, Save, Send, Trash2 } from "lucide-react";
 import { PageShell, StatusBadge } from "@/components/shared/ui-helpers";
 import { ActivityTimeline, DetailBackButton, EnterprisePageHeader } from "@/components/shared/enterprise";
 import { Button } from "@/components/ui/button";
@@ -11,12 +11,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TravelProposalWorkspace } from "@/components/shared/travel-proposal-workspace";
 import { QuoteTemplatePreview } from "@/components/shared/quote-template-preview";
-import { apiFetch } from "@/lib/api";
+import {
+  ProposalPdfProgressDialog,
+  runPdfProgressSequence,
+  type PdfProgressStep,
+} from "@/components/shared/proposal-pdf-progress-dialog";
+import { apiFetch, apiFetchBlob } from "@/lib/api";
 import { useSubmitLock } from "@/hooks/use-submit-lock";
 import type {
-  ProposalHistoryRecord, ProposalSnapshotData, ProposalSnapshotRecord,
+  ProposalHistoryRecord, ProposalPdfRecord, ProposalSnapshotData, ProposalSnapshotRecord,
   QuotePreviewMockData, QuoteSectionType, TravelProposalRecord,
 } from "@/types";
+
+const PDF_ELIGIBLE = new Set([
+  "Internal Review", "Approved", "Sent", "Viewed", "Accepted", "Booked",
+]);
 
 interface TravelProposalDetailProps {
   proposalId: string;
@@ -51,22 +60,31 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
   const { submitting, runSubmit } = useSubmitLock();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pdfVersions, setPdfVersions] = useState<ProposalPdfRecord[]>([]);
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfStep, setPdfStep] = useState<PdfProgressStep>("preparing");
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const pdfCancelRef = useRef({ cancelled: false });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [detail, preview, vers, hist] = await Promise.all([
+      const [detail, preview, vers, hist, pdfMeta] = await Promise.all([
         apiFetch<{ item: TravelProposalRecord; snapshot: ProposalSnapshotData }>(`/api/travel-proposals/${proposalId}`),
         apiFetch<{ previewData: QuotePreviewMockData }>(`/api/travel-proposals/${proposalId}/preview`),
         apiFetch<{ versions: ProposalSnapshotRecord[] }>(`/api/travel-proposals/${proposalId}/versions`),
         apiFetch<{ history: ProposalHistoryRecord[] }>(`/api/travel-proposals/${proposalId}/history`),
+        apiFetch<{ proposal: TravelProposalRecord; versions: ProposalPdfRecord[] }>(
+          `/api/travel-proposals/${proposalId}/pdf?meta=1`
+        ).catch(() => ({ proposal: null as unknown as TravelProposalRecord, versions: [] as ProposalPdfRecord[] })),
       ]);
-      setProposal(detail.item);
+      setProposal({ ...detail.item, ...(pdfMeta.proposal ?? {}) });
       setSnapshot(detail.snapshot);
       setDraftSnapshot(detail.snapshot);
       setPreviewData(preview.previewData);
       setVersions(vers.versions as ProposalSnapshotRecord[]);
       setHistory(hist.history);
+      setPdfVersions(pdfMeta.versions ?? []);
       if (vers.versions.length >= 2) {
         setCompareV1(String(vers.versions[1]?.versionNumber ?? 1));
         setCompareV2(String(vers.versions[0]?.versionNumber ?? 2));
@@ -134,12 +152,81 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
     setCompareDiff(data.diff);
   };
 
+  const openPdfBlob = async (path: string, mode: "preview" | "download") => {
+    const blob = await apiFetchBlob(path);
+    const url = URL.createObjectURL(blob);
+    if (mode === "preview") {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${proposal?.proposalNumber ?? "proposal"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
+
+  const generatePdf = async (force = false) => {
+    if (!proposal) return;
+    setError(null);
+    setPdfError(null);
+    setPdfStep("preparing");
+    setPdfDialogOpen(true);
+    pdfCancelRef.current = { cancelled: false };
+    const stopProgress = runPdfProgressSequence(setPdfStep, pdfCancelRef.current);
+    try {
+      const res = await apiFetch<{
+        cached: boolean;
+        downloadUrl: string;
+        pdfVersion?: number | null;
+        item: TravelProposalRecord;
+      }>(`/api/travel-proposals/${proposalId}/generate-pdf`, {
+        method: "POST",
+        body: JSON.stringify({ force }),
+      });
+      pdfCancelRef.current.cancelled = true;
+      stopProgress();
+      setPdfStep("complete");
+      setProposal((prev) => (prev ? { ...prev, ...res.item } : res.item));
+      setMessage(
+        res.cached
+          ? `Using cached PDF for version ${res.pdfVersion ?? proposal.currentVersion}`
+          : force
+            ? `PDF regenerated for version ${res.pdfVersion ?? proposal.currentVersion}`
+            : `PDF generated for version ${res.pdfVersion ?? proposal.currentVersion}`
+      );
+      await load();
+    } catch (e) {
+      pdfCancelRef.current.cancelled = true;
+      stopProgress();
+      const msg = e instanceof Error ? e.message : "PDF generation failed";
+      setPdfStep("error");
+      setPdfError(msg);
+      setError(msg);
+    }
+  };
+
+  const deletePdfs = async () => {
+    setError(null);
+    try {
+      await apiFetch(`/api/travel-proposals/${proposalId}/pdf`, { method: "DELETE" });
+      setMessage("Generated PDFs deleted");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete PDFs");
+    }
+  };
+
   if (loading) return <PageShell><Skeleton className="h-8 w-48 mb-4" /><Skeleton className="h-96 w-full" /></PageShell>;
   if (!proposal || !draftSnapshot || !previewData) {
     return <PageShell><Button variant="ghost" onClick={onBack}>Back</Button><p className="mt-4 text-muted-foreground">Not found</p></PageShell>;
   }
 
   const readOnly = ["Booked", "Cancelled", "Expired"].includes(proposal.proposalStatus);
+  const canGeneratePdf = PDF_ELIGIBLE.has(proposal.proposalStatus);
+  const hasPdf = Boolean(proposal.pdfUrl && proposal.pdfVersion);
   const actions = STATUS_ACTIONS[proposal.proposalStatus] ?? [];
   const template = draftSnapshot.template as Record<string, unknown> | null;
   const branding = draftSnapshot.branding as Record<string, unknown> | null;
@@ -177,6 +264,29 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
                 <Save className="w-4 h-4 mr-1" />{submitting ? "Saving…" : "Save Version"}
               </Button>
             )}
+            {canGeneratePdf && (
+              <Button variant="outline" size="sm" onClick={() => generatePdf(Boolean(hasPdf))}>
+                <FileText className="w-4 h-4 mr-1" />{hasPdf ? "Regenerate PDF" : "Generate PDF"}
+              </Button>
+            )}
+            {hasPdf && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openPdfBlob(`/api/travel-proposals/${proposalId}/pdf`, "preview")}
+                >
+                  <Eye className="w-4 h-4 mr-1" />Preview PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openPdfBlob(`/api/travel-proposals/${proposalId}/pdf?download=1`, "download")}
+                >
+                  <Download className="w-4 h-4 mr-1" />Download PDF
+                </Button>
+              </>
+            )}
             {actions.map((a) => (
               <Button key={a.next} variant="outline" size="sm" onClick={() => changeStatus(a.next)}>
                 {a.next === "Sent" ? <Send className="w-4 h-4 mr-1" /> : null}{a.label}
@@ -201,6 +311,7 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
           <TabsTrigger value="pricing">Pricing</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           <TabsTrigger value="versions">Versions</TabsTrigger>
+          <TabsTrigger value="pdf">PDF</TabsTrigger>
           <TabsTrigger value="preview">Preview</TabsTrigger>
         </TabsList>
 
@@ -314,10 +425,137 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
           )}
         </TabsContent>
 
+        <TabsContent value="pdf" className="mt-4 space-y-4">
+          <Card className="border-border/80 shadow-none">
+            <CardContent className="p-4 space-y-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold text-sm">Proposal PDF Rendering</h4>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xl">
+                    Generates a branded multi-page PDF from the frozen proposal snapshot and selected quote template.
+                    Cached until the proposal version changes.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {canGeneratePdf ? (
+                    <>
+                      <Button size="sm" onClick={() => generatePdf(false)}>
+                        <FileText className="w-4 h-4 mr-1" />{hasPdf ? "Generate / Use Cache" : "Generate PDF"}
+                      </Button>
+                      {hasPdf && (
+                        <Button size="sm" variant="outline" onClick={() => generatePdf(true)}>
+                          <RefreshCw className="w-4 h-4 mr-1" />Regenerate PDF
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                      Move the proposal to Internal Review (or later) to generate a PDF.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-3 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground text-xs">Current PDF version</span>
+                  <p className="font-medium">{proposal.pdfVersion ?? "—"}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Generated at</span>
+                  <p className="font-medium">{formatDate(proposal.pdfGeneratedAt)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Proposal version</span>
+                  <p className="font-medium">{proposal.currentVersion}</p>
+                </div>
+              </div>
+
+              {hasPdf && (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openPdfBlob(`/api/travel-proposals/${proposalId}/pdf`, "preview")}
+                  >
+                    <Eye className="w-4 h-4 mr-1" />Preview PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openPdfBlob(`/api/travel-proposals/${proposalId}/pdf?download=1`, "download")}
+                  >
+                    <Download className="w-4 h-4 mr-1" />Download PDF
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-destructive" onClick={deletePdfs}>
+                    <Trash2 className="w-4 h-4 mr-1" />Delete PDFs
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/80 shadow-none">
+            <CardContent className="p-0">
+              <div className="px-4 py-3 border-b">
+                <h4 className="font-semibold text-sm">Version PDFs</h4>
+                <p className="text-xs text-muted-foreground">Each proposal version can keep its own generated PDF.</p>
+              </div>
+              {pdfVersions.length === 0 ? (
+                <p className="px-4 py-6 text-sm text-muted-foreground">No PDFs generated yet.</p>
+              ) : (
+                <ul className="divide-y">
+                  {pdfVersions.map((pdf) => (
+                    <li key={pdf.id} className="px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="font-medium">Version {pdf.versionNumber}</span>
+                        <p className="text-xs text-muted-foreground">
+                          {pdf.pageCount} pages · {(pdf.fileSize / 1024).toFixed(0)} KB · {formatDate(pdf.generatedAt)}
+                          {pdf.generatedByName ? ` · ${pdf.generatedByName}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            openPdfBlob(`/api/travel-proposals/${proposalId}/pdf/${pdf.versionNumber}`, "preview")
+                          }
+                        >
+                          <Eye className="w-3.5 h-3.5 mr-1" />Preview
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            openPdfBlob(
+                              `/api/travel-proposals/${proposalId}/pdf/${pdf.versionNumber}?download=1`,
+                              "download"
+                            )
+                          }
+                        >
+                          <Download className="w-3.5 h-3.5 mr-1" />Download
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="preview" className="mt-4">
           <QuoteTemplatePreview template={previewTemplate} sections={sections} mockData={previewData} className="max-w-3xl mx-auto" />
         </TabsContent>
       </Tabs>
+
+      <ProposalPdfProgressDialog
+        open={pdfDialogOpen}
+        step={pdfStep}
+        error={pdfError}
+        onOpenChange={setPdfDialogOpen}
+      />
     </PageShell>
   );
 }

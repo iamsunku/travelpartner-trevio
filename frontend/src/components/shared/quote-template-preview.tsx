@@ -101,6 +101,18 @@ function RenderSection({
           ))}
         </div>
       );
+    case "ACTIVITIES":
+      return (
+        <div className="space-y-2">
+          {(data.activities?.length ? data.activities : [{ name: "Activities as per itinerary", duration: "—", description: "Included experiences will appear here." }]).map((a, i) => (
+            <div key={i} className="rounded border p-2 text-xs">
+              <p className="font-medium">{a.name}</p>
+              <p className="text-muted-foreground">Duration: {a.duration}{a.location ? ` · ${a.location}` : ""}</p>
+              {a.description && <p className="text-muted-foreground mt-0.5">{a.description}</p>}
+            </div>
+          ))}
+        </div>
+      );
     case "FLIGHTS":
       return (
         <div className="space-y-2">

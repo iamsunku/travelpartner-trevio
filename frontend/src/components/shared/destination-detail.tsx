@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import {
-  ArrowLeft, MapPin, Globe, Clock, DollarSign, Calendar, Pencil,
+  MapPin, Globe, Clock, DollarSign, Calendar, Pencil,
   Copy, Archive, Trash2, Hotel, Activity, Car, Package, FileText, History,
 } from "lucide-react";
-import { PageShell, PageHeader, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, StatusBadge } from "@/components/shared/ui-helpers";
+import { DetailBackButton, EnterprisePageHeader } from "@/components/shared/enterprise";
 import { DestinationFormDialog } from "@/components/shared/destination-form-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -294,7 +295,7 @@ export function DestinationDetail({ destinationId, onBack, onRefreshList }: Dest
   if (!item) {
     return (
       <PageShell>
-        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="w-4 h-4 mr-1" />Back</Button>
+        <DetailBackButton onClick={onBack} label="Back to destinations" />
         <p className="text-muted-foreground mt-4">Destination not found.</p>
       </PageShell>
     );
@@ -305,42 +306,42 @@ export function DestinationDetail({ destinationId, onBack, onRefreshList }: Dest
 
   return (
     <PageShell>
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="space-y-2">
-          <Button variant="ghost" size="sm" className="-ml-2" onClick={onBack}>
-            <ArrowLeft className="w-4 h-4 mr-1" />Back to Destinations
-          </Button>
-          <PageHeader
-            title={item.name}
-            subtitle={[item.city, item.region, item.country].filter(Boolean).join(", ")}
-          />
-          <div className="flex items-center gap-2 flex-wrap">
-            <StatusBadge status={item.status} />
-            <span className="text-xs text-muted-foreground">/{item.slug}</span>
+      <DetailBackButton onClick={onBack} label="Back to destinations" />
+      <EnterprisePageHeader
+        title={item.name}
+        subtitle={[item.city, item.region, item.country].filter(Boolean).join(", ")}
+        breadcrumbs={[
+          { label: "Destinations", onClick: onBack },
+          { label: item.name },
+        ]}
+        actions={
+          <div className="flex gap-2 flex-wrap">
+            {canEdit && (
+              <Button variant="outline" size="sm" onClick={() => setFormOpen(true)}>
+                <Pencil className="w-4 h-4 mr-1" />Edit
+              </Button>
+            )}
+            {canAdd && (
+              <Button variant="outline" size="sm" onClick={handleDuplicate}>
+                <Copy className="w-4 h-4 mr-1" />Duplicate
+              </Button>
+            )}
+            {canEdit && item.status !== "Archived" && (
+              <Button variant="outline" size="sm" onClick={handleArchive}>
+                <Archive className="w-4 h-4 mr-1" />Archive
+              </Button>
+            )}
+            {canDelete && (
+              <Button variant="outline" size="sm" className="text-destructive" onClick={() => setDeleteOpen(true)}>
+                <Trash2 className="w-4 h-4 mr-1" />Delete
+              </Button>
+            )}
           </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {canEdit && (
-            <Button variant="outline" size="sm" onClick={() => setFormOpen(true)}>
-              <Pencil className="w-4 h-4 mr-1" />Edit
-            </Button>
-          )}
-          {canAdd && (
-            <Button variant="outline" size="sm" onClick={handleDuplicate}>
-              <Copy className="w-4 h-4 mr-1" />Duplicate
-            </Button>
-          )}
-          {canEdit && item.status !== "Archived" && (
-            <Button variant="outline" size="sm" onClick={handleArchive}>
-              <Archive className="w-4 h-4 mr-1" />Archive
-            </Button>
-          )}
-          {canDelete && (
-            <Button variant="outline" size="sm" className="text-destructive" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="w-4 h-4 mr-1" />Delete
-            </Button>
-          )}
-        </div>
+        }
+      />
+      <div className="flex items-center gap-2 flex-wrap -mt-1 mb-2">
+        <StatusBadge status={item.status} />
+        <span className="text-xs text-muted-foreground">/{item.slug}</span>
       </div>
 
       {hero && (

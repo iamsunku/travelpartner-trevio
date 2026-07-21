@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Plus, Search, Copy, Archive, Trash2, Pencil, Download, Upload,
+  Plus, Copy, Archive, Trash2, Pencil, Download, Upload,
   MapPin, CheckCircle, Globe,
 } from "lucide-react";
-import { PageShell, PageHeader, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
+import {
+  CatalogToolbar, EnterprisePageHeader,
+} from "@/components/shared/enterprise";
 import { DestinationFormDialog } from "@/components/shared/destination-form-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -315,9 +317,17 @@ export function DestinationCatalog({ onSelect }: DestinationCatalogProps) {
 
   return (
     <PageShell>
-      <PageHeader
+      <EnterprisePageHeader
         title="Destinations"
         subtitle="Central master for destination information — referenced by hotels, activities, transfers, and packages."
+        breadcrumbs={[{ label: "Products" }, { label: "Destinations" }]}
+        actions={
+          canAdd ? (
+            <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
+              <Plus className="w-4 h-4 mr-1" />Add Destination
+            </Button>
+          ) : undefined
+        }
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-xl">
@@ -327,62 +337,61 @@ export function DestinationCatalog({ onSelect }: DestinationCatalogProps) {
 
       <Card className="border-border/80 shadow-none">
         <CardContent className="p-4 space-y-4">
-          <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
-            <div className="flex flex-1 gap-2 flex-wrap">
-              <div className="relative flex-1 max-w-sm min-w-[180px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input className="pl-9" placeholder="Search destinations..." value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
+          <CatalogToolbar
+            searchValue={q}
+            onSearchChange={(v) => { setQ(v); setPage(1); }}
+            searchPlaceholder="Search destinations..."
+            filters={
+              <>
+                <Select value={country} onValueChange={(v) => { setCountry(v); setPage(1); }}>
+                  <SelectTrigger className="w-[140px]" aria-label="Filter by country"><SelectValue placeholder="Country" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Countries</SelectItem>
+                    {countries.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={region} onValueChange={(v) => { setRegion(v); setPage(1); }}>
+                  <SelectTrigger className="w-[140px]" aria-label="Filter by region"><SelectValue placeholder="Region" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Regions</SelectItem>
+                    {regions.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
+                  <SelectTrigger className="w-[140px]" aria-label="Filter by status"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Status</SelectItem>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Draft">Draft</SelectItem>
+                    <SelectItem value="Inactive">Inactive</SelectItem>
+                    <SelectItem value="Archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sort} onValueChange={setSort}>
+                  <SelectTrigger className="w-[160px]" aria-label="Sort destinations"><SelectValue placeholder="Sort" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="createdAt">Newest</SelectItem>
+                    <SelectItem value="name">Name</SelectItem>
+                    <SelectItem value="country">Country</SelectItem>
+                    <SelectItem value="updatedAt">Last Updated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            }
+            actions={
+              <div className="flex gap-2 flex-wrap">
+                {canExport && <Button variant="outline" size="sm" onClick={exportCsv}><Download className="w-4 h-4 mr-1" />Export</Button>}
+                {canAdd && (
+                  <>
+                    <Button variant="outline" size="sm" onClick={downloadTemplate}><Download className="w-4 h-4 mr-1" />Template</Button>
+                    <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4 mr-1" />Import</Button>
+                    <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImport(f); }} />
+                  </>
+                )}
               </div>
-              <Select value={country} onValueChange={(v) => { setCountry(v); setPage(1); }}>
-                <SelectTrigger className="w-[140px]"><SelectValue placeholder="Country" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Countries</SelectItem>
-                  {countries.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={region} onValueChange={(v) => { setRegion(v); setPage(1); }}>
-                <SelectTrigger className="w-[140px]"><SelectValue placeholder="Region" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Regions</SelectItem>
-                  {regions.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
-                <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Status</SelectItem>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Draft">Draft</SelectItem>
-                  <SelectItem value="Inactive">Inactive</SelectItem>
-                  <SelectItem value="Archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={sort} onValueChange={setSort}>
-                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Sort" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="createdAt">Newest</SelectItem>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="country">Country</SelectItem>
-                  <SelectItem value="updatedAt">Last Updated</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {canExport && <Button variant="outline" size="sm" onClick={exportCsv}><Download className="w-4 h-4 mr-1" />Export</Button>}
-              {canAdd && (
-                <>
-                  <Button variant="outline" size="sm" onClick={downloadTemplate}><Download className="w-4 h-4 mr-1" />Template</Button>
-                  <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="w-4 h-4 mr-1" />Import</Button>
-                  <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImport(f); }} />
-                </>
-              )}
-              {canAdd && (
-                <Button size="sm" onClick={() => { setEditing(null); setFormOpen(true); }}>
-                  <Plus className="w-4 h-4 mr-1" />Add Destination
-                </Button>
-              )}
-            </div>
-          </div>
+            }
+            bordered={false}
+          />
 
           {selected.size > 0 && (
             <div className="flex items-center gap-2 flex-wrap p-2 rounded-lg bg-muted/50 border">

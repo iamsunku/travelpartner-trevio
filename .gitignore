@@ -8,6 +8,9 @@ frontend/out/
 # backend build output
 backend/dist/
 
+# generated proposal PDFs
+backend/storage/
+
 # env (keep examples only)
 .env
 .env.*

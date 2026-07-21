@@ -432,7 +432,6 @@ export const useDemoDataStore = create<DemoDataState>()(
             amount,
             source: "Top-up",
             description: `Wallet top-up via ${method}`,
-            agencyId: "ag-1",
           })
           .catch(() => reportSyncFailure("Wallet top-up"));
       },
@@ -457,7 +456,6 @@ export const useDemoDataStore = create<DemoDataState>()(
             amount,
             source: "Transfer",
             description,
-            agencyId: "ag-1",
           })
           .catch(() => reportSyncFailure("Wallet transfer"));
       },
@@ -473,6 +471,7 @@ export const useDemoDataStore = create<DemoDataState>()(
         set((s) => ({
           notifications: s.notifications.map((n) => ({ ...n, read: true })),
         }));
+        api.markAllNotificationsRead().catch(() => undefined);
       },
 
       resetDemoData: () => set({ ...initialState }),

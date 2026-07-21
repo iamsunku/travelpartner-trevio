@@ -19,6 +19,7 @@ import { mountPackageRoutes } from "./routes/packages.js";
 import { mountTripPlannerRoutes } from "./routes/trip-planner.js";
 import { mountQuoteTemplateRoutes } from "./routes/quote-templates.js";
 import { mountTravelProposalRoutes } from "./routes/travel-proposals.js";
+import { mountProposalPdfRoutes } from "./routes/proposal-pdf.js";
 import { analyticsMiddleware } from "./middleware/analytics.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import {
@@ -923,6 +924,19 @@ app.get("/api/notifications", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+app.patch("/api/notifications/read-all", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const result = await db.notification.updateMany({
+      where: { ...agencyScope(req), read: false },
+      data: { read: true },
+    });
+    res.json({ updated: result.count });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
   try {
     const notification = await db.notification.update({
@@ -1785,6 +1799,7 @@ mountPackageRoutes(app, agencyScope);
 mountTripPlannerRoutes(app, agencyScope);
 mountQuoteTemplateRoutes(app, agencyScope);
 mountTravelProposalRoutes(app, agencyScope);
+mountProposalPdfRoutes(app, agencyScope);
 
 // Analytics routes
 app.use("/api/analytics", analyticsRouter);

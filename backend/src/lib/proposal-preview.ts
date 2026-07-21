@@ -38,6 +38,17 @@ export function snapshotToPreviewData(snapshot: ProposalSnapshotData, proposalNu
     };
   });
 
+  const activities = ((pkg.activities as Record<string, unknown>[]) ?? []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const ap = (row.activityProduct as Record<string, unknown> | undefined) ?? {};
+    return {
+      name: String(ap.name ?? "Activity"),
+      duration: String(ap.duration ?? "—"),
+      description: String(ap.description ?? ""),
+      location: String(ap.location ?? ap.meetingPoint ?? ""),
+    };
+  });
+
   const agencyName = branding?.footerText ? String(branding.footerText).split("·")[0]?.trim() : "Travel Agency";
 
   return {
@@ -67,6 +78,7 @@ export function snapshotToPreviewData(snapshot: ProposalSnapshotData, proposalNu
     highlights: Array.isArray(pkg.highlights) ? (pkg.highlights as string[]) : snapshot.terms.inclusions,
     days,
     hotels: hotels.length ? hotels : [{ name: "Hotel TBD", category: snapshot.productSelections.hotelOptionGroup ?? "Standard", nights: Number(pkg.durationNights ?? 0), room: "Standard", mealPlan: "BB" }],
+    activities,
     flights: [],
     transfers: [{ name: "Airport Transfers", type: snapshot.productSelections.transferOptionGroup ?? "Private", notes: "As per itinerary" }],
     pricing: {

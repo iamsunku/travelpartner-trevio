@@ -447,7 +447,7 @@ export const travelRequirementSelectionSchema = z.object({
 });
 
 export const quoteSectionTypeEnum = z.enum([
-  "COVER", "OVERVIEW", "DESTINATION_HIGHLIGHTS", "ITINERARY", "HOTELS", "FLIGHTS", "TRANSFERS",
+  "COVER", "OVERVIEW", "DESTINATION_HIGHLIGHTS", "ITINERARY", "HOTELS", "ACTIVITIES", "FLIGHTS", "TRANSFERS",
   "PRICING", "INCLUSIONS", "EXCLUSIONS", "VISA", "TERMS", "CANCELLATION", "NOTES", "CONTACT", "CUSTOM_HTML",
 ]);
 

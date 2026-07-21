@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import {
-  ArrowLeft, Pencil, Copy, Archive, Trash2, Hotel, Activity, Car, History, DollarSign, Star, Map, Layers,
+  Pencil, Copy, Archive, Trash2, Hotel, Activity, Car, History, DollarSign, Star, Map, Layers,
 } from "lucide-react";
-import { PageShell, PageHeader, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, StatusBadge } from "@/components/shared/ui-helpers";
+import { DetailBackButton, EnterprisePageHeader } from "@/components/shared/enterprise";
 import { PackageWizard } from "@/components/shared/package-wizard";
 import {
   PackageItineraryBuilder,
@@ -154,7 +155,14 @@ export function PackageDetail({ packageId, onBack, onRefreshList }: PackageDetai
   };
 
   if (loading) return <PageShell><Skeleton className="h-8 w-48 mb-4" /><Skeleton className="h-64 w-full" /></PageShell>;
-  if (!item) return <PageShell><Button variant="ghost" onClick={onBack}><ArrowLeft className="w-4 h-4 mr-1" />Back</Button><p className="mt-4 text-muted-foreground">Not found</p></PageShell>;
+  if (!item) {
+    return (
+      <PageShell>
+        <DetailBackButton onClick={onBack} label="Back to packages" />
+        <p className="mt-4 text-muted-foreground">Not found</p>
+      </PageShell>
+    );
+  }
 
   const hero = item.heroImage || item.bannerImage;
 
@@ -170,24 +178,29 @@ export function PackageDetail({ packageId, onBack, onRefreshList }: PackageDetai
 
   return (
     <PageShell>
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="space-y-2">
-          <Button variant="ghost" size="sm" className="-ml-2" onClick={onBack}><ArrowLeft className="w-4 h-4 mr-1" />Back to Packages</Button>
-          <PageHeader title={item.packageName} subtitle={`${item.packageCode} · ${item.destination?.name ?? ""} · ${item.durationDays}D/${item.durationNights}N`} />
-          <div className="flex items-center gap-2 flex-wrap">
-            <StatusBadge status={item.status === "Published" ? "Active" : item.status} />
-            {item.isFeatured && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1"><Star className="w-3 h-3" />Featured</span>}
-            <span className="text-xs text-muted-foreground">v{item.currentVersion}</span>
+      <DetailBackButton onClick={onBack} label="Back to packages" />
+      <EnterprisePageHeader
+        title={item.packageName}
+        subtitle={`${item.packageCode} · ${item.destination?.name ?? ""} · ${item.durationDays}D/${item.durationNights}N`}
+        breadcrumbs={[
+          { label: "Packages", onClick: onBack },
+          { label: item.packageName },
+        ]}
+        actions={
+          <div className="flex gap-2 flex-wrap">
+            {canEdit && <Button variant="outline" size="sm" onClick={() => setWizardOpen(true)}><Pencil className="w-4 h-4 mr-1" />Edit</Button>}
+            {canAdd && <Button variant="outline" size="sm" onClick={handleDuplicate}><Copy className="w-4 h-4 mr-1" />Duplicate</Button>}
+            {canEdit && item.status === "Draft" && <Button size="sm" onClick={handlePublish}>Publish</Button>}
+            {canEdit && item.status === "Published" && <Button variant="outline" size="sm" onClick={handleUnpublish}>Unpublish</Button>}
+            {canEdit && item.status !== "Archived" && <Button variant="outline" size="sm" onClick={handleArchive}><Archive className="w-4 h-4 mr-1" />Archive</Button>}
+            {canDelete && <Button variant="outline" size="sm" className="text-destructive" onClick={() => setDeleteOpen(true)}><Trash2 className="w-4 h-4 mr-1" />Delete</Button>}
           </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {canEdit && <Button variant="outline" size="sm" onClick={() => setWizardOpen(true)}><Pencil className="w-4 h-4 mr-1" />Edit</Button>}
-          {canAdd && <Button variant="outline" size="sm" onClick={handleDuplicate}><Copy className="w-4 h-4 mr-1" />Duplicate</Button>}
-          {canEdit && item.status === "Draft" && <Button size="sm" onClick={handlePublish}>Publish</Button>}
-          {canEdit && item.status === "Published" && <Button variant="outline" size="sm" onClick={handleUnpublish}>Unpublish</Button>}
-          {canEdit && item.status !== "Archived" && <Button variant="outline" size="sm" onClick={handleArchive}><Archive className="w-4 h-4 mr-1" />Archive</Button>}
-          {canDelete && <Button variant="outline" size="sm" className="text-destructive" onClick={() => setDeleteOpen(true)}><Trash2 className="w-4 h-4 mr-1" />Delete</Button>}
-        </div>
+        }
+      />
+      <div className="flex items-center gap-2 flex-wrap -mt-1 mb-2">
+        <StatusBadge status={item.status === "Published" ? "Active" : item.status} />
+        {item.isFeatured && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 flex items-center gap-1"><Star className="w-3 h-3" />Featured</span>}
+        <span className="text-xs text-muted-foreground">v{item.currentVersion}</span>
       </div>
 
       {hero && (

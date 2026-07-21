@@ -59,6 +59,10 @@ export function getQuotePreviewMockData() {
     hotels: [
       { name: "Amari Phuket", category: "4-Star Premium", nights: 4, room: "Deluxe Sea View", mealPlan: "Breakfast" },
     ],
+    activities: [
+      { name: "Phi Phi Islands Tour", duration: "8 hours", description: "Speedboat with snorkeling and lunch", location: "Phi Phi" },
+      { name: "James Bond Island", duration: "6 hours", description: "Longtail boat excursion", location: "Phang Nga Bay" },
+    ],
     flights: [
       { route: "BOM → HKT", airline: "Thai Airways", flightNo: "TG-316", date: "15 Aug 2026", class: "Economy" },
       { route: "HKT → BOM", airline: "Thai Airways", flightNo: "TG-315", date: "19 Aug 2026", class: "Economy" },

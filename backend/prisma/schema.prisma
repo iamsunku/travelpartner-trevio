@@ -1100,6 +1100,9 @@ model TravelProposal {
   notes                String?   @db.Text
   internalNotes        String?   @db.Text
   currentVersion       Int       @default(1)
+  pdfUrl               String?
+  pdfGeneratedAt       DateTime?
+  pdfVersion           Int?
   createdById          String?
   updatedById          String?
   createdByName        String?
@@ -1113,6 +1116,7 @@ model TravelProposal {
   travelRequirement    TravelRequirement?  @relation(fields: [travelRequirementId], references: [id])
   snapshots            ProposalSnapshot[]
   history              ProposalHistory[]
+  pdfs                 ProposalPdf[]
 
   @@unique([agencyId, proposalNumber])
   @@index([agencyId])
@@ -1121,6 +1125,24 @@ model TravelProposal {
   @@index([leadId])
   @@index([proposalStatus])
   @@index([deletedAt])
+}
+
+model ProposalPdf {
+  id              String   @id @default(uuid())
+  proposalId      String
+  versionNumber   Int
+  fileName        String
+  filePath        String
+  fileUrl         String
+  fileSize        Int      @default(0)
+  pageCount       Int      @default(0)
+  generatedByName String?
+  generatedAt     DateTime @default(now())
+
+  proposal        TravelProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, versionNumber])
+  @@index([proposalId])
 }
 
 model ProposalSnapshot {

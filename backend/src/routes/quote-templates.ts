@@ -30,12 +30,13 @@ const DEFAULT_SECTIONS = [
   { sectionType: "DESTINATION_HIGHLIGHTS", customTitle: "Destination Highlights", sortOrder: 2 },
   { sectionType: "ITINERARY", customTitle: "Day-wise Itinerary", sortOrder: 3 },
   { sectionType: "HOTELS", customTitle: "Hotels", sortOrder: 4 },
-  { sectionType: "TRANSFERS", customTitle: "Transfers", sortOrder: 5 },
-  { sectionType: "PRICING", customTitle: "Pricing Summary", sortOrder: 6 },
-  { sectionType: "INCLUSIONS", customTitle: "Inclusions", sortOrder: 7 },
-  { sectionType: "EXCLUSIONS", customTitle: "Exclusions", sortOrder: 8 },
-  { sectionType: "TERMS", customTitle: "Terms & Conditions", sortOrder: 9 },
-  { sectionType: "CONTACT", customTitle: "Contact Information", sortOrder: 10 },
+  { sectionType: "ACTIVITIES", customTitle: "Activities", sortOrder: 5 },
+  { sectionType: "TRANSFERS", customTitle: "Transfers", sortOrder: 6 },
+  { sectionType: "PRICING", customTitle: "Pricing Summary", sortOrder: 7 },
+  { sectionType: "INCLUSIONS", customTitle: "Inclusions", sortOrder: 8 },
+  { sectionType: "EXCLUSIONS", customTitle: "Exclusions", sortOrder: 9 },
+  { sectionType: "TERMS", customTitle: "Terms & Conditions", sortOrder: 10 },
+  { sectionType: "CONTACT", customTitle: "Contact Information", sortOrder: 11 },
 ];
 
 type SectionInput = {

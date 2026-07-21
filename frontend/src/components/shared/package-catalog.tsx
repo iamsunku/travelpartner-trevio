@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Plus, Search, Copy, Archive, Trash2, Pencil, Download, Layers, Star,
+  Plus, Copy, Archive, Trash2, Pencil, Download, Layers, Star,
 } from "lucide-react";
-import { PageShell, PageHeader, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
+import {
+  CatalogToolbar, EnterprisePageHeader,
+} from "@/components/shared/enterprise";
 import { PackageWizard } from "@/components/shared/package-wizard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -138,7 +140,18 @@ export function PackageCatalog({ onSelect }: PackageCatalogProps) {
 
   return (
     <PageShell>
-      <PageHeader title="Package Builder" subtitle="Create reusable travel packages linked to destinations — ready for quotations." />
+      <EnterprisePageHeader
+        title="Package Builder"
+        subtitle="Create reusable travel packages linked to destinations — ready for quotations."
+        breadcrumbs={[{ label: "Products" }, { label: "Packages" }]}
+        actions={
+          canAdd ? (
+            <Button size="sm" onClick={() => { setEditing(null); setWizardOpen(true); }}>
+              <Plus className="w-4 h-4 mr-1" />Build Package
+            </Button>
+          ) : undefined
+        }
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-xl">
         <MetricCard icon={Layers} label="Total Packages" value={total.toLocaleString("en-IN")} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
@@ -147,47 +160,44 @@ export function PackageCatalog({ onSelect }: PackageCatalogProps) {
 
       <Card className="border-border/80 shadow-none">
         <CardContent className="p-4 space-y-4">
-          <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
-            <div className="flex flex-1 gap-2 flex-wrap">
-              <div className="relative flex-1 max-w-sm min-w-[180px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input className="pl-9" placeholder="Search packages..." value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} />
-              </div>
-              <Select value={destinationId} onValueChange={(v) => { setDestinationId(v); setPage(1); }}>
-                <SelectTrigger className="w-[150px]"><SelectValue placeholder="Destination" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Destinations</SelectItem>
-                  {destinations.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
-                <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Status</SelectItem>
-                  <SelectItem value="Draft">Draft</SelectItem>
-                  <SelectItem value="Published">Published</SelectItem>
-                  <SelectItem value="Archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={packageType} onValueChange={(v) => { setPackageType(v); setPage(1); }}>
-                <SelectTrigger className="w-[130px]"><SelectValue placeholder="Type" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="All">All Types</SelectItem>
-                  {["Standard", "Premium", "Luxury", "Budget", "Honeymoon", "Family", "Adventure"].map((t) => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2 flex-wrap">
+          <CatalogToolbar
+            searchValue={q}
+            onSearchChange={(v) => { setQ(v); setPage(1); }}
+            searchPlaceholder="Search packages..."
+            filters={
+              <>
+                <Select value={destinationId} onValueChange={(v) => { setDestinationId(v); setPage(1); }}>
+                  <SelectTrigger className="w-[150px]" aria-label="Filter by destination"><SelectValue placeholder="Destination" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Destinations</SelectItem>
+                    {destinations.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
+                  <SelectTrigger className="w-[130px]" aria-label="Filter by status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Status</SelectItem>
+                    <SelectItem value="Draft">Draft</SelectItem>
+                    <SelectItem value="Published">Published</SelectItem>
+                    <SelectItem value="Archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={packageType} onValueChange={(v) => { setPackageType(v); setPage(1); }}>
+                  <SelectTrigger className="w-[130px]" aria-label="Filter by type"><SelectValue placeholder="Type" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Types</SelectItem>
+                    {["Standard", "Premium", "Luxury", "Budget", "Honeymoon", "Family", "Adventure"].map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            }
+            actions={
               <Button variant="outline" size="sm" onClick={exportCsv}><Download className="w-4 h-4 mr-1" />Export</Button>
-              {canAdd && (
-                <Button size="sm" onClick={() => { setEditing(null); setWizardOpen(true); }}>
-                  <Plus className="w-4 h-4 mr-1" />Build Package
-                </Button>
-              )}
-            </div>
-          </div>
+            }
+            bordered={false}
+          />
 
           <div className="rounded-lg border overflow-x-auto">
             <Table>

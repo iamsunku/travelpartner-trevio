@@ -21,7 +21,7 @@ interface QuoteTemplateWorkspaceProps {
 }
 
 const DEFAULT_SECTIONS = [
-  "COVER", "OVERVIEW", "DESTINATION_HIGHLIGHTS", "ITINERARY", "HOTELS", "TRANSFERS", "PRICING",
+  "COVER", "OVERVIEW", "DESTINATION_HIGHLIGHTS", "ITINERARY", "HOTELS", "ACTIVITIES", "TRANSFERS", "PRICING",
   "INCLUSIONS", "EXCLUSIONS", "TERMS", "CONTACT",
 ] as const;
 
@@ -45,7 +45,7 @@ export function QuoteTemplateWorkspace({ onBack, onSaved }: QuoteTemplateWorkspa
       package: { name: "Sample Package", destination: "Destination", duration: "5D/4N", travelDates: "—", heroImage: "https://images.unsplash.com/photo-1552465011-b21e7e7a2598?w=800" },
       highlights: ["Highlight 1", "Highlight 2"],
       days: [{ dayNumber: 1, title: "Day 1", items: [{ time: "09:00", title: "Activity", description: "" }] }],
-      hotels: [], flights: [], transfers: [],
+      hotels: [], activities: [], flights: [], transfers: [],
       pricing: { hotelCost: 0, activityCost: 0, transferCost: 0, flightCost: 0, markup: 0, discount: 0, tax: 0, total: 0, currency: "INR" },
       inclusions: [], exclusions: [],
       visa: { required: false, details: "" },

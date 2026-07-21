@@ -13,6 +13,7 @@ export const QUOTE_SECTION_DEFS: QuoteSectionDef[] = [
   { type: "DESTINATION_HIGHLIGHTS", label: "Destination Highlights", description: "Key highlights and experiences" },
   { type: "ITINERARY", label: "Day-wise Itinerary", description: "Day-by-day schedule" },
   { type: "HOTELS", label: "Hotels", description: "Accommodation details" },
+  { type: "ACTIVITIES", label: "Activities", description: "Experiences and tours" },
   { type: "FLIGHTS", label: "Flights", description: "Flight segments" },
   { type: "TRANSFERS", label: "Transfers", description: "Ground transfers" },
   { type: "PRICING", label: "Pricing Summary", description: "Cost breakdown and total" },

@@ -20,7 +20,7 @@ import type { Agency } from "@/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { TOP_DESTINATIONS, RECENT_ACTIVITIES } from "@/lib/mock-data";
+import { TOP_DESTINATIONS } from "@/lib/mock-data";
 import { formatINR, formatFullINR, StatusBadge, avatarGradient, initials, MetricCard, BrandHero, SectionHeader, PageShell } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
@@ -105,6 +105,7 @@ function AgencyDashboard() {
   const financeStats = useDemoDataStore((s) => s.financeStats);
   const walletBalance = useDemoDataStore((s) => s.walletBalance);
   const payments = useDemoDataStore((s) => s.payments);
+  const notifications = useDemoDataStore((s) => s.notifications);
   const userName = useAuthStore((s) => s.user?.name);
   const [destinationInsights, setDestinationInsights] = useState<{
     topDestinations: Array<{ id: string; name: string; country: string; productCount: number; hotelCount: number; activityCount: number; transferCount: number }>;
@@ -382,7 +383,17 @@ function AgencyDashboard() {
               <SectionHeader title="Activity feed" />
             </CardHeader>
             <CardContent className="space-y-3.5 px-5 pb-5">
-              {RECENT_ACTIVITIES.slice(0, 5).map((a) => {
+              {(notifications.length
+                ? notifications.slice(0, 5).map((n) => ({
+                    id: n.id,
+                    user: n.title,
+                    action: n.read ? "viewed" : "alerted",
+                    target: n.message,
+                    time: n.time,
+                    type: n.type,
+                  }))
+                : []
+              ).map((a) => {
                 const Icon = ACTIVITY_ICONS[a.type] || Activity;
                 return (
                   <div key={a.id} className="flex gap-3">
@@ -391,14 +402,17 @@ function AgencyDashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs leading-snug">
-                        <span className="font-medium">{a.user}</span> {a.action}{" "}
-                        <span className="text-muted-foreground">{a.target}</span>
+                        <span className="font-medium">{a.user}</span>{" "}
+                        <span className="text-muted-foreground line-clamp-2">{a.target}</span>
                       </p>
                       <p className="text-[10px] text-muted-foreground mt-1">{a.time}</p>
                     </div>
                   </div>
                 );
               })}
+              {notifications.length === 0 && (
+                <p className="text-xs text-muted-foreground py-4 text-center">No recent activity yet</p>
+              )}
             </CardContent>
           </Card>
         </div>

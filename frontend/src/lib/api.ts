@@ -58,6 +58,32 @@ export async function apiFetch<T>(
   return res.json() as Promise<T>;
 }
 
+/** Authenticated binary fetch (PDF downloads). */
+export async function apiFetchBlob(path: string): Promise<Blob> {
+  const token = getToken();
+  const headers: HeadersInit = {};
+  if (token) {
+    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, { headers }).catch(() => {
+    throw new ApiError("Unable to reach the server. Check your connection and try again.", 0);
+  });
+
+  if (!res.ok) {
+    let message = res.statusText || "Request failed";
+    try {
+      const body = await res.json();
+      message = body.error || body.message || message;
+    } catch {
+      /* ignore */
+    }
+    throw new ApiError(message, res.status);
+  }
+
+  return res.blob();
+}
+
 export async function checkApiHealth(): Promise<boolean> {
   try {
     await apiFetch<{ status: string }>("/api/health");
@@ -148,6 +174,12 @@ export const api = {
 
   getNotifications: () => apiFetch<{ notifications: ApiNotification[] }>("/api/notifications"),
 
+  markNotificationRead: (id: string) =>
+    apiFetch<{ notification: ApiNotification }>(`/api/notifications/${id}/read`, { method: "PATCH" }),
+
+  markAllNotificationsRead: () =>
+    apiFetch<{ updated: number }>("/api/notifications/read-all", { method: "PATCH" }),
+
   getWallet: (agencyId: string) =>
     apiFetch<{ balance: number; transactions: ApiWalletTxn[] }>(`/api/wallet?agencyId=${agencyId}`),
 
@@ -195,9 +227,6 @@ export const api = {
 
   createPayment: (body: Record<string, unknown>) =>
     apiFetch<{ payment: ApiPayment }>("/api/payments", { method: "POST", body: JSON.stringify(body) }),
-
-  markNotificationRead: (id: string) =>
-    apiFetch<{ notification: ApiNotification }>(`/api/notifications/${id}/read`, { method: "PATCH" }),
 
   getMe: () => apiFetch<{ user: ApiUser }>("/api/auth/me"),
 

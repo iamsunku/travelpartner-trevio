@@ -568,7 +568,7 @@ export interface Leave {
 }
 
 export type QuoteSectionType =
-  | "COVER" | "OVERVIEW" | "DESTINATION_HIGHLIGHTS" | "ITINERARY" | "HOTELS" | "FLIGHTS" | "TRANSFERS"
+  | "COVER" | "OVERVIEW" | "DESTINATION_HIGHLIGHTS" | "ITINERARY" | "HOTELS" | "ACTIVITIES" | "FLIGHTS" | "TRANSFERS"
   | "PRICING" | "INCLUSIONS" | "EXCLUSIONS" | "VISA" | "TERMS" | "CANCELLATION" | "NOTES" | "CONTACT" | "CUSTOM_HTML";
 
 export type QuoteTemplateStatus = "Draft" | "Active" | "Archived";
@@ -645,6 +645,7 @@ export interface QuotePreviewMockData {
   highlights: string[];
   days: { dayNumber: number; title: string; items: { time: string; title: string; description: string }[] }[];
   hotels: { name: string; category: string; nights: number; room: string; mealPlan: string }[];
+  activities: { name: string; duration: string; description: string; location?: string }[];
   flights: { route: string; airline: string; flightNo: string; date: string; class: string }[];
   transfers: { name: string; type: string; notes: string }[];
   pricing: {
@@ -739,6 +740,9 @@ export interface TravelProposalRecord {
   notes?: string | null;
   internalNotes?: string | null;
   currentVersion: number;
+  pdfUrl?: string | null;
+  pdfGeneratedAt?: string | null;
+  pdfVersion?: number | null;
   createdByName?: string | null;
   updatedByName?: string | null;
   createdAt: string;
@@ -747,6 +751,17 @@ export interface TravelProposalRecord {
   lead?: { id: string; customerName: string; email?: string; phone?: string } | null;
   travelRequirement?: { id: string; requirementCode: string } | null;
   history?: ProposalHistoryRecord[];
+}
+
+export interface ProposalPdfRecord {
+  id: string;
+  versionNumber: number;
+  fileUrl: string;
+  fileName: string;
+  fileSize: number;
+  pageCount: number;
+  generatedAt: string;
+  generatedByName?: string | null;
 }
 
 export type ViewKey =
