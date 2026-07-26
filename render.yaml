@@ -11,12 +11,15 @@ services:
     runtime: node
     plan: free
     rootDir: backend
-    buildCommand: npm install && npx prisma generate && npm run build
+    # --include=dev: root npm workspaces omit @types/typescript when NODE_ENV=production
+    buildCommand: npm install --include=dev && npx prisma generate && npm run build
     startCommand: npx prisma migrate deploy && npm run start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
       # Do not set PORT — Render injects it automatically
       - key: JWT_EXPIRES_IN
         value: 1d
