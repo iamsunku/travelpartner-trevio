@@ -29,7 +29,7 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
-      # Set to your Vercel URL after frontend deploy (exact origin, no trailing slash)
+      # Replace with your real Vercel origin after frontend deploy (no trailing slash)
       - key: CORS_ORIGIN
-        sync: false
+        value: "https://trevio-frontend.vercel.app"
 
