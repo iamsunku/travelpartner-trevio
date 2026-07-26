@@ -88,7 +88,7 @@ export function ProposalPdfProgressDialog({
               <li
                 key={s.key}
                 className={`flex items-center gap-3 text-sm ${
-                  done ? "text-foreground" : active ? "text-[#2A7BBD]" : "text-muted-foreground"
+                  done ? "text-foreground" : active ? "text-primary" : "text-muted-foreground"
                 }`}
               >
                 <span
@@ -96,7 +96,7 @@ export function ProposalPdfProgressDialog({
                     done
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600"
                       : active
-                        ? "border-[#2A7BBD]/40 bg-[#2A7BBD]/10"
+                        ? "border-primary/40 bg-primary/10"
                         : "border-border"
                   }`}
                 >

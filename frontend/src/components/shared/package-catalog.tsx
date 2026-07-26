@@ -154,11 +154,11 @@ export function PackageCatalog({ onSelect }: PackageCatalogProps) {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-xl">
-        <MetricCard icon={Layers} label="Total Packages" value={total.toLocaleString("en-IN")} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
-        <MetricCard icon={Star} label="Published" value={items.filter((i) => i.status === "Published").length.toLocaleString("en-IN")} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" subtitle="On this page" index={1} />
+        <MetricCard icon={Layers} label="Total Packages" value={total.toLocaleString("en-IN")} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" index={0} />
+        <MetricCard icon={Star} label="Published" value={items.filter((i) => i.status === "Published").length.toLocaleString("en-IN")} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" subtitle="On this page" index={1} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-4 space-y-4">
           <CatalogToolbar
             searchValue={q}

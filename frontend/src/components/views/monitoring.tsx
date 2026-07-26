@@ -24,8 +24,8 @@ import { cn } from "@/lib/utils";
 
 interface HealthMetric { name: string; value: number; fill: string; icon: React.ElementType; }
 const HEALTH: HealthMetric[] = [
-  { name: "CPU", value: 42, fill: "#2A7BBD", icon: Cpu },
-  { name: "Memory", value: 68, fill: "#00A79D", icon: MemoryStick },
+  { name: "CPU", value: 42, fill: "var(--brand-blue)", icon: Cpu },
+  { name: "Memory", value: 68, fill: "var(--brand-teal)", icon: MemoryStick },
   { name: "Disk", value: 31, fill: "#f59e0b", icon: HardDrive },
   { name: "Network", value: 57, fill: "#06b6d4", icon: Wifi },
 ];
@@ -154,16 +154,16 @@ export function MonitoringView() {
         }
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MetricCard icon={CheckCircle2} label="Operational APIs" value={String(operational)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={0} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <MetricCard icon={CheckCircle2} label="Operational APIs" value={String(operational)} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" index={0} />
         <MetricCard icon={AlertTriangle} label="Degraded" value={String(degraded)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={1} />
         <MetricCard icon={ShieldAlert} label="Down" value={String(down)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
-        <MetricCard icon={Activity} label="Error Logs" value={String(ERROR_LOGS.length)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" subtitle="Last 24h" index={3} />
+        <MetricCard icon={Activity} label="Error Logs" value={String(ERROR_LOGS.length)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" subtitle="Last 24h" index={3} />
       </div>
 
       {/* Health gauges + response time */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardHeader className="pb-2">
             <SectionHeader title="System Health" description="Live server resource usage" />
           </CardHeader>
@@ -185,15 +185,15 @@ export function MonitoringView() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2 border-border/80 shadow-none">
+        <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <SectionHeader
               title="Server Response Time"
               description="Avg response (ms) across top vendors — last 24h"
               action={
                 <div className="flex items-center gap-3 text-xs">
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#2A7BBD]" /> Amadeus</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#00A79D]" /> TBO</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-primary" /> Amadeus</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-brand-teal" /> TBO</span>
                   <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> Booking.com</span>
                 </div>
               }
@@ -206,8 +206,8 @@ export function MonitoringView() {
                 <XAxis dataKey="t" tick={{ fontSize: 11 }} className="text-muted-foreground" axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" axisLine={false} tickLine={false} tickFormatter={(v) => `${v}ms`} />
                 <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} formatter={(v: number) => `${v}ms`} />
-                <Line type="monotone" dataKey="amadeus" stroke="#2A7BBD" strokeWidth={2.5} dot={false} />
-                <Line type="monotone" dataKey="tbo" stroke="#00A79D" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="amadeus" stroke="var(--brand-blue)" strokeWidth={2.5} dot={false} />
+                <Line type="monotone" dataKey="tbo" stroke="var(--brand-teal)" strokeWidth={2.5} dot={false} />
                 <Line type="monotone" dataKey="booking" stroke="#f59e0b" strokeWidth={2.5} dot={false} />
               </LineChart>
             </ResponsiveContainer>

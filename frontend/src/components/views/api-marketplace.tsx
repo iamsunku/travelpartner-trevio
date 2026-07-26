@@ -32,7 +32,7 @@ interface Vendor {
 }
 
 const VENDOR_GRADIENTS = [
-  "from-[#2A7BBD] to-[#00A79D]",
+  "from-brand-blue to-brand-teal",
   "from-amber-500 to-orange-600",
   "from-rose-500 to-pink-600",
   "from-cyan-500 to-teal-600",
@@ -194,8 +194,8 @@ export function ApiMarketplaceView() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <MetricCard icon={PlugZap} label="Connected Vendors" value={String(allConnected)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
-        <MetricCard icon={Zap} label="Calls Today" value={totalCalls.toLocaleString("en-IN")} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+        <MetricCard icon={PlugZap} label="Connected Vendors" value={String(allConnected)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" index={0} />
+        <MetricCard icon={Zap} label="Calls Today" value={totalCalls.toLocaleString("en-IN")} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" index={1} />
         <MetricCard icon={Globe2} label="Available Vendors" value={String(Object.values(state).flat().length)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
       </div>
 

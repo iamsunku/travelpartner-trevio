@@ -150,7 +150,7 @@ export function HolidayView() {
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="rounded-xl border border-border/80 bg-card p-4 space-y-3 shadow-none"
+        className="rounded-xl border border-border bg-card p-4 space-y-3 shadow-none"
       >
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative flex-1">
@@ -182,7 +182,7 @@ export function HolidayView() {
                   "px-3 py-1.5 rounded-full text-xs font-medium border transition-all flex items-center gap-1.5",
                   typeFilter === t.id
                     ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background border-border/80 hover:border-primary/30 hover:text-foreground"
+                    : "bg-background border-border hover:border-primary/30 hover:text-foreground"
                 )}
               >
                 <Icon className="w-3.5 h-3.5" /> {t.label}
@@ -194,7 +194,7 @@ export function HolidayView() {
 
       {/* Package grid */}
       {filtered.length === 0 ? (
-        <Card className="border-border/80 shadow-none"><CardContent className="p-12 text-center text-muted-foreground">
+        <Card><CardContent className="p-12 text-center text-muted-foreground">
           <Palmtree className="w-10 h-10 mx-auto mb-3 opacity-40" />
           <p className="text-sm">No packages match your filters.</p>
           <p className="text-xs mt-1">Try a different destination or category.</p>
@@ -212,11 +212,11 @@ export function HolidayView() {
                 transition={{ delay: i * 0.05 }}
                 whileHover={{ y: -4 }}
               >
-                <Card className="overflow-hidden border-border/80 shadow-none hover:border-primary/25 transition-all group h-full flex flex-col">
+                <Card className="overflow-hidden hover:border-primary/25 transition-all group h-full flex flex-col">
                   {/* Image header with gradient */}
                   <div className={cn(
                     "relative h-40 bg-gradient-to-br p-4 text-white flex flex-col justify-between",
-                    TYPE_GRADIENTS[p.type] || "from-[#2A7BBD] to-[#00A79D]"
+                    TYPE_GRADIENTS[p.type] || "from-brand-blue to-brand-teal"
                   )}>
                     <div className="absolute inset-0 opacity-30" style={{
                       backgroundImage: "radial-gradient(circle at 20% 30%, rgba(255,255,255,0.3) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(0,0,0,0.2) 0%, transparent 50%)",
@@ -295,7 +295,7 @@ export function HolidayView() {
             <>
               <div className={cn(
                 "relative -m-6 mb-0 h-32 bg-gradient-to-br p-5 text-white flex flex-col justify-end",
-                TYPE_GRADIENTS[detailPkg.type] || "from-[#2A7BBD] to-[#00A79D]"
+                TYPE_GRADIENTS[detailPkg.type] || "from-brand-blue to-brand-teal"
               )}>
                 <div className="absolute inset-0 opacity-30" style={{
                   backgroundImage: "radial-gradient(circle at 20% 30%, rgba(255,255,255,0.3) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(0,0,0,0.2) 0%, transparent 50%)",

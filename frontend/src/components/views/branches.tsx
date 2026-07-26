@@ -37,7 +37,7 @@ import type { Branch } from "@/types";
 import { formatINR, formatFullINR, StatusBadge, PageShell, PageHeader, SectionHeader, MetricCard, initials, avatarGradient } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
-const BRANCH_COLORS = ["#2A7BBD", "#00A79D", "#f59e0b", "#06b6d4", "#10b981", "#ef4444", "#fb923c", "#14b8a6"];
+const BRANCH_COLORS = ["var(--brand-blue)", "var(--brand-teal)", "#f59e0b", "#06b6d4", "#10b981", "#ef4444", "#fb923c", "#14b8a6"];
 
 export function BranchesView() {
   const { toast } = useToast();
@@ -61,8 +61,8 @@ export function BranchesView() {
   const avgRevenue = branches.length ? totalRevenue / branches.length : 0;
 
   const stats = [
-    { icon: Building2, label: "Total Branches", value: String(branches.length), color: "bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400", subtitle: "All agencies" },
-    { icon: Users, label: "Total Employees", value: totalEmployees.toLocaleString("en-IN"), color: "bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" },
+    { icon: Building2, label: "Total Branches", value: String(branches.length), color: "bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400", subtitle: "All agencies" },
+    { icon: Users, label: "Total Employees", value: totalEmployees.toLocaleString("en-IN"), color: "bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" },
     { icon: Wallet, label: "Total Revenue", value: formatINR(totalRevenue), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "All branches" },
     { icon: TrendingUp, label: "Avg Revenue / Branch", value: formatINR(avgRevenue), color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
   ];
@@ -158,17 +158,17 @@ export function BranchesView() {
         }
       />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2 border-border/80 shadow-none">
+        <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
             <SectionHeader
               title="Branch Performance"
               description="Revenue contribution by branch"
-              action={<Badge variant="outline" className="bg-sky-50 text-[#2A7BBD] border-sky-200">₹{formatINR(totalRevenue).replace("₹", "")}</Badge>}
+              action={<Badge variant="outline" className="bg-sky-50 text-primary border-sky-200">₹{formatINR(totalRevenue).replace("₹", "")}</Badge>}
             />
           </CardHeader>
           <CardContent>
@@ -198,7 +198,7 @@ export function BranchesView() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardHeader className="pb-2">
             <SectionHeader title="Employee Distribution" description="Headcount per branch" />
           </CardHeader>
@@ -254,7 +254,7 @@ export function BranchesView() {
                   <TableRow key={b.id} className="hover:bg-muted/40">
                     <TableCell>
                       <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] flex items-center justify-center text-white">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-blue to-brand-teal flex items-center justify-center text-white">
                           <Building2 className="w-4 h-4" />
                         </div>
                         <span className="font-medium text-sm">{b.name}</span>

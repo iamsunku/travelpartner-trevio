@@ -82,7 +82,7 @@ export function TripPlannerCatalog({ onCreate, onSelect }: TripPlannerCatalogPro
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onSelect(item.id)}>
-                  <TableCell className="font-medium text-[#2A7BBD]">{item.requirementCode}</TableCell>
+                  <TableCell className="font-medium text-primary">{item.requirementCode}</TableCell>
                   <TableCell>{item.customer?.name ?? item.lead?.customerName ?? "—"}</TableCell>
                   <TableCell>{item.destination?.name ?? "—"}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">

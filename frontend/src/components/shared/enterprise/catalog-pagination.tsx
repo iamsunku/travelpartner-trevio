@@ -20,26 +20,28 @@ export function CatalogPagination({ page, pageSize, total, onPageChange, classNa
   const to = Math.min(page * pageSize, total);
 
   return (
-    <div className={cn("flex items-center justify-between gap-4 text-sm", className)}>
-      <p className="text-muted-foreground text-xs tabular-nums">
+    <div className={cn("flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1", className)}>
+      <p className="text-caption text-muted-foreground tabular-nums">
         Showing {from}–{to} of {total}
       </p>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"
+          className="h-8 min-w-8"
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
           aria-label="Previous page"
         >
           <ChevronLeft className="w-4 h-4" />
         </Button>
-        <span className="px-2 text-xs tabular-nums text-muted-foreground">
+        <span className="px-1 text-caption tabular-nums text-muted-foreground min-w-[5.5rem] text-center">
           Page {page} of {totalPages}
         </span>
         <Button
           variant="outline"
           size="sm"
+          className="h-8 min-w-8"
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
           aria-label="Next page"

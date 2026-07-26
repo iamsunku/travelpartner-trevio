@@ -285,11 +285,11 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
       <PageHeader title={title} subtitle={subtitle} />
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 max-w-xl">
-        <MetricCard icon={Package} label="Total Products" value={total.toLocaleString("en-IN")} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
-        <MetricCard icon={CheckCircle} label="Active" value={items.filter((i) => i.status === "Active").length.toLocaleString("en-IN")} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" subtitle="On this page" index={1} />
+        <MetricCard icon={Package} label="Total Products" value={total.toLocaleString("en-IN")} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" index={0} />
+        <MetricCard icon={CheckCircle} label="Active" value={items.filter((i) => i.status === "Active").length.toLocaleString("en-IN")} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" subtitle="On this page" index={1} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-4 space-y-4">
           <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
             <div className="flex flex-1 gap-2 flex-wrap">

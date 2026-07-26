@@ -369,7 +369,7 @@ export function QuotationsView() {
         {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-4">
           <Input
             placeholder="Search by quote no or customer..."
@@ -377,7 +377,7 @@ export function QuotationsView() {
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-sm mb-3 h-9"
           />
-          <div className="rounded-lg border border-border/80 max-h-[60vh] overflow-y-auto scroll-thin">
+          <div className="rounded-lg border border-border max-h-[60vh] overflow-y-auto scroll-thin">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>

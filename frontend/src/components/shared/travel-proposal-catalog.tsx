@@ -105,7 +105,7 @@ export function TravelProposalCatalog({ onSelect }: TravelProposalCatalogProps) 
             <TableBody>
               {items.map((item) => (
                 <TableRow key={item.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onSelect(item.id)}>
-                  <TableCell className="font-medium text-[#2A7BBD]">{item.proposalNumber}</TableCell>
+                  <TableCell className="font-medium text-primary">{item.proposalNumber}</TableCell>
                   <TableCell>{customerLabel(item)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{item.travelRequirement?.requirementCode ?? "—"}</TableCell>
                   <TableCell><StatusBadge status={item.proposalStatus} /></TableCell>

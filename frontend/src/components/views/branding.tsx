@@ -20,6 +20,18 @@ import type { AgencyBrandingRecord } from "@/types";
 
 const FONT_OPTIONS = ["Inter", "Georgia", "Times New Roman", "Arial", "Helvetica"];
 
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>
+        {label}
+        {required && <span className="text-destructive ml-0.5" aria-hidden>*</span>}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
 export function BrandingView() {
   const { toast } = useToast();
   const { submitting, runSubmit } = useSubmitLock();
@@ -72,75 +84,64 @@ export function BrandingView() {
   }
 
   return (
-    <PageShell>
+    <PageShell className="pb-20">
       <EnterprisePageHeader
         title="Branding"
         subtitle="Agency-wide defaults for quotations and documents"
         breadcrumbs={[{ label: "Settings" }, { label: "Branding" }]}
-        actions={
-          <Button onClick={save} disabled={submitting}><Save className="w-4 h-4 mr-1" aria-hidden />{submitting ? "Saving…" : "Save Branding"}</Button>
-        }
       />
 
-      {error && <p className="text-sm text-destructive mb-3" role="alert">{error}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
       <div className="grid lg:grid-cols-2 gap-6">
-        <Card className="border-border/80 shadow-none">
-          <CardContent className="p-4 space-y-4">
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div>
-                <Label>Primary color</Label>
+        <Card>
+          <CardContent className="p-6 space-y-5">
+            <div className="grid sm:grid-cols-2 gap-5">
+              <Field label="Primary color" required>
                 <div className="flex gap-2">
-                  <Input type="color" className="w-14 h-9 p-1" value={branding.primaryColor} onChange={(e) => setBranding({ ...branding, primaryColor: e.target.value })} />
-                  <Input value={branding.primaryColor} onChange={(e) => setBranding({ ...branding, primaryColor: e.target.value })} />
+                  <Input type="color" className="w-14 h-9 p-1 shrink-0" value={branding.primaryColor} onChange={(e) => setBranding({ ...branding, primaryColor: e.target.value })} aria-label="Primary color picker" />
+                  <Input value={branding.primaryColor} onChange={(e) => setBranding({ ...branding, primaryColor: e.target.value })} aria-label="Primary color value" />
                 </div>
-              </div>
-              <div>
-                <Label>Secondary color</Label>
+              </Field>
+              <Field label="Secondary color" required>
                 <div className="flex gap-2">
-                  <Input type="color" className="w-14 h-9 p-1" value={branding.secondaryColor} onChange={(e) => setBranding({ ...branding, secondaryColor: e.target.value })} />
-                  <Input value={branding.secondaryColor} onChange={(e) => setBranding({ ...branding, secondaryColor: e.target.value })} />
+                  <Input type="color" className="w-14 h-9 p-1 shrink-0" value={branding.secondaryColor} onChange={(e) => setBranding({ ...branding, secondaryColor: e.target.value })} aria-label="Secondary color picker" />
+                  <Input value={branding.secondaryColor} onChange={(e) => setBranding({ ...branding, secondaryColor: e.target.value })} aria-label="Secondary color value" />
                 </div>
-              </div>
+              </Field>
             </div>
-            <div>
-              <Label>Font family</Label>
+            <Field label="Font family">
               <Select value={branding.fontFamily} onValueChange={(v) => setBranding({ ...branding, fontFamily: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {FONT_OPTIONS.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label>Logo URL</Label>
+            </Field>
+            <Field label="Logo URL">
               <Input value={branding.logo ?? ""} onChange={(e) => setBranding({ ...branding, logo: e.target.value || null })} placeholder="https://..." />
-            </div>
-            <div>
-              <Label>Watermark text</Label>
+            </Field>
+            <Field label="Watermark text">
               <Input value={branding.watermark ?? ""} onChange={(e) => setBranding({ ...branding, watermark: e.target.value || null })} />
-            </div>
-            <div>
-              <Label>Background image URL</Label>
+            </Field>
+            <Field label="Background image URL">
               <Input value={branding.backgroundImage ?? ""} onChange={(e) => setBranding({ ...branding, backgroundImage: e.target.value || null })} />
-            </div>
-            <div>
-              <Label>Footer text</Label>
+            </Field>
+            <Field label="Footer text">
               <Textarea value={branding.footerText ?? ""} onChange={(e) => setBranding({ ...branding, footerText: e.target.value || null })} rows={2} />
-            </div>
-            <div>
-              <Label>Header HTML</Label>
+            </Field>
+            <Field label="Header HTML">
               <Textarea value={branding.headerHtml ?? ""} onChange={(e) => setBranding({ ...branding, headerHtml: e.target.value || null })} rows={3} placeholder="Optional custom header HTML" />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label>Show page numbers on quotes</Label>
-              <Switch checked={branding.showPageNumbers} onCheckedChange={(v) => setBranding({ ...branding, showPageNumbers: v })} />
+            </Field>
+            <div className="flex items-center justify-between gap-4 pt-1">
+              <Label htmlFor="show-page-numbers">Show page numbers on quotes</Label>
+              <Switch id="show-page-numbers" checked={branding.showPageNumbers} onCheckedChange={(v) => setBranding({ ...branding, showPageNumbers: v })} />
             </div>
           </CardContent>
         </Card>
 
         <div
-          className="rounded-xl border p-6 min-h-[320px] flex flex-col"
+          className="relative rounded-xl border border-border bg-card shadow-[var(--shadow-card)] p-6 min-h-[320px] flex flex-col overflow-hidden"
           style={{
             fontFamily: branding.fontFamily,
             backgroundImage: branding.backgroundImage ? `url(${branding.backgroundImage})` : undefined,
@@ -148,23 +149,33 @@ export function BrandingView() {
           }}
         >
           {branding.watermark && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06] text-5xl font-bold rotate-[-24deg]">
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06] text-5xl font-bold rotate-[-24deg]" aria-hidden>
               {branding.watermark}
             </div>
           )}
-          <div className="relative flex-1 bg-white/95 rounded-lg p-4 border">
+          <div className="relative flex-1 bg-white/95 rounded-lg p-6 border border-border flex flex-col">
             {branding.logo && <img src={branding.logo} alt="Logo preview" className="h-10 object-contain mb-4" />}
             {branding.headerHtml && (
               <div className="text-xs mb-4 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: branding.headerHtml }} />
             )}
-            <div className="h-2 rounded mb-4" style={{ background: `linear-gradient(90deg, ${branding.primaryColor}, ${branding.secondaryColor})` }} />
+            <div className="h-2 rounded mb-4" style={{ background: `linear-gradient(90deg, ${branding.primaryColor}, ${branding.secondaryColor})` }} aria-hidden />
             <p className="text-sm font-semibold" style={{ color: branding.primaryColor }}>Sample Quotation Section</p>
-            <p className="text-xs text-muted-foreground mt-2">Preview of agency branding applied to quote documents.</p>
+            <p className="text-caption text-muted-foreground mt-2">Preview of agency branding applied to quote documents.</p>
             {branding.footerText && (
-              <p className="text-[10px] text-muted-foreground mt-auto pt-6 border-t">{branding.footerText}</p>
+              <p className="text-helper text-muted-foreground mt-auto pt-6 border-t border-border">{branding.footerText}</p>
             )}
-            {branding.showPageNumbers && <p className="text-[10px] text-center text-muted-foreground mt-2">Page 1</p>}
+            {branding.showPageNumbers && <p className="text-helper text-center text-muted-foreground mt-2">Page 1</p>}
           </div>
+        </div>
+      </div>
+
+      <div className="fixed bottom-0 inset-x-0 z-20 border-t border-border bg-background/90 backdrop-blur-md">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-end gap-2">
+          <Button variant="outline" onClick={load} disabled={submitting}>Cancel</Button>
+          <Button onClick={save} disabled={submitting}>
+            <Save className="w-4 h-4 mr-1.5" aria-hidden />
+            {submitting ? "Saving…" : "Save Branding"}
+          </Button>
         </div>
       </div>
     </PageShell>

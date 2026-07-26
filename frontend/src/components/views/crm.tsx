@@ -86,7 +86,7 @@ function LeadCard({ lead }: { lead: Lead }) {
       {...attributes}
       {...listeners}
       className={cn(
-        "group bg-card border border-border/80 rounded-xl p-3 cursor-grab active:cursor-grabbing hover:border-primary/30 transition-all select-none",
+        "group bg-card border border-border rounded-xl p-3 cursor-grab active:cursor-grabbing hover:border-primary/30 transition-all select-none",
         isDragging && "opacity-30"
       )}
     >
@@ -318,7 +318,7 @@ function LeadsPipeline() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
@@ -354,7 +354,7 @@ function EnquiriesTab() {
 
   return (
     <div className="space-y-4">
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader>
           <CardTitle>Enquiries by Source</CardTitle>
           <CardDescription>Total {total} enquiries across all channels (last 30 days)</CardDescription>
@@ -402,7 +402,7 @@ function EnquiriesTab() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader>
           <CardTitle>All Enquiries</CardTitle>
           <CardDescription>{leads.length} enquiries from all sources</CardDescription>

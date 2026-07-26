@@ -70,7 +70,7 @@ export function PackageItineraryPreview({
       {packageName && (
         <div className="border-b pb-3">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Itinerary Preview</p>
-          <h3 className="text-lg font-semibold text-[#2A7BBD]">{packageName}</h3>
+          <h3 className="text-lg font-semibold text-primary">{packageName}</h3>
         </div>
       )}
 
@@ -79,7 +79,7 @@ export function PackageItineraryPreview({
         const items = [...(day.items ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
 
         return (
-          <article key={day.id} className="rounded-xl border border-border/80 overflow-hidden bg-card">
+          <article key={day.id} className="rounded-xl border border-border overflow-hidden bg-card">
             {day.coverImage && (
               <div className="h-32 bg-muted overflow-hidden">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -89,7 +89,7 @@ export function PackageItineraryPreview({
             <div className="p-4 space-y-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <span className="text-xs font-medium text-[#2A7BBD] uppercase tracking-wide">Day {day.dayNumber}</span>
+                  <span className="text-xs font-medium text-primary uppercase tracking-wide">Day {day.dayNumber}</span>
                   <h4 className="font-semibold">{day.title}</h4>
                   {day.description && <p className="text-sm text-muted-foreground mt-1">{day.description}</p>}
                 </div>
@@ -119,8 +119,8 @@ export function PackageItineraryPreview({
 
                     return (
                       <li key={item.id} className="relative pb-4 last:pb-0">
-                        <span className="absolute -left-6 top-1 flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-[#2A7BBD] bg-background">
-                          <Icon className="w-3 h-3 text-[#2A7BBD]" />
+                        <span className="absolute -left-6 top-1 flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-primary bg-background">
+                          <Icon className="w-3 h-3 text-primary" />
                         </span>
                         <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
                           <div className="flex gap-3">

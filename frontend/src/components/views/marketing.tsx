@@ -54,7 +54,7 @@ interface Campaign {
 }
 
 const CAMPAIGNS: Campaign[] = [
-  { id: "cm-1", name: "Republic Day Flight Sale", type: "Email", audience: 12840, sent: 12840, opened: 5240, clicked: 1420, status: "Completed", date: "2025-01-20", gradient: "from-[#2A7BBD] to-[#00A79D]" },
+  { id: "cm-1", name: "Republic Day Flight Sale", type: "Email", audience: 12840, sent: 12840, opened: 5240, clicked: 1420, status: "Completed", date: "2025-01-20", gradient: "from-brand-blue to-brand-teal" },
   { id: "cm-2", name: "Bali Honeymoon Package — WhatsApp Blast", type: "WhatsApp", audience: 3420, sent: 3380, opened: 2910, clicked: 824, status: "Running", date: "2025-01-19", gradient: "from-emerald-500 to-teal-600" },
   { id: "cm-3", name: "Weekend Goa Getaway Reminder", type: "SMS", audience: 8240, sent: 8240, opened: 6120, clicked: 980, status: "Completed", date: "2025-01-18", gradient: "from-amber-500 to-orange-600" },
   { id: "cm-4", name: "Summer Europe Early Bird", type: "Email", audience: 5420, sent: 0, opened: 0, clicked: 0, status: "Scheduled", date: "2025-02-01", gradient: "from-violet-500 to-purple-600" },
@@ -246,7 +246,7 @@ export function MarketingView() {
       sent: 0, opened: 0, clicked: 0,
       status: campaignForm.schedule ? "Scheduled" : "Draft",
       date: campaignForm.schedule || new Date().toISOString().slice(0, 10),
-      gradient: ["from-[#2A7BBD] to-[#00A79D]", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600"][campaigns.length % 3],
+      gradient: ["from-brand-blue to-brand-teal", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600"][campaigns.length % 3],
     };
     setCampaigns([newC, ...campaigns]);
     setCampaignOpen(false);
@@ -296,9 +296,9 @@ export function MarketingView() {
     <PageShell>
       <PageHeader title="Marketing" subtitle="Campaigns, coupons, and promotions" />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard icon={Mail} label="Campaigns" value={String(campaigns.length)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
-        <MetricCard icon={Eye} label="Total Reach" value={totalAudience.toLocaleString("en-IN")} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard icon={Mail} label="Campaigns" value={String(campaigns.length)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" index={0} />
+        <MetricCard icon={Eye} label="Total Reach" value={totalAudience.toLocaleString("en-IN")} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" index={1} />
         <MetricCard icon={MousePointerClick} label="Avg Open Rate" value={`${avgOpen}%`} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
         <MetricCard icon={Ticket} label="Active Coupons" value={String(activeCoupons)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={3} />
       </div>
@@ -336,8 +336,8 @@ export function MarketingView() {
                   <AreaChart data={CAMPAIGN_PERF} margin={{ left: -16, right: 8, top: 8 }}>
                     <defs>
                       <linearGradient id="openGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2A7BBD" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#2A7BBD" stopOpacity={0} />
+                        <stop offset="0%" stopColor="var(--brand-blue)" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="var(--brand-blue)" stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="clickGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4} />
@@ -348,7 +348,7 @@ export function MarketingView() {
                     <XAxis dataKey="day" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
-                    <Area type="monotone" dataKey="opens" stroke="#2A7BBD" strokeWidth={2.5} fill="url(#openGrad)" />
+                    <Area type="monotone" dataKey="opens" stroke="var(--brand-blue)" strokeWidth={2.5} fill="url(#openGrad)" />
                     <Area type="monotone" dataKey="clicks" stroke="#f59e0b" strokeWidth={2.5} fill="url(#clickGrad)" />
                   </AreaChart>
                 </ResponsiveContainer>

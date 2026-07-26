@@ -148,7 +148,7 @@ export function TripRequirementDetail({ requirementId, onBack, onEdit }: TripReq
         </TabsList>
 
         <TabsContent value="requirement" className="mt-4">
-          <Card className="border-border/80 shadow-none"><CardContent className="p-4 grid sm:grid-cols-2 gap-3 text-sm">
+          <Card><CardContent className="p-4 grid sm:grid-cols-2 gap-3 text-sm">
             <div><span className="text-muted-foreground">Customer</span><p className="font-medium">{item.customer?.name ?? item.lead?.customerName ?? "—"}</p></div>
             <div><span className="text-muted-foreground">Destination</span><p className="font-medium">{item.destination?.name}</p></div>
             <div><span className="text-muted-foreground">Travel Dates</span><p>{formatDate(item.travelStartDate)} – {formatDate(item.travelEndDate)}</p></div>
@@ -180,7 +180,7 @@ export function TripRequirementDetail({ requirementId, onBack, onEdit }: TripReq
           {!selection || !selectedPackage ? (
             <p className="text-sm text-muted-foreground py-8 text-center">No package selected yet. Edit requirement to customize a package.</p>
           ) : (
-            <Card className="border-border/80 shadow-none"><CardContent className="p-4 space-y-3 text-sm">
+            <Card><CardContent className="p-4 space-y-3 text-sm">
               <p className="font-semibold text-lg">{selectedPackage.packageName}</p>
               <p className="text-muted-foreground">{selectedPackage.packageCode} · {selectedPackage.durationDays}D/{selectedPackage.durationNights}N</p>
               <div className="grid sm:grid-cols-3 gap-2 pt-2">

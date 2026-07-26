@@ -223,13 +223,13 @@ export function PackageDetail({ packageId, onBack, onRefreshList }: PackageDetai
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
-          <Card className="border-border/80 shadow-none"><CardContent className="p-4 space-y-3 text-sm">
+          <Card><CardContent className="p-4 space-y-3 text-sm">
             <p><span className="text-muted-foreground">Type:</span> {item.packageType}</p>
             {item.description && <p className="whitespace-pre-wrap">{item.description}</p>}
             {Array.isArray(item.highlights) && item.highlights.length > 0 && (
               <ul className="list-disc pl-5 text-muted-foreground">{item.highlights.map((h, i) => <li key={i}>{h}</li>)}</ul>
             )}
-            <p className="text-2xl font-bold text-[#2A7BBD]">{formatPrice(item.finalPrice, item.currency)}</p>
+            <p className="text-2xl font-bold text-primary">{formatPrice(item.finalPrice, item.currency)}</p>
           </CardContent></Card>
         </TabsContent>
 
@@ -284,7 +284,7 @@ export function PackageDetail({ packageId, onBack, onRefreshList }: PackageDetai
         </TabsContent>
 
         <TabsContent value="pricing" className="mt-4">
-          <Card className="border-border/80 shadow-none"><CardContent className="p-4 space-y-2 text-sm">
+          <Card><CardContent className="p-4 space-y-2 text-sm">
             {[
               ["Hotel Cost", item.hotelCost], ["Activity Cost", item.activityCost], ["Transfer Cost", item.transferCost],
               ["Markup", item.markup], ["Tax", item.tax], ["Discount", item.discount],
@@ -296,7 +296,7 @@ export function PackageDetail({ packageId, onBack, onRefreshList }: PackageDetai
             ))}
             <div className="flex justify-between pt-2 text-base font-bold">
               <span>Final Selling Price</span>
-              <span className="text-[#2A7BBD]">{formatPrice(item.finalPrice, item.currency)}</span>
+              <span className="text-primary">{formatPrice(item.finalPrice, item.currency)}</span>
             </div>
           </CardContent></Card>
         </TabsContent>
@@ -305,7 +305,7 @@ export function PackageDetail({ packageId, onBack, onRefreshList }: PackageDetai
           {versions.length === 0 ? <p className="text-sm text-muted-foreground py-8 text-center">No version history</p> : (
             <div className="space-y-2">
               {versions.map((v) => (
-                <div key={v.id} className="p-3 rounded-lg border border-border/80">
+                <div key={v.id} className="p-3 rounded-lg border border-border">
                   <div className="flex justify-between gap-2">
                     <span className="font-medium text-sm">Version {v.versionNumber}</span>
                     <span className="text-xs text-muted-foreground">{formatDate(v.createdAt)}</span>

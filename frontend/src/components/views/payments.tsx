@@ -376,7 +376,7 @@ export function PaymentsView() {
         {stats.map((s, i) => <MetricCard key={s.label} {...s} index={i} />)}
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-4">
           <div className="flex flex-col lg:flex-row gap-2 mb-3">
             <div className="relative flex-1 max-w-sm">
@@ -417,7 +417,7 @@ export function PaymentsView() {
             </Select>
           </div>
 
-          <div className="rounded-lg border border-border/80 max-h-[60vh] overflow-y-auto scroll-thin">
+          <div className="rounded-lg border border-border max-h-[60vh] overflow-y-auto scroll-thin">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>

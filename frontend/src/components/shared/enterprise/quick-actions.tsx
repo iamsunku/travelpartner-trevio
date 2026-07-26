@@ -38,10 +38,10 @@ export function QuickActionsBar({
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
               "disabled:opacity-50 disabled:pointer-events-none",
               action.variant === "primary"
-                ? "border-[#2A7BBD] bg-[#2A7BBD]/10 text-[#2A7BBD] hover:bg-[#2A7BBD]/15"
+                ? "border-primary bg-primary/10 text-primary hover:bg-primary/15"
                 : action.variant === "destructive"
                   ? "border-destructive/30 text-destructive hover:bg-destructive/5"
-                  : "border-border/80 bg-card hover:bg-muted/50 text-foreground/90"
+                  : "border-border bg-card hover:bg-muted/50 text-foreground/90"
             )}
           >
             <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden />
@@ -67,7 +67,7 @@ export function WorkflowLinks({
       {items.map((item, i) => (
         <span key={item.label} className="inline-flex items-center gap-1">
           {i > 0 && <span aria-hidden>→</span>}
-          <button type="button" onClick={item.onClick} className="text-[#2A7BBD] hover:underline font-medium">
+          <button type="button" onClick={item.onClick} className="text-primary hover:underline font-medium">
             {item.label}
           </button>
         </span>

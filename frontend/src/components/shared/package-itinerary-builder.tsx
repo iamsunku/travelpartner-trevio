@@ -151,7 +151,7 @@ function SortableDayButton({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
         "flex items-center gap-1 rounded-lg border p-2 cursor-pointer transition-colors",
-        active ? "border-[#2A7BBD] bg-[#2A7BBD]/5" : "border-border/80 hover:bg-muted/50"
+        active ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
       )}
       onClick={onSelect}
     >
@@ -161,7 +161,7 @@ function SortableDayButton({
         </button>
       )}
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-[#2A7BBD]">Day {day.dayNumber}</p>
+        <p className="text-xs font-medium text-primary">Day {day.dayNumber}</p>
         <p className="text-sm truncate">{day.title}</p>
         <p className="text-[10px] text-muted-foreground">{day.items.length} items</p>
       </div>
@@ -184,18 +184,18 @@ function SortableTimelineItem({
   const Icon = ITEM_TYPES.find((t) => t.type === item.itemType)?.icon ?? FileText;
 
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className="rounded-lg border border-border/80 bg-card">
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className="rounded-lg border border-border bg-card">
       <div className="flex items-center gap-2 p-2 border-b border-border/50">
         {!readOnly && (
           <button type="button" className="cursor-grab text-muted-foreground" {...attributes} {...listeners}>
             <GripVertical className="w-4 h-4" />
           </button>
         )}
-        <Icon className="w-4 h-4 text-[#2A7BBD] shrink-0" />
+        <Icon className="w-4 h-4 text-primary shrink-0" />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{item.title || "Untitled"}</p>
         {item.optionGroup && (
-          <p className="text-[10px] text-[#2A7BBD]">{item.optionGroup} tier</p>
+          <p className="text-[10px] text-primary">{item.optionGroup} tier</p>
         )}
           {(item.startTime || item.endTime) && (
             <p className="text-[10px] text-muted-foreground tabular-nums">{item.startTime}{item.endTime ? ` – ${item.endTime}` : ""}</p>
@@ -583,7 +583,7 @@ export function PackageItineraryBuilder({
                   onClick={() => { setAddType(type); setAddGroup(""); setAddTitle(""); setAddDescription(""); }}
                   className={cn(
                     "flex items-center gap-2 p-2 rounded-lg border text-sm",
-                    addType === type ? "border-[#2A7BBD] bg-[#2A7BBD]/5" : "border-border hover:bg-muted/50"
+                    addType === type ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"
                   )}
                 >
                   <Icon className="w-4 h-4" />{label}

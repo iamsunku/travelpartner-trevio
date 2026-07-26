@@ -64,7 +64,7 @@ interface Offer {
   gradient: string;
 }
 const OFFERS: Offer[] = [
-  { id: "of-1", title: "First Booking Bonus", code: "WELCOME500", discount: "₹500 OFF", validTill: "2025-03-31", status: "Active", gradient: "from-[#2A7BBD] to-[#00A79D]" },
+  { id: "of-1", title: "First Booking Bonus", code: "WELCOME500", discount: "₹500 OFF", validTill: "2025-03-31", status: "Active", gradient: "from-brand-blue to-brand-teal" },
   { id: "of-2", title: "Refer & Earn", code: "REFER1000", discount: "₹1,000 CASHBACK", validTill: "2025-12-31", status: "Active", gradient: "from-amber-500 to-orange-600" },
   { id: "of-3", title: "App-Only Flash Sale", code: "APP15", discount: "15% OFF", validTill: "2025-02-15", status: "Active", gradient: "from-violet-500 to-purple-600" },
   { id: "of-4", title: "Corporate Bulk Discount", code: "CORP25", discount: "25% OFF", validTill: "2024-12-31", status: "Expired", gradient: "from-rose-500 to-pink-600" },
@@ -168,7 +168,7 @@ export function CmsView() {
         id: `bn-${banners.length + 1}`, title: bannerForm.title, position: bannerForm.position,
         order: banners.filter((b) => b.position === bannerForm.position).length + 1,
         active: true,
-        gradient: ["from-[#2A7BBD] to-[#00A79D]", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600", "from-rose-500 to-pink-600"][banners.length % 4],
+        gradient: ["from-brand-blue to-brand-teal", "from-amber-500 to-orange-600", "from-violet-500 to-purple-600", "from-rose-500 to-pink-600"][banners.length % 4],
       };
       setBanners([...banners, newBanner]);
       toast({ title: "Banner added", description: newBanner.title });
@@ -254,9 +254,9 @@ export function CmsView() {
     <PageShell>
       <PageHeader title="Content Management" subtitle="Banners, offers, blogs, testimonials, FAQ and SEO" />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard icon={ImageIcon} label="Live Banners" value={String(activeBanners)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" subtitle={`${banners.length} total`} index={0} />
-        <MetricCard icon={Tag} label="Active Offers" value={String(OFFERS.filter((o) => o.status === "Active").length)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard icon={ImageIcon} label="Live Banners" value={String(activeBanners)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" subtitle={`${banners.length} total`} index={0} />
+        <MetricCard icon={Tag} label="Active Offers" value={String(OFFERS.filter((o) => o.status === "Active").length)} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" index={1} />
         <MetricCard icon={FileText} label="Published Posts" value={String(publishedBlogs)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle={`${blogs.length} total`} index={2} />
         <MetricCard icon={Star} label="Testimonials" value={String(testimonials.filter((t) => t.status === "Published").length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={3} />
       </div>
@@ -326,7 +326,7 @@ export function CmsView() {
               <Plus className="w-4 h-4 mr-1.5" /> New Offer
             </Button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {OFFERS.map((o) => (
               <motion.div key={o.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileHover={{ y: -3 }}>
                 <Card className={cn("overflow-hidden hover:shadow-sm transition-shadow", o.status !== "Active" && "opacity-70")}>

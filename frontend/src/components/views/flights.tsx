@@ -227,7 +227,7 @@ const AIRLINE_GRADIENTS: Record<string, string> = {
   QP: "from-amber-400 to-orange-500",
   IX: "from-rose-400 to-amber-500",
   EK: "from-red-400 to-rose-600",
-  SQ: "from-[#2A7BBD] to-[#00A79D]",
+  SQ: "from-brand-blue to-brand-teal",
   QR: "from-violet-400 to-fuchsia-500",
   AK: "from-red-400 to-orange-500",
   MH: "from-blue-400 to-red-500",
@@ -274,7 +274,7 @@ function timeToHour(t: string): number {
 }
 
 function airlineGradient(code: string): string {
-  return AIRLINE_GRADIENTS[code] ?? "from-[#2A7BBD] to-[#00A79D]";
+  return AIRLINE_GRADIENTS[code] ?? "from-brand-blue to-brand-teal";
 }
 
 /* ============================ Main View ============================ */
@@ -1169,10 +1169,10 @@ function SearchPanel(props: {
   return (
     <Card className="relative overflow-hidden border-0 shadow-sm">
       {/* Gradient backdrop */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D]" />
+      <div className="absolute inset-0 bg-gradient-to-br from-brand-blue via-primary to-brand-teal" />
       <div className="absolute inset-0 opacity-30 hero-pattern" />
       <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
-      <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-[#00A79D]/25 rounded-full blur-3xl" />
+      <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-brand-teal/25 rounded-full blur-3xl" />
 
       <CardContent className="relative p-5 sm:p-6 text-white">
         {/* Trip type toggle */}
@@ -1462,9 +1462,9 @@ function PaxStepper({ label, sub, value, onChange, min, max }: {
 
 function EmptyState() {
   return (
-    <Card className="overflow-hidden border-dashed border-border/80">
+    <Card className="overflow-hidden border-dashed border-border">
       <CardContent className="py-12 px-6 text-center">
-        <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] flex items-center justify-center mb-4 shadow-sm">
+        <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-blue to-brand-teal flex items-center justify-center mb-4 shadow-sm">
           <Plane className="w-8 h-8 text-white" />
         </div>
         <h3 className="text-xl font-semibold tracking-tight">Where would you like to fly?</h3>
@@ -1478,7 +1478,7 @@ function EmptyState() {
             { icon: ShieldCheck, title: "Secure Booking", desc: "100% safe payments" },
             { icon: CheckCircle2, title: "Instant Ticketing", desc: "Confirmed in seconds" },
           ].map((f) => (
-            <div key={f.title} className="rounded-xl border border-border/80 bg-card p-4 text-left">
+            <div key={f.title} className="rounded-xl border border-border bg-card p-4 text-left">
               <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-2">
                 <f.icon className="w-4 h-4" />
               </div>

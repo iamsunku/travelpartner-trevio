@@ -85,14 +85,14 @@ export function NotificationsView() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard icon={Bell} label="Total" value={String(items.length)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard icon={Bell} label="Total" value={String(items.length)} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={0} />
         <MetricCard icon={AlertTriangle} label="Unread" value={String(unreadCount)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={1} />
         <MetricCard icon={Plane} label="Booking" value={String(counts.booking || 0)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={2} />
         <MetricCard icon={CreditCard} label="Payment" value={String(counts.payment || 0)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={3} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-2">
           <div className="flex items-center gap-1 overflow-x-auto">
             <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0 ml-1.5" />
@@ -129,7 +129,7 @@ export function NotificationsView() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Notification list */}
         <div className="lg:col-span-2">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-0">
               <div className="max-h-[640px] overflow-y-auto scroll-thin divide-y divide-border">
                 {filtered.map((n, i) => {
@@ -185,7 +185,7 @@ export function NotificationsView() {
 
         {/* Preferences */}
         <div>
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardHeader className="pb-2">
               <SectionHeader title="Notification Preferences" description="Choose what you want to be notified about" />
             </CardHeader>

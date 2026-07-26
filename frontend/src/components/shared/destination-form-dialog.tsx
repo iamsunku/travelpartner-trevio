@@ -51,7 +51,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-[#2A7BBD] border-b pb-2">{title}</h3>
+      <h3 className="text-sm font-semibold text-primary border-b pb-2">{title}</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{children}</div>
     </div>
   );

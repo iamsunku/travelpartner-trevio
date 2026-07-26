@@ -174,8 +174,8 @@ function RenderSection({
 }
 
 export function QuoteTemplatePreview({ template, sections, mockData, className, compact }: QuoteTemplatePreviewProps) {
-  const primary = template.primaryColor || "#2A7BBD";
-  const secondary = template.secondaryColor || "#00A79D";
+  const primary = template.primaryColor || "var(--brand-blue)";
+  const secondary = template.secondaryColor || "var(--brand-teal)";
   const font = template.fontFamily || "Inter";
   const footerText = (template.footerStyle?.text as string) || mockData.agency.name;
   const visible = sections.filter((s) => s.isVisible !== false);

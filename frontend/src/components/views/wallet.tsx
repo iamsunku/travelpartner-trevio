@@ -355,9 +355,9 @@ export function WalletView() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="lg:col-span-2">
-          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D] text-white">
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-blue via-primary to-brand-teal text-white">
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.18),transparent_55%)]" />
-            <div className="absolute -bottom-16 -left-10 w-48 h-48 rounded-full bg-[#00A79D]/30 blur-3xl" />
+            <div className="absolute -bottom-16 -left-10 w-48 h-48 rounded-full bg-brand-teal/30 blur-3xl" />
             <div className="relative z-10 p-5 lg:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
@@ -409,7 +409,7 @@ export function WalletView() {
         </div>
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader className="pb-2">
           <SectionHeader title="Wallet Balance · Last 7 Days" description="Daily wallet balance trend" />
         </CardHeader>
@@ -419,8 +419,8 @@ export function WalletView() {
               <AreaChart data={balanceData} margin={{ left: -10, right: 10, top: 5, bottom: 0 }}>
                 <defs>
                   <linearGradient id="walletBal" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00A79D" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#00A79D" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--brand-teal)" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="var(--brand-teal)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted/40" vertical={false} />
@@ -430,14 +430,14 @@ export function WalletView() {
                   contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
                   formatter={(v: number) => [formatFullINR(v), "Balance"]}
                 />
-                <Area type="monotone" dataKey="balance" stroke="#2A7BBD" strokeWidth={2.5} fill="url(#walletBal)" />
+                <Area type="monotone" dataKey="balance" stroke="var(--brand-blue)" strokeWidth={2.5} fill="url(#walletBal)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader className="pb-3">
           <SectionHeader title="Wallet Statement" description="All transactions in chronological order" />
         </CardHeader>

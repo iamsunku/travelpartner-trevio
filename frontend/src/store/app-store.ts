@@ -56,10 +56,13 @@ export const useAuthStore = create<AuthState>()(
 interface AppState {
   activeView: ViewKey;
   sidebarOpen: boolean;
+  sidebarCollapsed: boolean;
   theme: "light" | "dark";
   setView: (view: ViewKey) => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebarCollapsed: () => void;
   setTheme: (theme: "light" | "dark") => void;
   syncViewFromUrl: () => void;
 }
@@ -76,6 +79,7 @@ export const useAppStore = create<AppState>()(
     (set, get) => ({
       activeView: "dashboard",
       sidebarOpen: false,
+      sidebarCollapsed: false,
       theme: "light",
       setView: (view) => {
         const label = SEARCH_ITEMS.find((s) => s.key === view)?.label ?? view;
@@ -85,6 +89,8 @@ export const useAppStore = create<AppState>()(
       },
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
       toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
+      setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setTheme: (theme) => set({ theme }),
       syncViewFromUrl: () => {
         if (typeof window === "undefined") return;

@@ -33,8 +33,8 @@ export function TravelProposalWorkspace({
   const branding = snapshot.branding as Record<string, unknown> | null;
 
   const previewTemplate = useMemo(() => ({
-    primaryColor: String(template?.primaryColor ?? branding?.primaryColor ?? "#2A7BBD"),
-    secondaryColor: String(template?.secondaryColor ?? branding?.secondaryColor ?? "#00A79D"),
+    primaryColor: String(template?.primaryColor ?? branding?.primaryColor ?? "var(--brand-blue)"),
+    secondaryColor: String(template?.secondaryColor ?? branding?.secondaryColor ?? "var(--brand-teal)"),
     fontFamily: String(template?.fontFamily ?? branding?.fontFamily ?? "Inter"),
     logo: (template?.logo ?? branding?.logo) as string | null,
     watermark: (template?.watermark ?? branding?.watermark) as string | null,
@@ -98,18 +98,18 @@ export function TravelProposalWorkspace({
   return (
     <div className="grid xl:grid-cols-[360px_1fr] gap-4">
       <div className="space-y-3">
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardContent className="p-4 space-y-3">
-            <h4 className="text-sm font-semibold text-[#2A7BBD]">Customer</h4>
+            <h4 className="text-sm font-semibold text-primary">Customer</h4>
             <p className="text-sm font-medium">{customerName}</p>
             <p className="text-xs text-muted-foreground">{String(snapshot.customer?.email ?? snapshot.lead?.email ?? "")}</p>
             <p className="text-xs text-muted-foreground">{proposal.proposalNumber} · v{proposal.currentVersion}</p>
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardContent className="p-4 space-y-3">
-            <h4 className="text-sm font-semibold text-[#2A7BBD]">Hotels</h4>
+            <h4 className="text-sm font-semibold text-primary">Hotels</h4>
             <Select
               value={snapshot.productSelections.hotelOptionGroup ?? "Standard"}
               onValueChange={(v) => updateSelections({ hotelOptionGroup: v })}
@@ -121,9 +121,9 @@ export function TravelProposalWorkspace({
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardContent className="p-4 space-y-3">
-            <h4 className="text-sm font-semibold text-[#2A7BBD]">Activities</h4>
+            <h4 className="text-sm font-semibold text-primary">Activities</h4>
             <Select
               value={snapshot.productSelections.activityOptionGroup ?? "Included"}
               onValueChange={(v) => updateSelections({ activityOptionGroup: v })}
@@ -135,9 +135,9 @@ export function TravelProposalWorkspace({
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardContent className="p-4 space-y-3">
-            <h4 className="text-sm font-semibold text-[#2A7BBD]">Transfers</h4>
+            <h4 className="text-sm font-semibold text-primary">Transfers</h4>
             <Select
               value={snapshot.productSelections.transferOptionGroup ?? "Private"}
               onValueChange={(v) => updateSelections({ transferOptionGroup: v })}
@@ -149,9 +149,9 @@ export function TravelProposalWorkspace({
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardContent className="p-4 space-y-3">
-            <h4 className="text-sm font-semibold text-[#2A7BBD]">Pricing</h4>
+            <h4 className="text-sm font-semibold text-primary">Pricing</h4>
             <div className="space-y-2 text-xs">
               <div className="flex justify-between"><span>Hotels</span><span>{inr(snapshot.pricing.hotelCost)}</span></div>
               <div className="flex justify-between"><span>Activities</span><span>{inr(snapshot.pricing.activityCost)}</span></div>
@@ -177,14 +177,14 @@ export function TravelProposalWorkspace({
             </div>
             <div className="flex justify-between font-bold text-sm pt-2 border-t">
               <span>Total</span>
-              <span className="text-[#2A7BBD]">{inr(snapshot.pricing.total)}</span>
+              <span className="text-primary">{inr(snapshot.pricing.total)}</span>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardContent className="p-4 space-y-3">
-            <h4 className="text-sm font-semibold text-[#2A7BBD]">Terms & Notes</h4>
+            <h4 className="text-sm font-semibold text-primary">Terms & Notes</h4>
             <div>
               <Label className="text-xs">Valid until</Label>
               <Input

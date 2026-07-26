@@ -1,0 +1,32 @@
+# Free-tier friendly Render Blueprint for the Express API
+# Dashboard: https://dashboard.render.com
+#
+# After create:
+# 1. Set env vars in Render (DATABASE_URL from Supabase, JWT_SECRET, CORS_ORIGIN)
+# 2. Point Vercel NEXT_PUBLIC_API_URL to this service URL
+
+services:
+  - type: web
+    name: travelpartner-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "4000"
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        sync: false
+

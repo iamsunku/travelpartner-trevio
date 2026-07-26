@@ -332,7 +332,7 @@ export function PackageProductOptionsBuilder({
         const available = pool.filter((p) => !typeOptions.some((o) => o.productId === p.id));
 
         return (
-          <div key={group} className="rounded-lg border border-border/80 overflow-hidden">
+          <div key={group} className="rounded-lg border border-border overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 bg-muted/40 border-b">
               <div>
                 <p className="text-sm font-medium">{group}</p>
@@ -428,7 +428,7 @@ export function PackageProductOptionsDisplay({ options }: PackageProductOptionsD
         if (groups.size === 0) return null;
         return (
           <div key={type}>
-            <h4 className="text-sm font-semibold text-[#2A7BBD] mb-2">{labels[type]}</h4>
+            <h4 className="text-sm font-semibold text-primary mb-2">{labels[type]}</h4>
             <div className="space-y-3">
               {[...groups.entries()].map(([group, items]) => (
                 <div key={group} className="rounded-lg border overflow-hidden">

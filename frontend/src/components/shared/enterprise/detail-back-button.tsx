@@ -11,8 +11,8 @@ export function DetailBackButton({
   onClick: () => void;
 }) {
   return (
-    <Button variant="ghost" size="sm" className="-ml-2 mb-2" onClick={onClick}>
-      <ArrowLeft className="w-4 h-4 mr-1" aria-hidden />
+    <Button variant="ghost" size="sm" className="-ml-2 mb-1 h-8 text-muted-foreground hover:text-foreground" onClick={onClick} aria-label={label}>
+      <ArrowLeft className="w-4 h-4 mr-1.5" aria-hidden />
       {label}
     </Button>
   );

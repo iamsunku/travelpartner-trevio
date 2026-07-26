@@ -18,7 +18,7 @@ export function PackageMatchCard({ match, selected, onView, onCustomize }: Packa
   const price = pkg.finalPrice ?? pkg.startingPrice;
 
   return (
-    <Card className={cn("border-border/80 shadow-none overflow-hidden", selected && "ring-2 ring-[#2A7BBD]")}>
+    <Card className={cn(" overflow-hidden", selected && "ring-2 ring-primary")}>
       <CardContent className="p-0">
         <div className="flex gap-3">
           {pkg.heroImage ? (
@@ -44,7 +44,7 @@ export function PackageMatchCard({ match, selected, onView, onCustomize }: Packa
                 {match.score}%
               </div>
             </div>
-            <p className="text-sm font-semibold text-[#2A7BBD] mt-1 tabular-nums">From ₹{price.toLocaleString("en-IN")}</p>
+            <p className="text-sm font-semibold text-primary mt-1 tabular-nums">From ₹{price.toLocaleString("en-IN")}</p>
             <ul className="mt-2 space-y-0.5">
               {match.reasons.slice(0, 3).map((r, i) => (
                 <li key={i} className="text-[10px] text-muted-foreground flex items-center gap-1">

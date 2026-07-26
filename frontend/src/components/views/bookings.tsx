@@ -106,7 +106,7 @@ function BookingDetailDialog({
 
         <div className="space-y-3">
           {/* Itinerary */}
-          <div className="rounded-lg border p-3 bg-gradient-to-br from-primary/5 to-[#00A79D]/5">
+          <div className="rounded-lg border p-3 bg-gradient-to-br from-primary/5 to-brand-teal/5">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Itinerary</p>
             <div className="flex items-center justify-between">
               <div>
@@ -276,7 +276,7 @@ export function BookingsView() {
               "px-3 py-1.5 rounded-full text-xs font-medium transition-all border",
               activeTab === tab.key
                 ? "bg-primary text-primary-foreground border-primary"
-                : "bg-card text-muted-foreground border-border/80 hover:border-primary/30 hover:text-foreground"
+                : "bg-card text-muted-foreground border-border hover:border-primary/30 hover:text-foreground"
             )}
           >
             {tab.label}
@@ -287,7 +287,7 @@ export function BookingsView() {
         ))}
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-4">
           {/* Filters */}
           <div className="flex flex-col lg:flex-row gap-2 mb-3">
@@ -316,7 +316,7 @@ export function BookingsView() {
             </div>
           </div>
 
-          <div className="rounded-lg border border-border/80 max-h-[60vh] overflow-y-auto scroll-thin">
+          <div className="rounded-lg border border-border max-h-[60vh] overflow-y-auto scroll-thin">
             <Table>
               <TableHeader className="sticky top-0 bg-card z-10">
                 <TableRow>

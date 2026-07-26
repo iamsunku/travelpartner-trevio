@@ -227,9 +227,9 @@ export function TripPlannerWorkspace({ requirementId, onBack, onSaved }: TripPla
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left: Requirement Form */}
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardContent className="p-4 space-y-3">
-            <h3 className="font-semibold text-sm text-[#2A7BBD]">Travel Requirement</h3>
+            <h3 className="font-semibold text-sm text-primary">Travel Requirement</h3>
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">

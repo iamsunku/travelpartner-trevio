@@ -135,15 +135,15 @@ export function AuditLogsView() {
         title="Audit Logs"
         subtitle="Track every action across your travel platform"
         action={
-          <Button onClick={handleExport} className="bg-gradient-to-r from-[#2A7BBD] to-[#00A79D] hover:opacity-90">
+          <Button onClick={handleExport} className="bg-gradient-to-r from-brand-blue to-brand-teal hover:opacity-90">
             <Download className="w-4 h-4 mr-1.5" /> Export Logs
           </Button>
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard icon={FileEdit} label="Total Events" value={String(logs.length)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={0} />
-        <MetricCard icon={CheckCircle2} label="Successful" value={String(successCount)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard icon={FileEdit} label="Total Events" value={String(logs.length)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" index={0} />
+        <MetricCard icon={CheckCircle2} label="Successful" value={String(successCount)} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" index={1} />
         <MetricCard icon={AlertTriangle} label="Warnings" value={String(warningCount)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
         <MetricCard icon={AlertTriangle} label="Errors" value={String(errorCount)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
       </div>
@@ -162,7 +162,7 @@ export function AuditLogsView() {
                   onClick={() => setFilter(f)}
                   className={cn(
                     "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap",
-                    isActive ? "bg-gradient-to-r from-[#2A7BBD] to-[#00A79D] text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    isActive ? "bg-gradient-to-r from-brand-blue to-brand-teal text-white shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -281,7 +281,7 @@ export function AuditLogsView() {
       </Card>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { icon: LogIn, label: "Login Events", value: logs.filter((l) => l.type === "login").length, color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" },
           { icon: AlertTriangle, label: "Warnings", value: logs.filter((l) => l.status === "warning").length, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },

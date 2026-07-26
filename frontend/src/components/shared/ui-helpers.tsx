@@ -73,7 +73,14 @@ const STATUS_STYLES: Record<string, string> = {
 export function StatusBadge({ status, className }: { status: string; className?: string }) {
   const style = STATUS_STYLES[status] || "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-400";
   return (
-    <Badge variant="secondary" className={cn("font-medium border-0", style, className)}>
+    <Badge
+      variant="secondary"
+      className={cn(
+        "font-medium border-0 text-helper h-5 px-2 rounded-md tracking-wide",
+        style,
+        className
+      )}
+    >
       {status}
     </Badge>
   );
@@ -86,7 +93,7 @@ export function PageShell({
   children: React.ReactNode;
   className?: string;
 }) {
-  return <div className={cn("space-y-6", className)}>{children}</div>;
+  return <div className={cn("page-shell animate-slide-up", className)}>{children}</div>;
 }
 
 export function PageHeader({
@@ -101,16 +108,16 @@ export function PageHeader({
   eyebrow?: string;
 }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-      <div className="min-w-0">
+    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 sm:gap-6">
+      <div className="min-w-0 space-y-1.5">
         {eyebrow && (
-          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground mb-1.5">
+          <p className="text-helper font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             {eyebrow}
           </p>
         )}
-        <h1 className="text-2xl lg:text-[26px] font-semibold tracking-tight text-foreground">{title}</h1>
+        <h1 className="text-page-title text-foreground">{title}</h1>
         {subtitle && (
-          <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed max-w-2xl">{subtitle}</p>
+          <p className="text-body text-muted-foreground leading-relaxed max-w-2xl">{subtitle}</p>
         )}
       </div>
       {action && <div className="flex flex-wrap items-center gap-2 shrink-0">{action}</div>}
@@ -128,10 +135,10 @@ export function SectionHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
-        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0 space-y-0.5">
+        <h2 className="text-section-title text-foreground">{title}</h2>
+        {description && <p className="text-caption text-muted-foreground">{description}</p>}
       </div>
       {action}
     </div>
@@ -159,21 +166,22 @@ export function MetricCard({
 }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.03, duration: 0.3 }}
+      transition={{ delay: index * 0.03, duration: 0.2 }}
+      className="h-full"
     >
-      <Card className="group relative overflow-hidden border-border/80 shadow-none hover:border-primary/25 transition-all duration-200">
-        <div className="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-[#2A7BBD] to-[#00A79D] opacity-0 group-hover:opacity-100 transition-opacity" />
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center shrink-0", color)}>
-              <Icon className="w-4 h-4" />
+      <Card className="group relative h-full overflow-hidden border-border shadow-[var(--shadow-card)] hover:border-primary/20 hover:shadow-sm transition-enterprise">
+        <div className="absolute inset-y-0 left-0 w-[3px] bg-brand-gradient opacity-0 group-hover:opacity-100 transition-enterprise" aria-hidden />
+        <CardContent className="p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", color)}>
+              <Icon className="w-4 h-4" aria-hidden />
             </div>
             {change !== undefined && trend && (
               <span
                 className={cn(
-                  "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
+                  "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-helper font-semibold tabular-nums",
                   trend === "up"
                     ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
                     : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400"
@@ -184,9 +192,9 @@ export function MetricCard({
               </span>
             )}
           </div>
-          <p className="text-[22px] font-semibold mt-3 tracking-tight tabular-nums leading-none">{value}</p>
-          <p className="text-xs font-medium text-foreground/80 mt-2">{label}</p>
-          {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5">{subtitle}</p>}
+          <p className="text-[1.375rem] font-semibold mt-4 tracking-tight tabular-nums leading-none text-foreground">{value}</p>
+          <p className="text-label text-foreground/80 mt-2.5">{label}</p>
+          {subtitle && <p className="text-helper text-muted-foreground mt-1">{subtitle}</p>}
         </CardContent>
       </Card>
     </motion.div>
@@ -209,19 +217,19 @@ export function BrandHero({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D] text-white",
+        "relative overflow-hidden rounded-xl bg-brand-gradient text-white",
         className
       )}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.18),transparent_55%)]" />
-      <div className="absolute -bottom-16 -left-10 w-48 h-48 rounded-full bg-[#00A79D]/30 blur-3xl" />
-      <div className="relative z-10 flex flex-col lg:flex-row lg:items-end justify-between gap-5 p-5 lg:p-6">
-        <div className="max-w-xl">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.16),transparent_55%)]" aria-hidden />
+      <div className="absolute -bottom-16 -left-10 w-48 h-48 rounded-full bg-brand-teal/25 blur-3xl" aria-hidden />
+      <div className="relative z-10 flex flex-col lg:flex-row lg:items-end justify-between gap-6 p-6 lg:p-8">
+        <div className="max-w-xl space-y-2">
           {eyebrow && (
-            <p className="text-white/75 text-[11px] font-medium uppercase tracking-[0.14em]">{eyebrow}</p>
+            <p className="text-white/75 text-helper font-semibold uppercase tracking-[0.12em]">{eyebrow}</p>
           )}
-          <h2 className="text-2xl font-semibold tracking-tight mt-1">{title}</h2>
-          {subtitle && <p className="text-white/85 text-sm mt-2 leading-relaxed">{subtitle}</p>}
+          <h2 className="text-page-title text-white">{title}</h2>
+          {subtitle && <p className="text-white/85 text-body leading-relaxed">{subtitle}</p>}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
       </div>
@@ -234,7 +242,7 @@ export function initials(name: string): string {
 }
 
 const AVATAR_GRADIENTS = [
-  "from-[#2A7BBD] to-[#00A79D]",
+  "from-brand-blue to-brand-teal",
   "from-teal-400 to-emerald-500",
   "from-amber-400 to-orange-500",
   "from-rose-400 to-pink-500",

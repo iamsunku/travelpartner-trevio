@@ -250,8 +250,8 @@ export function AgenciesView() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <MetricCard icon={Building2} label="Total Agencies" value={String(stats.total)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" subtitle="On platform" index={0} />
-        <MetricCard icon={CheckCircle2} label="Active" value={String(stats.active)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+        <MetricCard icon={Building2} label="Total Agencies" value={String(stats.total)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" subtitle="On platform" index={0} />
+        <MetricCard icon={CheckCircle2} label="Active" value={String(stats.active)} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" index={1} />
         <MetricCard icon={Ban} label="Suspended" value={String(stats.suspended)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
         <MetricCard icon={Sparkles} label="Trial" value={String(stats.trial)} color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" index={3} />
         <MetricCard icon={Wallet} label="Platform Revenue" value={formatINR(stats.revenue)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="This month" index={4} />
@@ -358,7 +358,7 @@ export function AgenciesView() {
         <SectionHeader
           title="Subscription Plans"
           description="Compare plan tiers offered to agencies."
-          action={<Badge variant="outline" className="bg-sky-50 text-[#2A7BBD] border-sky-200">3 Tiers</Badge>}
+          action={<Badge variant="outline" className="bg-sky-50 text-primary border-sky-200">3 Tiers</Badge>}
         />
         <div className="mt-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

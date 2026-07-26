@@ -123,7 +123,11 @@ export function AppShell() {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar />
-        <main id="main-content" className="flex-1 p-4 lg:p-6 max-w-[1600px] w-full mx-auto" tabIndex={-1}>
+        <main
+          id="main-content"
+          className="flex-1 w-full mx-auto max-w-[1600px] px-4 py-6 sm:px-6 md:px-6 lg:px-8 lg:py-8 animate-fade-in"
+          tabIndex={-1}
+        >
           <ViewComponent />
         </main>
         <Footer />

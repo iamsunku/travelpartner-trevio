@@ -110,7 +110,7 @@ export function TasksView() {
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <MetricCard icon={ListTodo} label="Total" value={String(total)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+        <MetricCard icon={ListTodo} label="Total" value={String(total)} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={0} />
         <MetricCard icon={ListTodo} label="To Do" value={String(todo)} color="bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300" index={1} />
         <MetricCard icon={Loader} label="In Progress" value={String(inProgress)} color="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" index={2} />
         <MetricCard icon={AlertTriangle} label="Overdue" value={String(overdue)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
@@ -151,7 +151,7 @@ function Column({
     <div
       ref={setNodeRef}
       className={cn(
-        "rounded-xl border border-border/80 bg-muted/30 p-2.5 transition-colors min-h-[200px]",
+        "rounded-xl border border-border bg-muted/30 p-2.5 transition-colors min-h-[200px]",
         isOver && "border-primary/40 bg-primary/[0.03] ring-2 ring-primary/20",
       )}
     >
@@ -196,7 +196,7 @@ function TaskCard({ task, onOpen, dragging }: { task: Task; onOpen: () => void; 
       {...listeners}
       onClick={(e) => { if (!isDragging) { e.stopPropagation(); onOpen(); } }}
       className={cn(
-        "group rounded-lg border border-border/80 bg-card p-2.5 cursor-grab active:cursor-grabbing hover:border-primary/30 transition-all",
+        "group rounded-lg border border-border bg-card p-2.5 cursor-grab active:cursor-grabbing hover:border-primary/30 transition-all",
         dragging && "border-primary/40",
       )}
     >
@@ -404,7 +404,7 @@ function TaskDetailDialog({ task, onClose }: { task: Task | null; onClose: () =>
             {MOCK_ATTACHMENTS.map((a) => (
               <div key={a.name} className="flex items-center justify-between rounded-lg border border-border p-2 hover:bg-muted/40 transition-colors cursor-pointer">
                 <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-md bg-[#2A7BBD]/10 dark:bg-[#2A7BBD]/15 text-[#2A7BBD] dark:text-[#00A79D] flex items-center justify-center shrink-0">
+                  <div className="w-7 h-7 rounded-md bg-primary/10 dark:bg-primary/15 text-primary dark:text-brand-teal flex items-center justify-center shrink-0">
                     <Paperclip className="w-3.5 h-3.5" />
                   </div>
                   <div className="min-w-0">

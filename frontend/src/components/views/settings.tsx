@@ -162,7 +162,7 @@ function CompanyTab() {
               {logo ? (
                 <img src={logo} alt="Logo" className="w-full h-full object-cover" />
               ) : (
-                <AvatarFallback className="bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white text-2xl font-bold">
+                <AvatarFallback className="bg-gradient-to-br from-brand-blue to-brand-teal text-white text-2xl font-bold">
                   {initials}
                 </AvatarFallback>
               )}

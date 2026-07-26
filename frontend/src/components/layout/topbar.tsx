@@ -13,6 +13,7 @@ import {
   Settings,
   MessageSquare,
   Menu,
+  PanelLeft,
 } from "lucide-react";
 import { useAppStore, useAuthStore } from "@/store/app-store";
 import { ROLE_LABELS } from "@/lib/nav-config";
@@ -35,7 +36,7 @@ import { avatarGradient, initials } from "@/components/shared/ui-helpers";
 import { useDemoDataStore } from "@/store/demo-data-store";
 
 export function Topbar() {
-  const { toggleSidebar, setView } = useAppStore();
+  const { toggleSidebar, toggleSidebarCollapsed, setView, activeView } = useAppStore();
   const { user, logout } = useAuthStore();
   const notifications = useDemoDataStore((s) => s.notifications);
   const markNotificationRead = useDemoDataStore((s) => s.markNotificationRead);
@@ -48,49 +49,78 @@ export function Topbar() {
 
   const unread = notifications.filter((n) => !n.read).length;
   const isDark = mounted && (resolvedTheme === "dark" || theme === "dark");
-
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
+
+  const viewLabel = activeView
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 
   return (
     <TooltipProvider delayDuration={300}>
-      <header className="sticky top-0 z-30 h-14 bg-background/90 backdrop-blur-md border-b border-border/80">
-        <div className="flex items-center h-full px-4 lg:px-6 gap-3">
+      <header className="sticky top-0 z-30 h-14 bg-background/85 backdrop-blur-md border-b border-border">
+        <div className="flex items-center h-full px-4 md:px-6 xl:px-8 gap-3 max-w-[1600px] w-full mx-auto">
           <button
             onClick={toggleSidebar}
-            className="lg:hidden shrink-0 text-muted-foreground hover:text-foreground"
+            className="lg:hidden shrink-0 text-muted-foreground hover:text-foreground p-1.5 rounded-md transition-enterprise"
             aria-label="Open menu"
           >
             <Menu className="w-5 h-5" />
           </button>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden lg:inline-flex h-9 w-9 text-muted-foreground"
+                onClick={toggleSidebarCollapsed}
+                aria-label="Toggle sidebar"
+              >
+                <PanelLeft className="w-[18px] h-[18px]" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Toggle sidebar</TooltipContent>
+          </Tooltip>
+
+          <div className="hidden md:flex items-center min-w-0 shrink">
+            <p className="text-caption text-muted-foreground truncate">
+              <span className="text-foreground/70">Workspace</span>
+              <span className="mx-1.5 text-border">/</span>
+              <span className="font-medium text-foreground">{viewLabel}</span>
+            </p>
+          </div>
+
           <div
-            className="relative w-full max-w-md min-w-0 hidden sm:block cursor-pointer"
+            className="relative w-full max-w-sm min-w-0 hidden sm:block cursor-pointer"
             onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
             role="button"
             tabIndex={0}
+            aria-label="Open command palette"
             onKeyDown={(e) => e.key === "Enter" && window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
           >
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" aria-hidden />
             <Input
               readOnly
-              placeholder="Search bookings, customers, flights..."
-              className="pl-9 h-9 bg-muted/40 border border-border/60 focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
+              placeholder="Search or jump to…"
+              className="pl-9 h-9 bg-muted/50 border-border/70 focus-visible:ring-1 focus-visible:ring-primary cursor-pointer"
             />
-            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground border border-border/80 rounded px-1.5 py-0.5 hidden lg:block pointer-events-none">
+            <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-helper text-muted-foreground border border-border rounded px-1.5 py-0.5 hidden lg:block pointer-events-none">
               ⌘K
             </kbd>
           </div>
 
-          <div className="flex-1 min-w-4" aria-hidden />
+          <div className="flex-1 min-w-2" aria-hidden />
 
-          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                  className="h-9 w-9 text-muted-foreground"
                   onClick={() => setView("support")}
+                  aria-label="Messages"
                 >
                   <MessageSquare className="w-[18px] h-[18px]" />
                 </Button>
@@ -105,11 +135,12 @@ export function Topbar() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-9 w-9 relative text-muted-foreground hover:text-foreground"
+                      className="h-9 w-9 relative text-muted-foreground"
+                      aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`}
                     >
                       <Bell className="w-[18px] h-[18px]" />
                       {unread > 0 && (
-                        <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 pulse-dot" />
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-destructive pulse-dot" aria-hidden />
                       )}
                     </Button>
                   </PopoverTrigger>
@@ -117,33 +148,37 @@ export function Topbar() {
                 <TooltipContent>Notifications</TooltipContent>
               </Tooltip>
               <PopoverContent className="w-[360px] p-0" align="end" sideOffset={8}>
-                <div className="p-3 border-b border-border flex items-center justify-between">
+                <div className="p-4 border-b border-border flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-sm">Notifications</p>
-                    <p className="text-xs text-muted-foreground">{unread} unread</p>
+                    <p className="text-card-title">Notifications</p>
+                    <p className="text-caption text-muted-foreground mt-0.5">{unread} unread</p>
                   </div>
-                  <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setView("notifications")}>
+                  <Button variant="ghost" size="sm" className="text-caption h-8" onClick={() => setView("notifications")}>
                     View all
                   </Button>
                 </div>
                 <ScrollArea className="h-[360px] scroll-thin">
                   <div className="divide-y divide-border">
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    className={cn("p-3 hover:bg-muted/50 cursor-pointer flex gap-2.5", !n.read && "bg-primary/5")}
-                    onClick={() => markNotificationRead(n.id)}
-                  >
+                    {notifications.map((n) => (
+                      <div
+                        key={n.id}
+                        className={cn(
+                          "p-4 hover:bg-muted/40 cursor-pointer flex gap-3 transition-enterprise",
+                          !n.read && "bg-primary/[0.04]"
+                        )}
+                        onClick={() => markNotificationRead(n.id)}
+                      >
                         <div
                           className={cn(
                             "w-2 h-2 rounded-full mt-1.5 shrink-0",
-                            n.priority === "high" ? "bg-rose-500" : n.priority === "medium" ? "bg-amber-500" : "bg-slate-400"
+                            n.priority === "high" ? "bg-destructive" : n.priority === "medium" ? "bg-warning" : "bg-muted-foreground/40"
                           )}
+                          aria-hidden
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium leading-tight">{n.title}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.message}</p>
-                          <p className="text-[10px] text-muted-foreground mt-1">{n.time}</p>
+                          <p className="text-sm font-medium leading-snug">{n.title}</p>
+                          <p className="text-caption text-muted-foreground mt-1 line-clamp-2">{n.message}</p>
+                          <p className="text-helper text-muted-foreground mt-1.5">{n.time}</p>
                         </div>
                       </div>
                     ))}
@@ -157,8 +192,9 @@ export function Topbar() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                  className="h-9 w-9 text-muted-foreground"
                   onClick={toggleTheme}
+                  aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
                 >
                   {mounted && isDark ? (
                     <Sun className="w-[18px] h-[18px]" />
@@ -170,11 +206,15 @@ export function Topbar() {
               <TooltipContent>{isDark ? "Light mode" : "Dark mode"}</TooltipContent>
             </Tooltip>
 
-            <div className="hidden sm:block w-px h-6 bg-border mx-1" />
+            <div className="hidden sm:block w-px h-6 bg-border mx-1.5" aria-hidden />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2.5 pl-1 pr-2 py-1 rounded-lg hover:bg-muted transition-colors">
+                <button
+                  type="button"
+                  className="flex items-center gap-2.5 pl-1 pr-2 py-1 rounded-lg hover:bg-muted transition-enterprise focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  aria-label="User menu"
+                >
                   <Avatar className="w-8 h-8 border border-border">
                     <AvatarFallback
                       className={cn("bg-gradient-to-br text-white text-xs font-semibold", avatarGradient(user.name))}
@@ -183,17 +223,17 @@ export function Topbar() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="hidden md:block text-left">
-                    <p className="text-xs font-semibold leading-tight">{user.name}</p>
-                    <p className="text-[10px] text-muted-foreground leading-tight">{ROLE_LABELS[user.role]}</p>
+                    <p className="text-caption font-semibold leading-tight">{user.name}</p>
+                    <p className="text-helper text-muted-foreground leading-tight">{ROLE_LABELS[user.role]}</p>
                   </div>
-                  <ChevronDown className="w-3.5 h-3.5 text-muted-foreground hidden md:block" />
+                  <ChevronDown className="w-3.5 h-3.5 text-muted-foreground hidden md:block" aria-hidden />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div className="flex flex-col">
                     <span className="text-sm font-semibold">{user.name}</span>
-                    <span className="text-xs text-muted-foreground font-normal">{user.email}</span>
+                    <span className="text-caption text-muted-foreground font-normal">{user.email}</span>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -204,7 +244,7 @@ export function Topbar() {
                   <Settings className="w-4 h-4 mr-2" /> Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={logout} className="text-rose-600 focus:text-rose-600">
+                <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
                   <LogOut className="w-4 h-4 mr-2" /> Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>

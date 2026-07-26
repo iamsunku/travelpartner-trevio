@@ -120,14 +120,14 @@ export function AttendanceLeaveView() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard icon={CalendarCheck} label="Today" value={todayRecord?.status || "Not checked in"} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard icon={CalendarCheck} label="Today" value={todayRecord?.status || "Not checked in"} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={0} />
         <MetricCard icon={LogIn} label="Check-in" value={fmtTime(todayRecord?.checkIn)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
         <MetricCard icon={LogOut} label="Check-out" value={fmtTime(todayRecord?.checkOut)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
         <MetricCard icon={Clock} label="Leave requests" value={`${myLeaves.filter((l) => l.status === "Pending").length} pending`} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-4 flex flex-wrap gap-2">
           <Button onClick={handleCheckIn} disabled={busy || !!todayRecord?.checkIn} className="bg-emerald-600 hover:bg-emerald-700">
             <LogIn className="w-4 h-4 mr-1.5" /> Check In
@@ -147,7 +147,7 @@ export function AttendanceLeaveView() {
         </TabsList>
 
         <TabsContent value="attendance" className="mt-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardHeader className="pb-2">
               <SectionHeader title="Recent Attendance" description={`Last ${attendance.length} recorded days`} />
             </CardHeader>
@@ -180,7 +180,7 @@ export function AttendanceLeaveView() {
         </TabsContent>
 
         <TabsContent value="leaves" className="mt-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardHeader className="pb-2">
               <SectionHeader title="My Leave Requests" />
             </CardHeader>
@@ -216,7 +216,7 @@ export function AttendanceLeaveView() {
 
         {isManager && (
           <TabsContent value="roster" className="mt-4">
-            <Card className="border-border/80 shadow-none">
+            <Card>
               <CardHeader className="pb-2">
                 <SectionHeader title="Today's Attendance" description="Who's checked in across your branch, as of now" />
               </CardHeader>
@@ -258,7 +258,7 @@ export function AttendanceLeaveView() {
 
         {isManager && (
           <TabsContent value="approvals" className="mt-4">
-            <Card className="border-border/80 shadow-none">
+            <Card>
               <CardHeader className="pb-2">
                 <SectionHeader title="Team Leave Requests" description="Requests from your branch / agency" />
               </CardHeader>

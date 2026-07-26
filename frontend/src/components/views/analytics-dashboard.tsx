@@ -80,7 +80,7 @@ interface UserActivity {
   errorCount: number;
 }
 
-const BRAND_COLORS = ["#2A7BBD", "#00A79D", "#f59e0b", "#ef4444", "#06b6d4", "#8b5cf6"];
+const BRAND_COLORS = ["var(--brand-blue)", "var(--brand-teal)", "#f59e0b", "#ef4444", "#06b6d4", "#8b5cf6"];
 
 const TIME_RANGES = [
   { value: 24, label: "24h" },
@@ -91,9 +91,9 @@ const TIME_RANGES = [
 function methodBadgeClass(method: string) {
   switch (method) {
     case "GET":
-      return "bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400";
+      return "bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400";
     case "POST":
-      return "bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400";
+      return "bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400";
     case "PUT":
       return "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400";
     case "DELETE":
@@ -211,7 +211,7 @@ export function AnalyticsDashboard() {
                 variant={hours === range.value ? "default" : "outline"}
                 className={cn(
                   hours === range.value &&
-                    "bg-gradient-to-r from-[#2A7BBD] to-[#00A79D] hover:opacity-90 border-0"
+                    "bg-gradient-to-r from-brand-blue to-brand-teal hover:opacity-90 border-0"
                 )}
                 onClick={() => setHours(range.value)}
               >
@@ -227,7 +227,7 @@ export function AnalyticsDashboard() {
           icon={Activity}
           label="Total Requests"
           value={summary.totalRequests.toLocaleString("en-IN")}
-          color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400"
+          color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400"
           subtitle={`${summary.uptime}% uptime`}
           index={0}
         />
@@ -243,7 +243,7 @@ export function AnalyticsDashboard() {
           icon={Clock}
           label="Avg Response Time"
           value={`${summary.avgResponseTime}ms`}
-          color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400"
+          color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400"
           subtitle={summary.avgResponseTime < 200 ? "Excellent" : "Good"}
           index={2}
         />
@@ -266,7 +266,7 @@ export function AnalyticsDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardHeader className="pb-2">
             <SectionHeader title="Status Code Distribution" description="Response breakdown by HTTP status" />
           </CardHeader>
@@ -295,7 +295,7 @@ export function AnalyticsDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardHeader className="pb-2">
             <SectionHeader title="Top Endpoints" description="Most requested API routes" />
           </CardHeader>
@@ -307,14 +307,14 @@ export function AnalyticsDashboard() {
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
                 <Legend />
-                <Bar dataKey="requests" fill="#2A7BBD" name="Requests" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="requests" fill="var(--brand-blue)" name="Requests" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader className="pb-2">
           <SectionHeader title="Endpoint Response Times" description="Average latency across top endpoints" />
         </CardHeader>
@@ -329,7 +329,7 @@ export function AnalyticsDashboard() {
               <Line
                 type="monotone"
                 dataKey="avgTime"
-                stroke="#00A79D"
+                stroke="var(--brand-teal)"
                 strokeWidth={2.5}
                 name="Avg Response Time (ms)"
                 dot={{ r: 3 }}
@@ -339,7 +339,7 @@ export function AnalyticsDashboard() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader className="pb-2">
           <SectionHeader title="Top Active Users" description="Request volume by user" />
         </CardHeader>
@@ -351,13 +351,13 @@ export function AnalyticsDashboard() {
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
               <Legend />
-              <Bar dataKey="requests" fill="#00A79D" name="Requests" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="requests" fill="var(--brand-teal)" name="Requests" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader className="pb-2">
           <SectionHeader title="Endpoint Performance" description="Latency and error rates by route" />
         </CardHeader>
@@ -398,7 +398,7 @@ export function AnalyticsDashboard() {
       </Card>
 
       {errors.length > 0 && (
-        <Card className="border-border/80 shadow-none">
+        <Card>
           <CardHeader className="pb-2">
             <SectionHeader
               title="Recent Errors"

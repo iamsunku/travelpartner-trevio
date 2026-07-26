@@ -113,14 +113,14 @@ function OverviewTab({ data }: { data: MappedFinance | null }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard icon={IndianRupee} label="Total Revenue (12mo)" value={formatINR(totalRevenue)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" change={18.4} trend="up" index={0} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard icon={IndianRupee} label="Total Revenue (12mo)" value={formatINR(totalRevenue)} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" change={18.4} trend="up" index={0} />
         <MetricCard icon={Receipt} label="GST Collected" value={formatINR(gstCollected)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={1} />
         <MetricCard icon={FileText} label="TDS Deducted" value={formatINR(tdsDeducted)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
         <MetricCard icon={TrendingUp} label="Net Profit" value={formatINR(netProfit)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" change={12.1} trend="up" index={3} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader>
           <SectionHeader title="Revenue vs Profit" description="Monthly revenue and net profit comparison" />
         </CardHeader>
@@ -130,8 +130,8 @@ function OverviewTab({ data }: { data: MappedFinance | null }) {
               <AreaChart data={chartData} margin={{ left: -10, right: 10, top: 10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="revArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#2A7BBD" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="#2A7BBD" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--brand-blue)" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="var(--brand-blue)" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="profArea" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35} />
@@ -145,13 +145,13 @@ function OverviewTab({ data }: { data: MappedFinance | null }) {
                   contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
                   formatter={(v: number, name) => [formatFullINR(v), name === "revenue" ? "Revenue" : "Profit"]}
                 />
-                <Area type="monotone" dataKey="revenue" stroke="#2A7BBD" strokeWidth={2.5} fill="url(#revArea)" />
+                <Area type="monotone" dataKey="revenue" stroke="var(--brand-blue)" strokeWidth={2.5} fill="url(#revArea)" />
                 <Area type="monotone" dataKey="profit" stroke="#f59e0b" strokeWidth={2.5} fill="url(#profArea)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
           <div className="flex gap-4 mt-2 text-[11px]">
-            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-[#2A7BBD]" /> Revenue</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-primary" /> Revenue</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500" /> Net Profit</span>
           </div>
         </CardContent>
@@ -185,7 +185,7 @@ function GstTab({ data }: { data: MappedFinance | null }) {
         <MetricCard icon={IndianRupee} label="Net GST Payable" value={formatFullINR(netPayable)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader>
           <SectionHeader title="GST Filing Status" description="Monthly GST returns (GSTR-1 & GSTR-3B)" />
         </CardHeader>
@@ -231,11 +231,11 @@ function TdsTab() {
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <MetricCard icon={FileText} label="Total Deducted" value={formatFullINR(totalDeducted)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={0} />
-        <MetricCard icon={IndianRupee} label="Transaction Value" value={formatINR(totalAmount)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={1} />
+        <MetricCard icon={IndianRupee} label="Transaction Value" value={formatINR(totalAmount)} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={1} />
         <MetricCard icon={Clock} label="Pending Deposit" value={formatFullINR(pending)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader>
           <SectionHeader title="TDS Deductions" description="Section-wise TDS deducted and deposit status" />
         </CardHeader>
@@ -293,7 +293,7 @@ function InvoiceDetailDialog({ invoice, open, onOpenChange }: { invoice: typeof 
             <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatFullINR(invoice.amount)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">GST @ 18%</span><span>{formatFullINR(invoice.gst)}</span></div>
             <Separator className="my-1" />
-            <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-[#2A7BBD] dark:text-[#00A79D]">{formatFullINR(invoice.total)}</span></div>
+            <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-primary dark:text-brand-teal">{formatFullINR(invoice.total)}</span></div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" className="flex-1" onClick={() => toast({ title: "PDF generated", description: `${invoice.no}.pdf downloaded` })}>
@@ -358,7 +358,7 @@ function GenerateInvoiceDialog() {
               <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatFullINR(Number(amount))}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">GST @ 18%</span><span>{formatFullINR(Math.round(Number(amount) * 0.18))}</span></div>
               <Separator className="my-1" />
-              <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-[#2A7BBD] dark:text-[#00A79D]">{formatFullINR(Math.round(Number(amount) * 1.18))}</span></div>
+              <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-primary dark:text-brand-teal">{formatFullINR(Math.round(Number(amount) * 1.18))}</span></div>
             </div>
           )}
         </div>
@@ -400,14 +400,14 @@ function InvoicesTab({ data }: { data: MappedFinance | null }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-1">
-          <MetricCard icon={FileText} label="Total Invoiced" value={formatINR(total)} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+          <MetricCard icon={FileText} label="Total Invoiced" value={formatINR(total)} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={0} />
           <MetricCard icon={CheckCircle2} label="Paid" value={formatINR(paid)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
           <MetricCard icon={Clock} label="Pending" value={formatINR(pending)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
           <MetricCard icon={AlertCircle} label="Overdue" value={formatINR(overdue)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
         </div>
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
           <SectionHeader title="Invoices" description="All generated invoices with GST and payment status" />
           <GenerateInvoiceDialog />
@@ -539,7 +539,7 @@ function ExpensesTab() {
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-1 border-border/80 shadow-none">
+        <Card className="lg:col-span-1">
           <CardHeader>
             <SectionHeader title="By Category" description="Expense distribution" />
           </CardHeader>
@@ -568,7 +568,7 @@ function ExpensesTab() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2 border-border/80 shadow-none">
+        <Card className="lg:col-span-2">
           <CardHeader>
             <SectionHeader title="Expense List" description="Recent business expenses" />
           </CardHeader>

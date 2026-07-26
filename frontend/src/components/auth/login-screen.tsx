@@ -109,10 +109,10 @@ export function LoginScreen() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-background">
       {/* Left hero panel */}
-      <div className="lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D] text-white p-8 lg:p-12 flex flex-col justify-between">
+      <div className="lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-brand-blue via-primary to-brand-teal text-white p-8 lg:p-12 flex flex-col justify-between">
         <div className="absolute inset-0 hero-pattern opacity-40" />
         <div className="absolute top-20 -right-20 w-72 h-72 rounded-full bg-white/15 blur-3xl" />
-        <div className="absolute bottom-10 -left-10 w-80 h-80 rounded-full bg-[#00A79D]/30 blur-3xl" />
+        <div className="absolute bottom-10 -left-10 w-80 h-80 rounded-full bg-brand-teal/30 blur-3xl" />
 
         {/* Floating plane animation */}
         <motion.div

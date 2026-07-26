@@ -218,7 +218,7 @@ export function PackageWizard({ open, onOpenChange, initial, onSaved }: PackageW
           {STEPS.map((label, i) => (
             <div key={label} className={cn(
               "flex items-center gap-1 text-xs px-2 py-1 rounded-full border",
-              i === step ? "bg-[#2A7BBD]/10 border-[#2A7BBD] text-[#2A7BBD]" : i < step ? "bg-teal-50 border-teal-200 text-teal-700" : "text-muted-foreground"
+              i === step ? "bg-primary/10 border-primary text-primary" : i < step ? "bg-teal-50 border-teal-200 text-teal-700" : "text-muted-foreground"
             )}>
               {i < step ? <Check className="w-3 h-3" /> : <span>{i + 1}</span>}
               {label}
@@ -323,7 +323,7 @@ export function PackageWizard({ open, onOpenChange, initial, onSaved }: PackageW
             </div>
             <div className="sm:col-span-2 p-4 rounded-lg bg-muted/50 border">
               <p className="text-sm text-muted-foreground">Final Selling Price</p>
-              <p className="text-2xl font-bold text-[#2A7BBD] tabular-nums">₹{finalPrice.toLocaleString("en-IN")}</p>
+              <p className="text-2xl font-bold text-primary tabular-nums">₹{finalPrice.toLocaleString("en-IN")}</p>
             </div>
             <div className="sm:col-span-2 space-y-1.5">
               <Label className="text-xs">Hero Image URL</Label>
@@ -349,7 +349,7 @@ export function PackageWizard({ open, onOpenChange, initial, onSaved }: PackageW
               <div><span className="text-muted-foreground">Activity Options</span><p className="font-medium">{activityOptionCount}</p></div>
               <div><span className="text-muted-foreground">Transfer Options</span><p className="font-medium">{data.productOptions.filter((o) => o.productType === "TRANSFER").length}</p></div>
               <div><span className="text-muted-foreground">Itinerary Days</span><p className="font-medium">{data.days.length}</p></div>
-              <div><span className="text-muted-foreground">Final Price</span><p className="font-bold text-[#2A7BBD]">₹{finalPrice.toLocaleString("en-IN")}</p></div>
+              <div><span className="text-muted-foreground">Final Price</span><p className="font-bold text-primary">₹{finalPrice.toLocaleString("en-IN")}</p></div>
             </div>
             {hotelOptionCount < 1 || activityOptionCount < 1 ? (
               <p className="text-amber-600 text-xs">Publishing requires at least 1 hotel option and 1 activity option.</p>

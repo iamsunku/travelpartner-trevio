@@ -80,8 +80,8 @@ export function QuoteTemplateWorkspace({ onBack, onSaved }: QuoteTemplateWorkspa
   };
 
   const previewTemplate = {
-    primaryColor: "#2A7BBD",
-    secondaryColor: "#00A79D",
+    primaryColor: "var(--brand-blue)",
+    secondaryColor: "var(--brand-teal)",
     fontFamily: "Inter",
     logo: null,
     watermark: null,

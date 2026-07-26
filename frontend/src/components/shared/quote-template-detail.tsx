@@ -191,7 +191,7 @@ export function QuoteTemplateDetail({ templateId, onBack }: QuoteTemplateDetailP
         </TabsList>
 
         <TabsContent value="overview" className="mt-4 space-y-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-4 space-y-3">
               <div>
                 <Label>Template name</Label>
@@ -238,7 +238,7 @@ export function QuoteTemplateDetail({ templateId, onBack }: QuoteTemplateDetailP
         </TabsContent>
 
         <TabsContent value="branding" className="mt-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-4 space-y-4">
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
@@ -315,7 +315,7 @@ export function QuoteTemplateDetail({ templateId, onBack }: QuoteTemplateDetailP
         </TabsContent>
 
         <TabsContent value="history" className="mt-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-0">
               {(item.history ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground p-4">No history yet</p>

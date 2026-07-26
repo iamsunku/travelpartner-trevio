@@ -71,7 +71,7 @@ export function ActivityPackagesView() {
         subtitle="Manage tours, activities, and bundled packages with transfers"
       />
 
-      <Alert className="border-border/80">
+      <Alert className="border-border">
         <Info className="h-4 w-4" />
         <AlertDescription>
           <strong>Bundle Packages:</strong> Create complete travel experiences by combining activities with transfers. Agents can select ticket-only, transfer-only, or complete packages when booking.
@@ -123,7 +123,7 @@ export function ActivityPackagesView() {
         </TabsContent>
       </Tabs>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardHeader className="pb-2">
           <SectionHeader title="How to Create Bundles" description="Step-by-step guide for packaging activities with transfers" />
         </CardHeader>

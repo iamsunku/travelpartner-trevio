@@ -121,14 +121,14 @@ export function SupportView() {
 
         {/* TICKETS */}
         <TabsContent value="tickets" className="space-y-4 mt-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
             <MetricCard icon={MessageCircle} label="Open Tickets" value={String(TICKETS.filter((t) => t.status === "Open").length)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={0} />
             <MetricCard icon={RefreshCw} label="In Progress" value={String(TICKETS.filter((t) => t.status === "In Progress").length)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={1} />
             <MetricCard icon={CheckCircle2} label="Resolved" value={String(TICKETS.filter((t) => t.status === "Resolved").length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={2} />
-            <MetricCard icon={Clock} label="Avg Response" value="1.4h" color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={3} />
+            <MetricCard icon={Clock} label="Avg Response" value="1.4h" color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={3} />
           </div>
 
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-3">
               <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
                 <div className="relative flex-1">
@@ -148,7 +148,7 @@ export function SupportView() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-0">
               <div className="max-h-[560px] overflow-y-auto scroll-thin">
                 <Table>
@@ -209,7 +209,7 @@ export function SupportView() {
 
         {/* FAQ */}
         <TabsContent value="faq" className="mt-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardHeader>
               <SectionHeader
                 title="Frequently Asked Questions"
@@ -252,7 +252,7 @@ export function SupportView() {
               const Icon = c.icon;
               return (
                 <motion.div key={c.title} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                  <Card className="border-border/80 shadow-none hover:border-primary/25 transition-all duration-200 cursor-pointer h-full group">
+                  <Card className="hover:border-primary/25 transition-all duration-200 cursor-pointer h-full group">
                     <CardContent className="p-4">
                       <div className="flex items-start gap-3">
                         <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", c.color)}>
@@ -274,7 +274,7 @@ export function SupportView() {
             })}
           </div>
 
-          <Card className="mt-4 border-border/80 shadow-none">
+          <Card className="mt-4">
             <CardContent className="p-4 flex flex-col sm:flex-row items-center gap-3 justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400 flex items-center justify-center">
@@ -326,9 +326,9 @@ function LiveChat() {
   };
 
   return (
-    <Card className="overflow-hidden border-border/80 shadow-none">
+    <Card className="overflow-hidden">
       <div className="flex flex-col h-[600px]">
-        <div className="flex items-center justify-between p-3 border-b border-border/80 bg-gradient-to-r from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D] text-white">
+        <div className="flex items-center justify-between p-3 border-b border-border bg-gradient-to-r from-brand-blue via-primary to-brand-teal text-white">
           <div className="flex items-center gap-2.5">
             <div className="relative">
               <Avatar className="w-9 h-9 ring-2 ring-white/30">
@@ -357,7 +357,7 @@ function LiveChat() {
             >
               {m.sender === "agent" && (
                 <Avatar className="w-7 h-7 shrink-0">
-                  <AvatarFallback className="bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white">
+                  <AvatarFallback className="bg-gradient-to-br from-brand-blue to-brand-teal text-white">
                     <Bot className="w-3.5 h-3.5" />
                   </AvatarFallback>
                 </Avatar>
@@ -367,7 +367,7 @@ function LiveChat() {
                   "rounded-2xl px-3 py-2 text-sm",
                   m.sender === "user"
                     ? "bg-primary text-primary-foreground rounded-tr-sm"
-                    : "bg-card border border-border/80 rounded-tl-sm",
+                    : "bg-card border border-border rounded-tl-sm",
                 )}>
                   {m.text}
                 </div>
@@ -378,7 +378,7 @@ function LiveChat() {
           {typing && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-2 max-w-[80%]">
               <Avatar className="w-7 h-7 shrink-0">
-                <AvatarFallback className="bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white">
+                <AvatarFallback className="bg-gradient-to-br from-brand-blue to-brand-teal text-white">
                   <Bot className="w-3.5 h-3.5" />
                 </AvatarFallback>
               </Avatar>

@@ -68,9 +68,9 @@ export function TripPricePanel({
   ];
 
   return (
-    <Card className="border-border/80 shadow-none">
+    <Card>
       <CardContent className="p-4 space-y-3">
-        <h4 className="font-semibold text-sm text-[#2A7BBD]">Live Price Calculation</h4>
+        <h4 className="font-semibold text-sm text-primary">Live Price Calculation</h4>
         {!compact && (
           <div className="grid gap-2 sm:grid-cols-3 text-xs">
             <div className="space-y-1">
@@ -114,7 +114,7 @@ export function TripPricePanel({
           ))}
           <div className="flex justify-between pt-2 text-base font-bold">
             <span>Selling Price</span>
-            <span className="text-[#2A7BBD] tabular-nums">₹{pricing.sellingPrice.toLocaleString("en-IN")}</span>
+            <span className="text-primary tabular-nums">₹{pricing.sellingPrice.toLocaleString("en-IN")}</span>
           </div>
         </div>
       </CardContent>

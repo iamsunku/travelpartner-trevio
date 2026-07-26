@@ -231,8 +231,8 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
   const template = draftSnapshot.template as Record<string, unknown> | null;
   const branding = draftSnapshot.branding as Record<string, unknown> | null;
   const previewTemplate = {
-    primaryColor: String(template?.primaryColor ?? branding?.primaryColor ?? "#2A7BBD"),
-    secondaryColor: String(template?.secondaryColor ?? branding?.secondaryColor ?? "#00A79D"),
+    primaryColor: String(template?.primaryColor ?? branding?.primaryColor ?? "var(--brand-blue)"),
+    secondaryColor: String(template?.secondaryColor ?? branding?.secondaryColor ?? "var(--brand-teal)"),
     fontFamily: String(template?.fontFamily ?? branding?.fontFamily ?? "Inter"),
     logo: (template?.logo ?? branding?.logo) as string | null,
     watermark: (template?.watermark ?? branding?.watermark) as string | null,
@@ -316,14 +316,14 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-4 grid sm:grid-cols-2 gap-3 text-sm">
               <div><span className="text-muted-foreground">Customer</span><p className="font-medium">{proposal.customer?.name ?? proposal.lead?.customerName ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Trip Requirement</span><p>{proposal.travelRequirement?.requirementCode ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Package (snapshot)</span><p>{String(draftSnapshot.package?.packageName ?? "—")}</p></div>
               <div><span className="text-muted-foreground">Template</span><p>{String((draftSnapshot.template as { templateName?: string } | null)?.templateName ?? "Default")}</p></div>
               <div><span className="text-muted-foreground">Valid Until</span><p>{formatDate(proposal.validUntil)}</p></div>
-              <div><span className="text-muted-foreground">Total</span><p className="font-bold text-[#2A7BBD]">₹{draftSnapshot.pricing.total.toLocaleString("en-IN")}</p></div>
+              <div><span className="text-muted-foreground">Total</span><p className="font-bold text-primary">₹{draftSnapshot.pricing.total.toLocaleString("en-IN")}</p></div>
               <div><span className="text-muted-foreground">Created</span><p>{formatDate(proposal.createdAt)} by {proposal.createdByName ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Updated</span><p>{formatDate(proposal.updatedAt)} by {proposal.updatedByName ?? "—"}</p></div>
               {proposal.notes && <div className="sm:col-span-2"><span className="text-muted-foreground">Notes</span><p className="whitespace-pre-wrap">{proposal.notes}</p></div>}
@@ -343,7 +343,7 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
         </TabsContent>
 
         <TabsContent value="pricing" className="mt-4">
-          <Card className="border-border/80 shadow-none max-w-lg">
+          <Card className="max-w-lg">
             <CardContent className="p-4 space-y-2 text-sm">
               {[
                 ["Hotels", draftSnapshot.pricing.hotelCost],
@@ -361,7 +361,7 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
               ))}
               <div className="flex justify-between pt-2 text-base font-bold">
                 <span>Grand Total</span>
-                <span className="text-[#2A7BBD]">₹{draftSnapshot.pricing.total.toLocaleString("en-IN")}</span>
+                <span className="text-primary">₹{draftSnapshot.pricing.total.toLocaleString("en-IN")}</span>
               </div>
               <p className="text-[10px] text-muted-foreground pt-2">Pricing computed from frozen snapshot product prices — master package changes do not affect this proposal.</p>
             </CardContent>
@@ -369,7 +369,7 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
         </TabsContent>
 
         <TabsContent value="history" className="mt-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-4">
               <ActivityTimeline items={history} emptyMessage="No activity recorded for this proposal" />
             </CardContent>
@@ -377,7 +377,7 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
         </TabsContent>
 
         <TabsContent value="versions" className="mt-4 space-y-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-0">
               <ul className="divide-y">
                 {versions.map((v) => (
@@ -394,7 +394,7 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
           </Card>
 
           {versions.length >= 2 && (
-            <Card className="border-border/80 shadow-none">
+            <Card>
               <CardContent className="p-4 space-y-3">
                 <h4 className="font-semibold text-sm">Compare Versions</h4>
                 <div className="flex flex-wrap gap-2 items-end">
@@ -426,7 +426,7 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
         </TabsContent>
 
         <TabsContent value="pdf" className="mt-4 space-y-4">
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-4 space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -495,7 +495,7 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
             </CardContent>
           </Card>
 
-          <Card className="border-border/80 shadow-none">
+          <Card>
             <CardContent className="p-0">
               <div className="px-4 py-3 border-b">
                 <h4 className="font-semibold text-sm">Version PDFs</h4>

@@ -89,14 +89,14 @@ export function EmployeesView() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard icon={Users} label="Total Employees" value={employees.length.toString()} color="bg-[#2A7BBD]/10 text-[#2A7BBD] dark:bg-[#2A7BBD]/15 dark:text-[#00A79D]" index={0} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard icon={Users} label="Total Employees" value={employees.length.toString()} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={0} />
         <MetricCard icon={UserCheck} label="Active" value={active.toString()} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
         <MetricCard icon={UserMinus} label="On Leave" value={onLeave.toString()} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
         <MetricCard icon={Calendar} label="Avg Attendance" value={`${avgAttendance}%`} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-3">
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
@@ -138,7 +138,7 @@ export function EmployeesView() {
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-0">
           <div className="max-h-[600px] overflow-y-auto scroll-thin">
             <Table>
@@ -629,8 +629,8 @@ function EmployeeDetailDialog({ employee, onClose }: { employee: Employee | null
             <AreaChart data={PERFORMANCE_TREND} margin={{ left: -28, right: 4, top: 4 }}>
               <defs>
                 <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2A7BBD" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#2A7BBD" stopOpacity={0} />
+                  <stop offset="0%" stopColor="var(--brand-blue)" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="var(--brand-blue)" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -639,7 +639,7 @@ function EmployeeDetailDialog({ employee, onClose }: { employee: Employee | null
                 contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", fontSize: 11 }}
                 formatter={(v: number) => formatFullINR(v)}
               />
-              <Area type="monotone" dataKey="value" stroke="#2A7BBD" strokeWidth={2} fill="url(#perfGrad)" />
+              <Area type="monotone" dataKey="value" stroke="var(--brand-blue)" strokeWidth={2} fill="url(#perfGrad)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>

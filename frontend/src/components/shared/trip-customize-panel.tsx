@@ -51,7 +51,7 @@ export function TripCustomizePanel({ requirementId, match, markup, onClose, onSe
   };
 
   return (
-    <Card className="border-border/80 shadow-none">
+    <Card>
       <CardContent className="p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h4 className="font-semibold text-sm">Customize — {pkg.packageName}</h4>

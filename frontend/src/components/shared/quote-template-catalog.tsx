@@ -121,7 +121,7 @@ export function QuoteTemplateCatalog({ onCreate, onSelect }: QuoteTemplateCatalo
                 <TableRow key={item.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onSelect(item.id)}>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-[#2A7BBD]">{item.templateName}</span>
+                      <span className="font-medium text-primary">{item.templateName}</span>
                       {item.isDefault && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">Default</span>
                       )}

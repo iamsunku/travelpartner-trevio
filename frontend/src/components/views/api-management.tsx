@@ -197,20 +197,20 @@ export function ApiManagementView() {
         title="API Management"
         subtitle="Manage API keys, monitor logs, and configure webhooks"
         action={
-          <Button className="bg-gradient-to-r from-[#2A7BBD] to-[#00A79D] hover:opacity-90" onClick={() => setGenOpen(true)}>
+          <Button className="bg-gradient-to-r from-brand-blue to-brand-teal hover:opacity-90" onClick={() => setGenOpen(true)}>
             <Plus className="w-4 h-4 mr-1.5" /> Generate Key
           </Button>
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard icon={KeyRound} label="Active Keys" value={String(activeKeys)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" subtitle={env} index={0} />
-        <MetricCard icon={Webhook} label="Active Webhooks" value={String(activeWebhooks)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={1} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard icon={KeyRound} label="Active Keys" value={String(activeKeys)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" subtitle={env} index={0} />
+        <MetricCard icon={Webhook} label="Active Webhooks" value={String(activeWebhooks)} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" index={1} />
         <MetricCard icon={Activity} label="Log Entries" value={String(LOG_ENTRIES.length)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
         <MetricCard icon={AlertTriangle} label="Error Responses" value={String(errorLogs)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="Filtered view" index={3} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", env === "Production" ? "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" : "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400")}>

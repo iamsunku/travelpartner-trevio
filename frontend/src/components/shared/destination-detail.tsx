@@ -369,9 +369,9 @@ export function DestinationDetail({ destinationId, onBack, onRefreshList }: Dest
 
         <TabsContent value="overview" className="mt-4 space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
-            <Card className="border-border/80 shadow-none">
+            <Card>
               <CardContent className="p-4">
-                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><Globe className="w-4 h-4 text-[#2A7BBD]" />Basic Information</h3>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><Globe className="w-4 h-4 text-primary" />Basic Information</h3>
                 {item.shortDescription && <p className="text-sm text-muted-foreground mb-3">{item.shortDescription}</p>}
                 {item.longDescription && <p className="text-sm whitespace-pre-wrap">{item.longDescription}</p>}
                 <div className="mt-4">
@@ -381,9 +381,9 @@ export function DestinationDetail({ destinationId, onBack, onRefreshList }: Dest
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-border/80 shadow-none">
+            <Card>
               <CardContent className="p-4">
-                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><DollarSign className="w-4 h-4 text-[#00A79D]" />Travel Information</h3>
+                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><DollarSign className="w-4 h-4 text-brand-teal" />Travel Information</h3>
                 <InfoRow label="Currency" value={item.currency} />
                 <InfoRow label="Language" value={item.language} />
                 <InfoRow label="Time Zone" value={item.timeZone} />
@@ -395,7 +395,7 @@ export function DestinationDetail({ destinationId, onBack, onRefreshList }: Dest
                 <InfoRow label="Average Budget" value={item.averageBudget} />
               </CardContent>
             </Card>
-            <Card className="border-border/80 shadow-none md:col-span-2">
+            <Card className="md:col-span-2">
               <CardContent className="p-4">
                 <h3 className="text-sm font-semibold mb-3">Travel Details</h3>
                 <div className="grid sm:grid-cols-2 gap-x-8">
@@ -411,7 +411,7 @@ export function DestinationDetail({ destinationId, onBack, onRefreshList }: Dest
                 </div>
               </CardContent>
             </Card>
-            <Card className="border-border/80 shadow-none">
+            <Card>
               <CardContent className="p-4">
                 <h3 className="text-sm font-semibold mb-3">SEO</h3>
                 <InfoRow label="SEO Title" value={item.seoTitle} />
@@ -419,7 +419,7 @@ export function DestinationDetail({ destinationId, onBack, onRefreshList }: Dest
                 <InfoRow label="Keywords" value={Array.isArray(item.keywords) ? item.keywords.join(", ") : undefined} />
               </CardContent>
             </Card>
-            <Card className="border-border/80 shadow-none">
+            <Card>
               <CardContent className="p-4">
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2"><Clock className="w-4 h-4" />Record Info</h3>
                 <InfoRow label="Created By" value={item.createdByName} />
@@ -435,7 +435,7 @@ export function DestinationDetail({ destinationId, onBack, onRefreshList }: Dest
           {gallery.length === 0 && !hero ? (
             <EmptyLinkedTab label="images" />
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
               {[hero, ...gallery.filter((u) => u !== hero)].filter(Boolean).map((url, i) => (
                 <div key={i} className="aspect-video rounded-lg overflow-hidden bg-muted border">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -445,10 +445,10 @@ export function DestinationDetail({ destinationId, onBack, onRefreshList }: Dest
             </div>
           )}
           {item.videoUrl && (
-            <Card className="mt-4 border-border/80 shadow-none">
+            <Card className="mt-4">
               <CardContent className="p-4">
                 <p className="text-sm font-medium mb-2">Video</p>
-                <a href={item.videoUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-[#2A7BBD] hover:underline">{item.videoUrl}</a>
+                <a href={item.videoUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">{item.videoUrl}</a>
               </CardContent>
             </Card>
           )}

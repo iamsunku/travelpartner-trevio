@@ -69,7 +69,7 @@ function PaletteItem({ type, onAdd }: { type: QuoteSectionType; onAdd: () => voi
     <button
       type="button"
       onClick={onAdd}
-      className="w-full text-left rounded-lg border border-dashed border-border/80 p-2.5 hover:border-[#2A7BBD] hover:bg-[#2A7BBD]/5 transition-colors"
+      className="w-full text-left rounded-lg border border-dashed border-border p-2.5 hover:border-primary hover:bg-primary/5 transition-colors"
     >
       <p className="text-sm font-medium">{def.label}</p>
       <p className="text-[10px] text-muted-foreground line-clamp-2">{def.description}</p>
@@ -100,7 +100,7 @@ function CanvasSection({
       className={cn(
         "rounded-lg border bg-card p-3",
         !section.isVisible && "opacity-50 border-dashed",
-        isDragging && "shadow-lg ring-2 ring-[#2A7BBD]/30"
+        isDragging && "shadow-lg ring-2 ring-primary/30"
       )}
     >
       <div className="flex items-center gap-2">
@@ -144,7 +144,7 @@ function CanvasDropZone({ children, empty }: { children: React.ReactNode; empty?
       ref={setNodeRef}
       className={cn(
         "min-h-[320px] rounded-xl border-2 border-dashed p-3 space-y-2 transition-colors",
-        isOver ? "border-[#2A7BBD] bg-[#2A7BBD]/5" : "border-border/60",
+        isOver ? "border-primary bg-primary/5" : "border-border/60",
         empty && "flex items-center justify-center"
       )}
     >

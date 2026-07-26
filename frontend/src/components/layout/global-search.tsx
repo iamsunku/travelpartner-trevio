@@ -135,7 +135,7 @@ export function GlobalSearch() {
                   value={`create ${action.label} ${action.description}`}
                   onSelect={() => navigate(action.view, action.label, action.params)}
                 >
-                  <Plus className="w-4 h-4 mr-2 text-[#2A7BBD]" />
+                  <Plus className="w-4 h-4 mr-2 text-primary" />
                   <span>{action.label}</span>
                   <span className="ml-2 text-xs text-muted-foreground truncate">{action.description}</span>
                 </CommandItem>

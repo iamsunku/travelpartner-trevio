@@ -105,7 +105,7 @@ const AMENITY_ICONS: Record<string, React.ElementType> = {
 };
 
 const HOTEL_GRADIENTS = [
-  "from-[#2A7BBD] to-[#00A79D]",
+  "from-brand-blue to-brand-teal",
   "from-amber-400 to-orange-500",
   "from-rose-400 to-pink-500",
   "from-violet-400 to-purple-500",
@@ -886,10 +886,10 @@ function HotelSearchPanel(props: {
 
   return (
     <Card className="relative overflow-hidden border-0 shadow-sm">
-      <div className="absolute inset-0 bg-gradient-to-br from-[#2A7BBD] via-[#1f6ba8] to-[#00A79D]" />
+      <div className="absolute inset-0 bg-gradient-to-br from-brand-blue via-primary to-brand-teal" />
       <div className="absolute inset-0 opacity-30 hero-pattern" />
       <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
-      <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-[#00A79D]/25 rounded-full blur-3xl" />
+      <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-brand-teal/25 rounded-full blur-3xl" />
 
       <CardContent className="relative p-5 sm:p-6 text-white">
         <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_1fr_auto] gap-3 items-end">
@@ -1006,9 +1006,9 @@ function Stepper({ label, sub, value, onChange, min, max }: {
 
 function HotelEmptyState() {
   return (
-    <Card className="overflow-hidden border-dashed border-border/80">
+    <Card className="overflow-hidden border-dashed border-border">
       <CardContent className="py-12 px-6 text-center">
-        <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] flex items-center justify-center mb-4 shadow-sm">
+        <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-blue to-brand-teal flex items-center justify-center mb-4 shadow-sm">
           <HotelIcon className="w-8 h-8 text-white" />
         </div>
         <h3 className="text-xl font-semibold tracking-tight">Find your perfect stay</h3>
@@ -1022,7 +1022,7 @@ function HotelEmptyState() {
             { icon: ShieldCheck, title: "Verified Properties", desc: "Quality-checked hotels" },
             { icon: CheckCircle2, title: "Free Cancellation", desc: "Flexible booking options" },
           ].map((f) => (
-            <div key={f.title} className="rounded-xl border border-border/80 bg-card p-4 text-left">
+            <div key={f.title} className="rounded-xl border border-border bg-card p-4 text-left">
               <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-2">
                 <f.icon className="w-4 h-4" />
               </div>

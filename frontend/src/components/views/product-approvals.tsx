@@ -119,14 +119,14 @@ export function ProductApprovalsView() {
         subtitle="Review and approve/reject product rates before they go live"
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard icon={Clock} label="Pending" value={String(items.length)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={0} />
-        <MetricCard icon={Plane} label="Activities" value={String(items.filter((i) => i.type === "activity").length)} color="bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" index={1} />
-        <MetricCard icon={Car} label="Transfers" value={String(items.filter((i) => i.type === "transfer").length)} color="bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" index={2} />
+        <MetricCard icon={Plane} label="Activities" value={String(items.filter((i) => i.type === "activity").length)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" index={1} />
+        <MetricCard icon={Car} label="Transfers" value={String(items.filter((i) => i.type === "transfer").length)} color="bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" index={2} />
         <MetricCard icon={Hotel} label="Hotels" value={String(items.filter((i) => i.type === "hotel").length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={3} />
       </div>
 
-      <Card className="border-border/80 shadow-none">
+      <Card>
         <CardContent className="p-4 space-y-4">
           <div className="flex flex-col lg:flex-row gap-3 items-center justify-between">
             <div className="flex gap-2">
@@ -177,7 +177,7 @@ export function ProductApprovalsView() {
                   items.map((item) => (
                     <TableRow key={item.id} className="hover:bg-muted/50">
                       <TableCell className="font-medium">
-                        <span className="px-2 py-1 rounded-md bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400 text-xs font-medium">
+                        <span className="px-2 py-1 rounded-md bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400 text-xs font-medium">
                           {typeLabel(item.type)}
                         </span>
                       </TableCell>

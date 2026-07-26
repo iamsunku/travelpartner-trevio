@@ -178,10 +178,10 @@ export function ReportsView() {
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { icon: DollarSign, label: "Total Revenue", value: formatINR(totalRevenue), change: 18.7, trend: "up" as const, color: "bg-sky-100 text-[#2A7BBD] dark:bg-sky-500/15 dark:text-sky-400" },
-          { icon: Calendar, label: "Total Bookings", value: totalBookings.toLocaleString("en-IN"), change: 12.5, trend: "up" as const, color: "bg-teal-100 text-[#00A79D] dark:bg-teal-500/15 dark:text-teal-400" },
+          { icon: DollarSign, label: "Total Revenue", value: formatINR(totalRevenue), change: 18.7, trend: "up" as const, color: "bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" },
+          { icon: Calendar, label: "Total Bookings", value: totalBookings.toLocaleString("en-IN"), change: 12.5, trend: "up" as const, color: "bg-teal-100 text-brand-teal dark:bg-teal-500/15 dark:text-teal-400" },
           { icon: TrendingUp, label: "Commission Earned", value: formatINR(totalCommission), change: 22.4, trend: "up" as const, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" },
           { icon: Users, label: "Avg Order Value", value: formatINR(Math.round(totalRevenue / totalBookings)), change: -3.1, trend: "down" as const, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
         ].map((s, i) => (
@@ -210,15 +210,15 @@ export function ReportsView() {
                   <AreaChart data={REVENUE_DATA} margin={{ left: -12, right: 8, top: 8 }}>
                     <defs>
                       <linearGradient id="revAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2A7BBD" stopOpacity={0.4} />
-                        <stop offset="100%" stopColor="#2A7BBD" stopOpacity={0} />
+                        <stop offset="0%" stopColor="var(--brand-blue)" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="var(--brand-blue)" stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 100000}L`} />
                     <Tooltip content={<ChartTooltip formatter={(v: number) => formatFullINR(v)} />} />
-                    <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#2A7BBD" strokeWidth={2.5} fill="url(#revAreaGrad)" />
+                    <Area type="monotone" dataKey="revenue" name="Revenue" stroke="var(--brand-blue)" strokeWidth={2.5} fill="url(#revAreaGrad)" />
                   </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -352,7 +352,7 @@ export function ReportsView() {
                     <Tooltip content={<ChartTooltip />} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
                     <Bar dataKey="bookings" name="Bookings" radius={[6, 6, 0, 0]}>
                       {bookingsByService.map((_, i) => (
-                        <Cell key={i} fill={["#2A7BBD", "#00A79D", "#f59e0b", "#06b6d4", "#8b5cf6", "#10b981"][i % 6]} />
+                        <Cell key={i} fill={["var(--brand-blue)", "var(--brand-teal)", "#f59e0b", "#06b6d4", "#8b5cf6", "#10b981"][i % 6]} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -372,7 +372,7 @@ export function ReportsView() {
                 const pct = Math.round((d.bookings / max) * 100);
                 return (
                   <div key={d.destination} className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white text-xs font-bold flex items-center justify-center shrink-0">
+                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-blue to-brand-teal text-white text-xs font-bold flex items-center justify-center shrink-0">
                       {i + 1}
                     </div>
                     <div className="w-28 sm:w-36 shrink-0">
@@ -411,7 +411,7 @@ export function ReportsView() {
                   <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip />} />
                   <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />
-                  <Line type="monotone" dataKey="flight" name="Flights" stroke="#2A7BBD" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="flight" name="Flights" stroke="var(--brand-blue)" strokeWidth={2.5} dot={{ r: 3 }} />
                   <Line type="monotone" dataKey="hotel" name="Hotels" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 3 }} />
                   <Line type="monotone" dataKey="holiday" name="Holidays" stroke="#f43f5e" strokeWidth={2.5} dot={{ r: 3 }} />
                 </LineChart>
@@ -422,7 +422,7 @@ export function ReportsView() {
 
         {/* ============ FINANCIAL ============ */}
         <TabsContent value="financial" className="space-y-4 mt-4">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
             {[
               { label: "Gross Revenue", value: formatINR(30250000), color: "text-teal-600" },
               { label: "Net Commission", value: formatINR(1515000), color: "text-emerald-600" },
@@ -452,7 +452,7 @@ export function ReportsView() {
                     <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 100000}L`} />
                     <Tooltip content={<ChartTooltip formatter={(v: number) => formatFullINR(v)} />} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
                     <Legend wrapperStyle={{ fontSize: 11 }} iconSize={8} />
-                    <Bar dataKey="revenue" name="Revenue" fill="#2A7BBD" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="revenue" name="Revenue" fill="var(--brand-blue)" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="commission" name="Commission" fill="#f59e0b" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -529,7 +529,7 @@ function EmployeeReports() {
 
   return (
     <>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { icon: Users, label: "Total Employees", value: EMPLOYEES.length.toString(), color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" },
           { icon: Award, label: "Top Performer", value: topPerformers[0]?.name.split(" ")[0] || "—", color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" },
@@ -566,7 +566,7 @@ function EmployeeReports() {
                 <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 100000}L`} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={70} />
                 <Tooltip content={<ChartTooltip formatter={(v: number) => formatFullINR(v)} />} cursor={{ fill: "var(--muted)", opacity: 0.4 }} />
-                <Bar dataKey="achieved" name="Achieved" fill="#00A79D" radius={[0, 6, 6, 0]} />
+                <Bar dataKey="achieved" name="Achieved" fill="var(--brand-teal)" radius={[0, 6, 6, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

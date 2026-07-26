@@ -50,17 +50,17 @@ function QuickAction({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center gap-2.5 p-3 rounded-xl border border-border/80 bg-card hover:border-primary/35 hover:bg-primary/[0.03] transition-all duration-200 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+      className="flex flex-col items-center gap-2.5 p-3 rounded-xl border border-border bg-card hover:border-primary/35 hover:bg-primary/[0.03] transition-enterprise group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
     >
       <div
         className={cn(
-          "w-10 h-10 rounded-xl flex items-center justify-center transition-transform duration-200 group-hover:scale-[1.04]",
+          "w-10 h-10 rounded-xl flex items-center justify-center transition-enterprise group-hover:scale-[1.03]",
           color
         )}
       >
-        <Icon className="w-4.5 h-4.5 w-[18px] h-[18px]" />
+        <Icon className="w-[18px] h-[18px]" aria-hidden />
       </div>
-      <span className="text-[11px] font-medium text-center leading-tight text-foreground/90">{label}</span>
+      <span className="text-helper font-medium text-center leading-tight text-foreground/90">{label}</span>
     </button>
   );
 }
@@ -158,7 +158,7 @@ function AgencyDashboard() {
   ];
 
   return (
-    <div className="space-y-6">
+    <PageShell>
       <BrandHero
         eyebrow={greeting}
         title={userName || "Welcome"}
@@ -172,7 +172,7 @@ function AgencyDashboard() {
         actions={
           <>
             <Button
-              className="bg-white text-[#2A7BBD] hover:bg-white/90 shadow-sm h-9"
+              className="bg-white text-primary hover:bg-white/90 shadow-sm h-9"
               onClick={() => setView("bookings")}
             >
               <Plus className="w-4 h-4 mr-1.5" /> New Booking
@@ -188,36 +188,39 @@ function AgencyDashboard() {
         }
       />
 
-      <section>
-        <div className="mb-3">
-          <SectionHeader title="Key metrics" description="Performance snapshot across bookings, revenue, and pipeline" />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {stats.map((s, i) => (
+      <section className="space-y-4">
+        <SectionHeader title="Key metrics" description="Performance snapshot across bookings, revenue, and pipeline" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          {stats.slice(0, 4).map((s, i) => (
             <MetricCard key={s.label} {...s} index={i} />
+          ))}
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          {stats.slice(4).map((s, i) => (
+            <MetricCard key={s.label} {...s} index={i + 4} />
           ))}
         </div>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2 border-border/80 shadow-none">
-          <CardHeader className="pb-2 pt-5 px-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <Card className="lg:col-span-8 border-border shadow-[var(--shadow-card)]">
+          <CardHeader className="pb-2 pt-6 px-6">
             <SectionHeader
               title="Revenue overview"
               description="Monthly revenue and commission trend"
               action={
-                <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-3 text-helper text-muted-foreground">
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#2A7BBD]" /> Revenue
+                    <span className="w-2 h-2 rounded-full bg-primary" /> Revenue
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#00A79D]" /> Commission
+                    <span className="w-2 h-2 rounded-full bg-brand-teal" /> Commission
                   </span>
                 </div>
               }
             />
           </CardHeader>
-          <CardContent className="px-2 pb-4 sm:px-4">
+          <CardContent className="px-2 pb-6 sm:px-4">
             <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={financeStats?.monthly || []} margin={{ left: -8, right: 8, top: 8 }}>
                 <defs>
@@ -241,11 +244,11 @@ function AgencyDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
-          <CardHeader className="pb-2 pt-5 px-5">
+        <Card className="lg:col-span-4 border-border shadow-[var(--shadow-card)]">
+          <CardHeader className="pb-2 pt-6 px-6">
             <SectionHeader title="Booking mix" description="Revenue by service type" />
           </CardHeader>
-          <CardContent className="px-5 pb-5">
+          <CardContent className="px-6 pb-6">
             <ResponsiveContainer width="100%" height={190}>
               <PieChart>
                 <Pie
@@ -268,26 +271,26 @@ function AgencyDashboard() {
             </ResponsiveContainer>
             <div className="space-y-2 mt-1">
               {pieData.map((d: { name: string; value: number }, i: number) => (
-                <div key={d.name} className="flex items-center gap-2 text-xs">
+                <div key={d.name} className="flex items-center gap-2 text-caption">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ background: `var(--chart-${i + 1})` }} />
                   <span className="text-muted-foreground truncate">{d.name}</span>
                   <span className="font-semibold tabular-nums ml-auto">{formatINR(d.value)}</span>
                 </div>
               ))}
               {pieData.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-2">No service data yet</p>
+                <p className="text-caption text-muted-foreground text-center py-2">No service data yet</p>
               )}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card className="border-border/80 shadow-none">
-        <CardHeader className="pb-3 pt-5 px-5">
+      <Card className="border-border shadow-[var(--shadow-card)]">
+        <CardHeader className="pb-3 pt-6 px-6">
           <SectionHeader title="Quick actions" description="Jump into the most common workflows" />
         </CardHeader>
-        <CardContent className="px-5 pb-5">
-          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+        <CardContent className="px-6 pb-6">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-3">
             <QuickAction icon={Plane} label="Book Flight" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" onClick={() => setView("flights")} />
             <QuickAction icon={Hotel} label="Book Hotel" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" onClick={() => setView("hotels")} />
             <QuickAction icon={Palmtree} label="Holiday" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" onClick={() => setView("holiday")} />
@@ -299,24 +302,24 @@ function AgencyDashboard() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2 border-border/80 shadow-none">
-          <CardHeader className="pb-2 pt-5 px-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <Card className="lg:col-span-8 border-border shadow-[var(--shadow-card)]">
+          <CardHeader className="pb-2 pt-6 px-6">
             <SectionHeader
               title="Recent bookings"
               description="Latest reservations across your agency"
               action={
-                <Button variant="ghost" size="sm" className="text-xs h-8 text-primary" onClick={() => setView("bookings")}>
+                <Button variant="ghost" size="sm" className="text-caption h-8 text-primary" onClick={() => setView("bookings")}>
                   View all <ArrowRight className="w-3.5 h-3.5 ml-1" />
                 </Button>
               }
             />
           </CardHeader>
           <CardContent className="p-0">
-            <div className="divide-y divide-border/80">
+            <div className="divide-y divide-border">
               {recentBookings.length === 0 && <EmptyRow message="No bookings to show yet" />}
               {recentBookings.map((b) => (
-                <div key={b.id} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/35 transition-colors">
+                <div key={b.id} className="flex items-center gap-3 px-6 py-3.5 hover:bg-muted/35 transition-enterprise">
                   <div className="w-9 h-9 rounded-lg bg-muted/80 flex items-center justify-center shrink-0">
                     {b.service === "Flight" && <Plane className="w-4 h-4 text-teal-600" />}
                     {b.service === "Hotel" && <Hotel className="w-4 h-4 text-amber-600" />}
@@ -340,13 +343,13 @@ function AgencyDashboard() {
           </CardContent>
         </Card>
 
-        <div className="space-y-4">
-          <Card className="border-border/80 shadow-none">
-            <CardHeader className="pb-2 pt-5 px-5">
+        <div className="lg:col-span-4 space-y-6">
+          <Card className="border-border shadow-[var(--shadow-card)]">
+            <CardHeader className="pb-2 pt-6 px-6">
               <SectionHeader
                 title="My tasks"
                 action={
-                  <Button variant="ghost" size="sm" className="text-xs h-8 text-primary" onClick={() => setView("tasks")}>
+                  <Button variant="ghost" size="sm" className="text-caption h-8 text-primary" onClick={() => setView("tasks")}>
                     Open
                   </Button>
                 }
@@ -354,21 +357,21 @@ function AgencyDashboard() {
             </CardHeader>
             <CardContent className="space-y-1.5 px-3 pb-4">
               {myTasks.length === 0 && (
-                <p className="text-xs text-muted-foreground text-center py-4">No tasks assigned</p>
+                <p className="text-caption text-muted-foreground text-center py-4">No tasks assigned</p>
               )}
               {myTasks.map((t) => (
-                <div key={t.id} className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-muted/50 transition-colors">
+                <div key={t.id} className="flex items-start gap-2.5 p-2.5 rounded-lg hover:bg-muted/50 transition-enterprise">
                   <div
                     className={cn(
                       "w-1.5 h-1.5 rounded-full mt-1.5 shrink-0",
-                      t.priority === "Urgent" ? "bg-rose-500" : t.priority === "High" ? "bg-amber-500" : "bg-sky-500"
+                      t.priority === "Urgent" ? "bg-destructive" : t.priority === "High" ? "bg-warning" : "bg-info"
                     )}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium leading-snug line-clamp-2">{t.title}</p>
+                    <p className="text-caption font-medium leading-snug line-clamp-2">{t.title}</p>
                     <div className="flex items-center gap-2 mt-1.5">
                       <StatusBadge status={t.status} className="text-[9px] h-4" />
-                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                      <span className="text-helper text-muted-foreground flex items-center gap-0.5">
                         <Clock className="w-2.5 h-2.5" /> {t.dueDate}
                       </span>
                     </div>
@@ -378,11 +381,11 @@ function AgencyDashboard() {
             </CardContent>
           </Card>
 
-          <Card className="border-border/80 shadow-none">
-            <CardHeader className="pb-2 pt-5 px-5">
+          <Card className="border-border shadow-[var(--shadow-card)]">
+            <CardHeader className="pb-2 pt-6 px-6">
               <SectionHeader title="Activity feed" />
             </CardHeader>
-            <CardContent className="space-y-3.5 px-5 pb-5">
+            <CardContent className="space-y-3.5 px-6 pb-6">
               {(notifications.length
                 ? notifications.slice(0, 5).map((n) => ({
                     id: n.id,
@@ -401,36 +404,37 @@ function AgencyDashboard() {
                       <Icon className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs leading-snug">
+                      <p className="text-caption leading-snug">
                         <span className="font-medium">{a.user}</span>{" "}
                         <span className="text-muted-foreground line-clamp-2">{a.target}</span>
                       </p>
-                      <p className="text-[10px] text-muted-foreground mt-1">{a.time}</p>
+                      <p className="text-helper text-muted-foreground mt-1">{a.time}</p>
                     </div>
                   </div>
                 );
               })}
               {notifications.length === 0 && (
-                <p className="text-xs text-muted-foreground py-4 text-center">No recent activity yet</p>
+                <p className="text-caption text-muted-foreground py-4 text-center">No recent activity yet</p>
               )}
             </CardContent>
           </Card>
         </div>
       </div>
 
-      <Card className="border-border/80 shadow-none">
-        <CardHeader className="pb-3 pt-5 px-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <Card className="lg:col-span-6 border-border shadow-[var(--shadow-card)]">
+        <CardHeader className="pb-3 pt-6 px-6">
           <SectionHeader title="Products per destination" description="Linked hotels, activities, and transfers" />
         </CardHeader>
-        <CardContent className="px-5 pb-5">
+        <CardContent className="px-6 pb-6">
           {destinationInsights?.productsPerDestination?.length ? (
             <div className="space-y-2">
               {destinationInsights.productsPerDestination.slice(0, 8).map((d) => (
-                <div key={d.id} className="flex items-center justify-between gap-3 p-2 rounded-lg border border-border/80">
-                  <button type="button" className="text-sm font-medium text-left hover:text-[#2A7BBD]" onClick={() => setView("destinations")}>
+                <div key={d.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border">
+                  <button type="button" className="text-sm font-medium text-left hover:text-primary transition-enterprise" onClick={() => setView("destinations")}>
                     {d.name}
                   </button>
-                  <div className="flex gap-3 text-xs text-muted-foreground tabular-nums">
+                  <div className="flex gap-3 text-caption text-muted-foreground tabular-nums">
                     <span>{d.hotelCount} hotels</span>
                     <span>{d.activityCount} activities</span>
                     <span>{d.transferCount} transfers</span>
@@ -440,24 +444,24 @@ function AgencyDashboard() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Link products to destinations to see distribution here.</p>
+            <p className="text-body text-muted-foreground">Link products to destinations to see distribution here.</p>
           )}
         </CardContent>
       </Card>
 
-      <Card className="border-border/80 shadow-none">
-        <CardHeader className="pb-3 pt-5 px-5">
+      <Card className="lg:col-span-6 border-border shadow-[var(--shadow-card)]">
+        <CardHeader className="pb-3 pt-6 px-6">
           <SectionHeader title="Top destinations" description="Destinations with the most linked products" />
         </CardHeader>
-        <CardContent className="px-5 pb-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <CardContent className="px-6 pb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {topDestinationsDisplay.map((d, i) => (
               <div
                 key={d.destination}
-                className="flex items-center gap-3 p-3 rounded-xl border border-border/80 hover:border-primary/30 hover:bg-primary/[0.02] transition-colors cursor-pointer"
+                className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/[0.02] transition-enterprise cursor-pointer"
                 onClick={() => d.id && setView("destinations")}
               >
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] flex items-center justify-center text-white text-[11px] font-semibold shrink-0 tabular-nums">
+                <div className="w-9 h-9 rounded-lg bg-brand-gradient flex items-center justify-center text-white text-helper font-semibold shrink-0 tabular-nums">
                   {String(i + 1).padStart(2, "0")}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -477,44 +481,45 @@ function AgencyDashboard() {
           </div>
         </CardContent>
       </Card>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="border-border/80 shadow-none">
-          <CardHeader className="pb-3 pt-5 px-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <Card className="lg:col-span-6 border-border shadow-[var(--shadow-card)]">
+          <CardHeader className="pb-3 pt-6 px-6">
             <SectionHeader title="Featured packages" description={`${packageInsights?.totalPackages ?? 0} packages in catalog`} />
           </CardHeader>
-          <CardContent className="px-5 pb-5 space-y-2">
+          <CardContent className="px-6 pb-6 space-y-2">
             {packageInsights?.featuredPackages?.length ? packageInsights.featuredPackages.map((p) => (
-              <button key={p.id} type="button" className="w-full flex items-center justify-between p-2 rounded-lg border border-border/80 hover:border-primary/30 text-left" onClick={() => setView("packages")}>
+              <button key={p.id} type="button" className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary/30 text-left transition-enterprise" onClick={() => setView("packages")}>
                 <span className="text-sm font-medium">{p.packageName}</span>
-                <span className="text-xs text-[#2A7BBD] font-semibold tabular-nums">₹{p.finalPrice.toLocaleString("en-IN")}</span>
+                <span className="text-caption text-primary font-semibold tabular-nums">₹{p.finalPrice.toLocaleString("en-IN")}</span>
               </button>
             )) : (
-              <p className="text-sm text-muted-foreground">Mark packages as featured to highlight them here.</p>
+              <p className="text-body text-muted-foreground">Mark packages as featured to highlight them here.</p>
             )}
           </CardContent>
         </Card>
-        <Card className="border-border/80 shadow-none">
-          <CardHeader className="pb-3 pt-5 px-5">
+        <Card className="lg:col-span-6 border-border shadow-[var(--shadow-card)]">
+          <CardHeader className="pb-3 pt-6 px-6">
             <SectionHeader title="Top packages" description="Published packages by value" />
           </CardHeader>
-          <CardContent className="px-5 pb-5 space-y-2">
+          <CardContent className="px-6 pb-6 space-y-2">
             {packageInsights?.topSellingPackages?.length ? packageInsights.topSellingPackages.map((p, i) => (
-              <button key={p.id} type="button" className="w-full flex items-center gap-3 p-2 rounded-lg border border-border/80 hover:border-primary/30 text-left" onClick={() => setView("packages")}>
-                <span className="w-6 h-6 rounded bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] text-white text-[10px] font-bold flex items-center justify-center">{i + 1}</span>
+              <button key={p.id} type="button" className="w-full flex items-center gap-3 p-3 rounded-lg border border-border hover:border-primary/30 text-left transition-enterprise" onClick={() => setView("packages")}>
+                <span className="w-6 h-6 rounded bg-brand-gradient text-white text-helper font-bold flex items-center justify-center">{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{p.packageName}</p>
-                  <p className="text-[11px] text-muted-foreground">{p.destination?.name} · {p.componentCount} components</p>
+                  <p className="text-helper text-muted-foreground">{p.destination?.name} · {p.componentCount} components</p>
                 </div>
-                <span className="text-xs font-semibold text-[#2A7BBD] tabular-nums">₹{p.finalPrice.toLocaleString("en-IN")}</span>
+                <span className="text-caption font-semibold text-primary tabular-nums">₹{p.finalPrice.toLocaleString("en-IN")}</span>
               </button>
             )) : (
-              <p className="text-sm text-muted-foreground">Publish packages to see top listings.</p>
+              <p className="text-body text-muted-foreground">Publish packages to see top listings.</p>
             )}
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }
 
@@ -539,7 +544,7 @@ function SuperAdminDashboard() {
   const totalBookings = agencies.reduce((s, a) => s + a.totalBookings, 0);
 
   return (
-    <div className="space-y-6">
+    <PageShell>
       <BrandHero
         eyebrow="Platform overview"
         title="Super Admin Console"
@@ -552,7 +557,7 @@ function SuperAdminDashboard() {
         }
         actions={
           <>
-            <Button className="bg-white text-[#2A7BBD] hover:bg-white/90 shadow-sm h-9" onClick={() => setView("agencies")}>
+            <Button className="bg-white text-primary hover:bg-white/90 shadow-sm h-9" onClick={() => setView("agencies")}>
               <Plus className="w-4 h-4 mr-1.5" /> Add Agency
             </Button>
             <Button
@@ -566,11 +571,9 @@ function SuperAdminDashboard() {
         }
       />
 
-      <section>
-        <div className="mb-3">
-          <SectionHeader title="Platform metrics" description="Agency network health and commercial performance" />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+      <section className="space-y-4">
+        <SectionHeader title="Platform metrics" description="Agency network health and commercial performance" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <MetricCard icon={Building2} label="Active Agencies" value={String(agencies.filter((a) => a.status === "Active").length)} change={9.1} trend="up" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle={`${agencies.length} total onboarded`} index={0} />
           <MetricCard icon={DollarSign} label="Platform Revenue" value={formatINR(totalRevenue)} change={14.2} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="This month" index={1} />
           <MetricCard icon={Wallet} label="Agency Wallets" value={formatINR(totalWallet)} change={7.8} trend="up" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" subtitle="Total balance" index={2} />
@@ -582,12 +585,12 @@ function SuperAdminDashboard() {
         </div>
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2 border-border/80 shadow-none">
-          <CardHeader className="pb-2 pt-5 px-5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <Card className="lg:col-span-8">
+          <CardHeader className="pb-2 pt-6 px-6">
             <SectionHeader title="Platform revenue" description="All agencies · last 12 months" />
           </CardHeader>
-          <CardContent className="px-2 pb-4 sm:px-4">
+          <CardContent className="px-2 pb-6 sm:px-4">
             <ResponsiveContainer width="100%" height={280}>
               <AreaChart data={monthlyRevenue} margin={{ left: -8, right: 8, top: 8 }}>
                 <defs>
@@ -606,11 +609,11 @@ function SuperAdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
-          <CardHeader className="pb-2 pt-5 px-5">
+        <Card className="lg:col-span-4">
+          <CardHeader className="pb-2 pt-6 px-6">
             <SectionHeader title="API usage" description="Vendor distribution" />
           </CardHeader>
-          <CardContent className="px-5 pb-5">
+          <CardContent className="px-6 pb-6">
             <ResponsiveContainer width="100%" height={190}>
               <PieChart>
                 <Pie
@@ -649,8 +652,8 @@ function SuperAdminDashboard() {
         </Card>
       </div>
 
-      <Card className="border-border/80 shadow-none">
-        <CardHeader className="pb-2 pt-5 px-5">
+      <Card>
+        <CardHeader className="pb-2 pt-6 px-6">
           <SectionHeader
             title="Agency performance"
             description="Revenue, wallets, and plan status by agency"
@@ -662,11 +665,11 @@ function SuperAdminDashboard() {
           />
         </CardHeader>
         <CardContent className="p-0">
-          <div className="divide-y divide-border/80 max-h-80 overflow-y-auto scroll-thin">
+          <div className="divide-y divide-border max-h-80 overflow-y-auto scroll-thin">
             {agencies.length === 0 && <EmptyRow message="No agencies loaded" />}
             {agencies.map((a) => (
               <div key={a.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-muted/35 transition-colors">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#2A7BBD] to-[#00A79D] flex items-center justify-center text-white font-semibold text-sm shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-blue to-brand-teal flex items-center justify-center text-white font-semibold text-sm shrink-0">
                   {initials(a.name)}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -694,19 +697,19 @@ function SuperAdminDashboard() {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="border-border/80 shadow-none">
-          <CardHeader className="pb-2 pt-5 px-5">
+        <Card>
+          <CardHeader className="pb-2 pt-6 px-6">
             <SectionHeader
               title="System monitoring"
               action={<Zap className="w-4 h-4 text-amber-500" />}
             />
           </CardHeader>
-          <CardContent className="space-y-4 px-5 pb-5">
+          <CardContent className="space-y-4 px-6 pb-6">
             {[
               { label: "Server CPU", value: 42, color: "bg-emerald-500" },
               { label: "Memory Usage", value: 67, color: "bg-amber-500" },
               { label: "Database Load", value: 28, color: "bg-emerald-500" },
-              { label: "API Response Time", value: 89, color: "bg-[#2A7BBD]" },
+              { label: "API Response Time", value: 89, color: "bg-primary" },
             ].map((m) => (
               <div key={m.label}>
                 <div className="flex items-center justify-between text-xs mb-1.5">
@@ -721,8 +724,8 @@ function SuperAdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
-          <CardHeader className="pb-2 pt-5 px-5">
+        <Card>
+          <CardHeader className="pb-2 pt-6 px-6">
             <SectionHeader
               title="Platform alerts"
               action={<Bell className="w-4 h-4 text-rose-500" />}
@@ -747,7 +750,7 @@ function SuperAdminDashboard() {
           </CardContent>
         </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }
 
@@ -766,7 +769,7 @@ function EmployeeDashboard() {
   const greeting = useMemo(() => greetingForHour(new Date().getHours()), []);
 
   return (
-    <div className="space-y-6">
+    <PageShell>
       <BrandHero
         eyebrow={greeting}
         title={user?.name || "Welcome"}
@@ -777,17 +780,15 @@ function EmployeeDashboard() {
           </>
         }
         actions={
-          <Button className="bg-white text-[#2A7BBD] hover:bg-white/90 shadow-sm h-9" onClick={() => setView("bookings")}>
+          <Button className="bg-white text-primary hover:bg-white/90 shadow-sm h-9" onClick={() => setView("bookings")}>
             <Plus className="w-4 h-4 mr-1.5" /> New Booking
           </Button>
         }
       />
 
-      <section>
-        <div className="mb-3">
-          <SectionHeader title="My performance" description="Bookings, tasks, commission, and customers" />
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <section className="space-y-4">
+        <SectionHeader title="My performance" description="Bookings, tasks, commission, and customers" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <MetricCard icon={Target} label="My Bookings" value={String(allMyBookings.length)} color="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400" subtitle="All time" index={0} />
           <MetricCard icon={TrendingUp} label="My Tasks" value={String(myTasks.length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="Assigned to you" index={1} />
           <MetricCard icon={Wallet} label="My Commission" value={formatINR(myCommission)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All time" index={2} />
@@ -796,8 +797,8 @@ function EmployeeDashboard() {
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-2 border-border/80 shadow-none">
-          <CardHeader className="pb-2 pt-5 px-5">
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-2 pt-6 px-6">
             <SectionHeader
               title="My recent bookings"
               action={
@@ -808,7 +809,7 @@ function EmployeeDashboard() {
             />
           </CardHeader>
           <CardContent className="p-0">
-            <div className="divide-y divide-border/80">
+            <div className="divide-y divide-border">
               {myBookings.length === 0 && <EmptyRow message="No bookings yet" />}
               {myBookings.map((b) => (
                 <div key={b.id} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/35 transition-colors">
@@ -832,8 +833,8 @@ function EmployeeDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/80 shadow-none">
-          <CardHeader className="pb-2 pt-5 px-5">
+        <Card>
+          <CardHeader className="pb-2 pt-6 px-6">
             <SectionHeader
               title={`My tasks (${myTasks.length})`}
               action={
@@ -848,7 +849,7 @@ function EmployeeDashboard() {
               <p className="text-xs text-muted-foreground text-center py-6">No tasks assigned</p>
             )}
             {myTasks.map((t) => (
-              <div key={t.id} className="flex items-start gap-2.5 p-2.5 rounded-lg border border-border/80">
+              <div key={t.id} className="flex items-start gap-2.5 p-2.5 rounded-lg border border-border">
                 <div
                   className={cn(
                     "w-1.5 h-1.5 rounded-full mt-1.5 shrink-0",
@@ -868,8 +869,8 @@ function EmployeeDashboard() {
         </Card>
       </div>
 
-      <Card className="border-border/80 shadow-none">
-        <CardHeader className="pb-2 pt-5 px-5">
+      <Card>
+        <CardHeader className="pb-2 pt-6 px-6">
           <SectionHeader
             title={`My leads (${myLeads.length})`}
             action={
@@ -880,7 +881,7 @@ function EmployeeDashboard() {
           />
         </CardHeader>
         <CardContent className="p-0">
-          <div className="divide-y divide-border/80">
+          <div className="divide-y divide-border">
             {myLeads.length === 0 && <EmptyRow message="No leads assigned" />}
             {myLeads.map((l) => (
               <div key={l.id} className="flex items-center gap-3 px-5 py-3 hover:bg-muted/35 transition-colors">
@@ -903,6 +904,6 @@ function EmployeeDashboard() {
           </div>
         </CardContent>
       </Card>
-    </div>
+    </PageShell>
   );
 }
