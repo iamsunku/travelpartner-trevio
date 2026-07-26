@@ -17,8 +17,7 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: "4000"
+      # Do not set PORT — Render injects it automatically
       - key: JWT_EXPIRES_IN
         value: 1d
       - key: DATABASE_URL
@@ -27,6 +26,7 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      # Set to your Vercel URL after frontend deploy (exact origin, no trailing slash)
       - key: CORS_ORIGIN
         sync: false
 
