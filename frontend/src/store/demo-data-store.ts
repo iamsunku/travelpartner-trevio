@@ -275,9 +275,11 @@ export const useDemoDataStore = create<DemoDataState>()(
         const quoteNo = `QT-2025-${String(get().quotations.length + 19).padStart(3, "0")}`;
         const quotation: Quotation = {
           ...input,
+          service: input.service as Quotation["service"],
           id: `qt-${Date.now()}`,
           quoteNo,
-          status: input.status ?? "Draft",
+          status: (input.status as Quotation["status"] | undefined) ?? "Draft",
+          approvalStatus: input.approvalStatus as Quotation["approvalStatus"] | undefined,
           createdAt: todayISO(),
         };
         set((s) => ({ quotations: [quotation, ...s.quotations] }));

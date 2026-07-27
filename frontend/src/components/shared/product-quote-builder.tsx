@@ -48,7 +48,6 @@ function hotelRoomOptions(hotel: ProductRecord) {
 export function ProductQuoteBuilderDialog() {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
-  const addQuotation = useDemoDataStore((s) => s.addQuotation);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [destinations, setDestinations] = useState<Destination[]>([]);
@@ -214,7 +213,7 @@ export function ProductQuoteBuilderDialog() {
     setSaving(true);
     const payload: NewQuotationInput = {
       customerName,
-      service: "Holiday" as const,
+      service: "Holiday",
       items: lines.length,
       amount: subtotal,
       gst,
@@ -239,16 +238,16 @@ export function ProductQuoteBuilderDialog() {
         imageUrl: l.imageUrl,
         currency: l.currency,
       })),
-      status: (send ? "Sent" : "Draft") as "Sent" | "Draft",
-      approvalStatus: "Draft" as const,
+      status: send ? "Sent" : "Draft",
+      approvalStatus: "Draft",
     };
     try {
       await api.createQuotation(payload);
-      addQuotation(payload);
+      useDemoDataStore.getState().addQuotation(payload);
       toast({ title: send ? "Quotation saved & marked sent" : "Quotation saved as draft" });
       setOpen(false);
     } catch {
-      addQuotation(payload);
+      useDemoDataStore.getState().addQuotation(payload);
       toast({ title: "Saved locally", description: "API unavailable — stored in session." });
       setOpen(false);
     } finally {

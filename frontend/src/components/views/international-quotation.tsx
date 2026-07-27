@@ -16,6 +16,10 @@ import { downloadInternationalQuotationPdf } from "@/lib/quotation-pdf";
 import type { NewQuotationInput } from "@/types";
 import { api } from "@/lib/api";
 
+function persistQuotation(input: NewQuotationInput) {
+  useDemoDataStore.getState().addQuotation(input);
+}
+
 const EMPTY_FORM = {
   customerName: "",
   contactPerson: "",
@@ -50,7 +54,6 @@ const EMPTY_FORM = {
 export function InternationalQuotationDialog() {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
-  const addQuotation = useDemoDataStore((s) => s.addQuotation);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -75,7 +78,7 @@ export function InternationalQuotationDialog() {
     setSaving(true);
     const payload: NewQuotationInput = {
       customerName: form.customerName,
-      service: "International" as const,
+      service: "International",
       items: 4,
       amount: budgetNum,
       gst,
@@ -110,13 +113,13 @@ export function InternationalQuotationDialog() {
       salesExecutiveName: form.salesExecutiveName || user?.name || "",
       salesExecutivePhone: form.salesExecutivePhone || user?.phone || "",
       salesExecutiveEmail: form.salesExecutiveEmail || user?.email || "",
-      approvalStatus: (send ? "Pending" : "Draft") as "Pending" | "Draft",
-      status: (send ? "Sent" : "Draft") as "Sent" | "Draft",
+      approvalStatus: send ? "Pending" : "Draft",
+      status: send ? "Sent" : "Draft",
     };
 
     try {
       await api.createQuotation(payload);
-      addQuotation(payload satisfies NewQuotationInput);
+      persistQuotation(payload);
       toast({ title: send ? "International quotation sent" : "International quotation saved" });
       setOpen(false);
       setForm({
@@ -126,7 +129,7 @@ export function InternationalQuotationDialog() {
         salesExecutiveEmail: user?.email || "",
       });
     } catch (e) {
-      addQuotation(payload satisfies NewQuotationInput);
+      persistQuotation(payload);
       toast({
         title: send ? "Quotation saved locally" : "Draft saved locally",
         description: e instanceof Error ? e.message : "API unavailable — stored in session.",

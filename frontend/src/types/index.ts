@@ -292,15 +292,15 @@ export interface Quotation {
 
 export type NewQuotationInput = {
   customerName: string;
-  service: Quotation["service"];
+  service: string;
   items: number;
   amount: number;
   gst: number;
   total: number;
   validTill: string;
   createdBy: string;
-  status?: Quotation["status"];
-  approvalStatus?: Quotation["approvalStatus"];
+  status?: string;
+  approvalStatus?: string;
   isInternational?: boolean;
   contactPerson?: string;
   contactEmail?: string;
