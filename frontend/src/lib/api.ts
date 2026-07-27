@@ -1,4 +1,17 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+/** Normalize env so a pasted `=https://...` or trailing slash does not break fetch URLs. */
+function resolveApiBase(): string {
+  const raw = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000").trim();
+  const cleaned = raw.replace(/^[=\s]+/, "").replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(cleaned)) {
+    console.warn(
+      `[api] NEXT_PUBLIC_API_URL must be an absolute URL (got "${raw}"). Falling back to http://localhost:4000`
+    );
+    return "http://localhost:4000";
+  }
+  return cleaned;
+}
+
+const API_BASE = resolveApiBase();
 
 export class ApiError extends Error {
   constructor(

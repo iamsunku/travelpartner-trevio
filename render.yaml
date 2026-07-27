@@ -31,5 +31,5 @@ services:
         generateValue: true
       # Replace with your real Vercel origin after frontend deploy (no trailing slash)
       - key: CORS_ORIGIN
-        value: "https://trevio-frontend.vercel.app"
+        value: "https://trevioglobal-frontend.vercel.app"
 
