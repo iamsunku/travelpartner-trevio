@@ -293,6 +293,9 @@ export interface ProductRecord {
   updatedAt?: string;
   createdByName?: string;
   updatedByName?: string;
+  approvalStatus?: string;
+  pendingRateChanges?: Record<string, unknown> | null;
+  transferOptions?: Array<{ transferProductId: string; label: string }>;
   [key: string]: unknown;
 }
 

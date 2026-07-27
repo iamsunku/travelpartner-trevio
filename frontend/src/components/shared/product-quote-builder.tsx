@@ -213,7 +213,7 @@ export function ProductQuoteBuilderDialog() {
     setSaving(true);
     const payload = {
       customerName,
-      service: "Holiday",
+      service: "Holiday" as const,
       items: lines.length,
       amount: subtotal,
       gst,
@@ -238,8 +238,8 @@ export function ProductQuoteBuilderDialog() {
         imageUrl: l.imageUrl,
         currency: l.currency,
       })),
-      status: send ? "Sent" : "Draft",
-      approvalStatus: "Draft",
+      status: (send ? "Sent" : "Draft") as "Sent" | "Draft",
+      approvalStatus: "Draft" as const,
     };
     try {
       await api.createQuotation(payload);

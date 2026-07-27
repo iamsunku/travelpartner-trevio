@@ -497,7 +497,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
           <DialogTitle className="capitalize">{title}</DialogTitle>
         </DialogHeader>
 
-        {initial?.pendingRateChanges && (
+        {!!initial?.pendingRateChanges && (
           <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
             <AlertDescription className="text-sm">
               You have rate changes awaiting admin approval. The values shown are your proposed rates — agents still see the last approved rates until an admin approves.

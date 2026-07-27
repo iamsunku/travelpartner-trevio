@@ -6,7 +6,7 @@ import { formatActivityPrice } from "@/lib/currency";
 import type { ProductRecord } from "@/types";
 
 function ApprovalStatusBadge(item: ProductRecord) {
-  const status = item.approvalStatus || "Draft";
+  const status = String(item.approvalStatus || "Draft");
   const badgeColor: Record<string, string> = {
     Draft: "bg-gray-100 text-gray-800",
     Pending: "bg-yellow-100 text-yellow-800",

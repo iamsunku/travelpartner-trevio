@@ -35,13 +35,14 @@ interface PendingProduct {
 }
 
 function livePrice(item: PendingProduct): string {
+  const row = item as unknown as Record<string, unknown>;
   if (item.type === "activity") {
-    return formatActivityPrice(item);
+    return formatActivityPrice(row);
   }
   if (item.type === "transfer") {
-    return formatTransferPrice(item);
+    return formatTransferPrice(row);
   }
-  return formatHotelFromPrice(item);
+  return formatHotelFromPrice(row);
 }
 
 function pendingPrice(item: PendingProduct): string | null {

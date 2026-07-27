@@ -74,7 +74,7 @@ export function InternationalQuotationDialog() {
     setSaving(true);
     const payload = {
       customerName: form.customerName,
-      service: "International",
+      service: "International" as const,
       items: 4,
       amount: budgetNum,
       gst,
@@ -109,8 +109,8 @@ export function InternationalQuotationDialog() {
       salesExecutiveName: form.salesExecutiveName || user?.name || "",
       salesExecutivePhone: form.salesExecutivePhone || user?.phone || "",
       salesExecutiveEmail: form.salesExecutiveEmail || user?.email || "",
-      approvalStatus: send ? "Pending" : "Draft",
-      status: send ? "Sent" : "Draft",
+      approvalStatus: (send ? "Pending" : "Draft") as "Pending" | "Draft",
+      status: (send ? "Sent" : "Draft") as "Sent" | "Draft",
     };
 
     try {

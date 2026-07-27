@@ -9,8 +9,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Info } from "lucide-react";
-
-import { Info } from "lucide-react";
 import { formatActivityPrice, formatProductPrice, formatTransferPrice, normalizeCurrency } from "@/lib/currency";
 
 function ApprovalStatusBadge(item: ProductRecord) {

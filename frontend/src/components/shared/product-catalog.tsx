@@ -398,7 +398,7 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
                     <TableCell>
                       <div className="space-y-1">
                         <ApprovalStatusBadge item={item} />
-                        {item.pendingRateChanges && (
+                        {!!item.pendingRateChanges && (
                           <p className="text-[10px] text-amber-600">New rates awaiting approval</p>
                         )}
                       </div>
