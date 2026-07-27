@@ -91,12 +91,16 @@ export function ActivityPackagesView() {
             kind="activities"
             apiPath="/api/products/activities"
             columns={[
-              { key: "name", label: "Activity" },
+              { key: "name", label: "Activity Name" },
               { key: "destination", label: "Destination", render: (i) => <DestinationNameCell item={i} /> },
-              { key: "location", label: "Location" },
               { key: "duration", label: "Duration" },
               { key: "adultPrice", label: "Adult Price", render: ActivityPriceDisplay },
-              { key: "currency", label: "Currency" },
+              { key: "childPrice", label: "Child Price", render: (i) => {
+                const currency = String(i.currency || "INR");
+                const symbol = CURRENCY_SYMBOLS[currency] || currency;
+                return `${symbol}${Number(i.childPrice ?? 0).toLocaleString("en-IN")}`;
+              }},
+              { key: "rateValidTo", label: "Validity", render: (i) => String(i.rateValidTo || "—") },
               { key: "approvalStatus", label: "Approval", render: ApprovalStatusBadge },
             ]}
           />
@@ -110,13 +114,12 @@ export function ActivityPackagesView() {
             apiPath="/api/products/transfers"
             columns={[
               { key: "name", label: "Transfer" },
+              { key: "transferType", label: "Shared/Private" },
+              { key: "vehicleType", label: "Vehicle Type" },
               { key: "destination", label: "Destination", render: (i) => <DestinationNameCell item={i} /> },
-              { key: "transferType", label: "Type" },
-              { key: "pickupLocation", label: "Pickup" },
-              { key: "dropLocation", label: "Drop" },
-              { key: "vehicleType", label: "Vehicle" },
               { key: "privatePrice", label: "Price", render: TransferPriceDisplay },
               { key: "currency", label: "Currency" },
+              { key: "rateValidTo", label: "Validity", render: (i) => String(i.rateValidTo || "—") },
               { key: "approvalStatus", label: "Approval", render: ApprovalStatusBadge },
             ]}
           />

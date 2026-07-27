@@ -210,18 +210,29 @@ model Quotation {
   contactEmail  String?
   contactPhone  String?
   destination   String?
+  country       String?
+  departureCity String?
   travelDates   String?
+  returnDate    String?
+  nights        Int?
+  days          Int?
   adults        Int?
   children      Int?
   infants       Int?
   hotelStarPreference String?
+  roomTypePreference  String?
+  mealPlanPreference  String?
   location      String?
   budget        Int?
   currency      String   @default("INR")
   packageIncludes Json   @default("[]")
   packageExcludes Json   @default("[]")
+  termsAndConditions String?
   paymentTerms    String?
   cancellationPolicy String?
+  salesExecutiveName  String?
+  salesExecutivePhone String?
+  salesExecutiveEmail String?
   approvalStatus  String  @default("Draft") // Draft|Pending|Approved|Rejected
   lineItems       Json    @default("[]")
   createdAt  DateTime @default(now())
@@ -496,13 +507,14 @@ model HotelProduct {
   contactEmail    String?
   website         String?
   images          Json     @default("[]")
-  roomCategories  Json     @default("[]")
+  roomCategories  Json     @default("[]") // [{ name, description, images, maxOccupancy, maxAdults, maxChildren, extraBedAllowed, roomSize, bedType, mealPlan, smoking, pricing:{single,double,triple,quad,extraAdult,extraChild}, weekdayPricing, weekendPricing }]
   contractStart   String?
   contractEnd     String?
+  childPolicy     Json     @default("{}") // { withBed, withoutBed }
   currency        String   @default("INR")
   cancellationPolicy String?
-  blackoutDates   Json     @default("[]")
-  inventory       Json     @default("[]")
+  blackoutDates   Json     @default("[]") // [{ label, dateFrom, dateTo }]
+  inventory       Json     @default("[]") // [{ roomName, date, available, soldOut, closed }]
   status          String   @default("Active") // Active|Archived|Draft
   approvalStatus  String   @default("Draft") // Draft|Pending|Approved|Rejected
   approvedBy      String?
@@ -541,6 +553,7 @@ model ActivityProduct {
   minChildAge     Int?
   adultPrice      Int      @default(0)
   childPrice      Int      @default(0)
+  infantPrice     Int?
   currency        String   @default("INR")
   blackoutDates   Json     @default("[]")
   rateValidFrom   String?
@@ -577,8 +590,12 @@ model TransferProduct {
   pickupLocation  String
   dropLocation    String
   pickupTime      String?
+  waitingCharges  Int?
   privatePrice    Int?
   sharedPrice     Int?
+  sharedAdultPrice Int?
+  sharedChildPrice Int?
+  vehiclePricing  Json     @default("[]") // [{ vehicleType, seats, price }] for private transfers
   currency        String   @default("INR")
   rateValidFrom   String?
   rateValidTo     String?
@@ -628,9 +645,12 @@ model EmployeeActivitySnapshot {
   workingMinutes    Int      @default(0)
   customersAdded    Int      @default(0)
   quotationsCreated Int      @default(0)
+  productsAdded     Int      @default(0)
   productsUpdated   Int      @default(0)
   revenueGenerated  Int      @default(0)
   lastActivity      String?
+  ipAddress         String?
+  deviceUsed        String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

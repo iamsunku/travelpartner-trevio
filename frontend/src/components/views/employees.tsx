@@ -75,7 +75,30 @@ export function EmployeesView() {
 
   const active = employees.filter((e) => e.status === "Active").length;
   const onLeave = employees.filter((e) => e.status === "On Leave").length;
-  const avgAttendance = Math.round(employees.reduce((s, e) => s + e.attendance, 0) / employees.length);
+  const avgAttendance = Math.round(employees.reduce((s, e) => s + e.attendance, 0) / (employees.length || 1));
+  const [activityRows, setActivityRows] = useState<Array<{
+    id: string; userId: string; date: string; loginAt?: string | null; logoutAt?: string | null;
+    workingMinutes: number; customersAdded: number; quotationsCreated: number; productsUpdated: number;
+    productsAdded?: number; revenueGenerated: number; lastActivity?: string | null; ipAddress?: string | null; deviceUsed?: string | null;
+  }>>([]);
+
+  useEffect(() => {
+    api.getEmployeeActivity()
+      .then((res) => setActivityRows(res.activity || []))
+      .catch(() => setActivityRows([]));
+  }, []);
+
+  const activityTotals = useMemo(() => {
+    return activityRows.reduce(
+      (acc, row) => ({
+        customers: acc.customers + (row.customersAdded || 0),
+        quotations: acc.quotations + (row.quotationsCreated || 0),
+        products: acc.products + (row.productsUpdated || 0) + (row.productsAdded || 0),
+        revenue: acc.revenue + (row.revenueGenerated || 0),
+      }),
+      { customers: 0, quotations: 0, products: 0, revenue: 0 }
+    );
+  }, [activityRows]);
 
   return (
     <PageShell>
@@ -95,6 +118,54 @@ export function EmployeesView() {
         <MetricCard icon={UserMinus} label="On Leave" value={onLeave.toString()} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
         <MetricCard icon={Calendar} label="Avg Attendance" value={`${avgAttendance}%`} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
       </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard icon={Users} label="Customers Added" value={activityTotals.customers.toString()} color="bg-sky-100 text-sky-700" index={0} />
+        <MetricCard icon={Target} label="Quotations Created" value={activityTotals.quotations.toString()} color="bg-violet-100 text-violet-700" index={1} />
+        <MetricCard icon={Briefcase} label="Products Touched" value={activityTotals.products.toString()} color="bg-teal-100 text-teal-700" index={2} />
+        <MetricCard icon={Wallet} label="Revenue Tracked" value={formatINR(activityTotals.revenue)} color="bg-emerald-100 text-emerald-700" index={3} />
+      </div>
+
+      {activityRows.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <h3 className="text-sm font-semibold">Employee Activity Tracking</h3>
+            <p className="text-xs text-muted-foreground">Login, working hours, IP/device and daily productivity</p>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Login</TableHead>
+                  <TableHead>Logout</TableHead>
+                  <TableHead>Hours</TableHead>
+                  <TableHead>Customers</TableHead>
+                  <TableHead>Quotes</TableHead>
+                  <TableHead>Products</TableHead>
+                  <TableHead>Last Activity</TableHead>
+                  <TableHead>IP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {activityRows.slice(0, 15).map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{row.date}</TableCell>
+                    <TableCell>{row.loginAt ? new Date(row.loginAt).toLocaleTimeString() : "—"}</TableCell>
+                    <TableCell>{row.logoutAt ? new Date(row.logoutAt).toLocaleTimeString() : "—"}</TableCell>
+                    <TableCell>{(row.workingMinutes / 60).toFixed(1)}h</TableCell>
+                    <TableCell>{row.customersAdded}</TableCell>
+                    <TableCell>{row.quotationsCreated}</TableCell>
+                    <TableCell>{(row.productsAdded || 0) + row.productsUpdated}</TableCell>
+                    <TableCell className="max-w-[160px] truncate">{row.lastActivity || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">{row.ipAddress || "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-3">

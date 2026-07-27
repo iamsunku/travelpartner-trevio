@@ -236,6 +236,27 @@ export const api = {
   createQuotation: (body: Record<string, unknown>) =>
     apiFetch<{ quotation: ApiQuotation }>("/api/quotations", { method: "POST", body: JSON.stringify(body) }),
 
+  getEmployeeActivity: () =>
+    apiFetch<{
+      activity: Array<{
+        id: string;
+        userId: string;
+        date: string;
+        loginAt?: string | null;
+        logoutAt?: string | null;
+        workingMinutes: number;
+        customersAdded: number;
+        quotationsCreated: number;
+        productsAdded?: number;
+        productsUpdated: number;
+        revenueGenerated: number;
+        lastActivity?: string | null;
+        ipAddress?: string | null;
+        deviceUsed?: string | null;
+      }>;
+      total: number;
+    }>("/api/employees/activity"),
+
   getPayments: () => apiFetch<{ payments: ApiPayment[]; total: number }>("/api/payments"),
 
   createPayment: (body: Record<string, unknown>) =>

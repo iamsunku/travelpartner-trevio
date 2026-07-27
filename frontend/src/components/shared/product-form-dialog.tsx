@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,28 +25,65 @@ interface ProductFormDialogProps {
   onSubmit: (payload: Record<string, unknown>) => Promise<void>;
 }
 
-const EMPTY = {
-  hotels: {
-    destinationId: "", name: "", description: "", starCategory: "3", address: "", city: "", country: "India",
-    mapsUrl: "", amenities: "", checkInTime: "14:00", checkOutTime: "11:00",
-    contactPerson: "", contactPhone: "", contactEmail: "", website: "",
-    currency: "INR", cancellationPolicy: "", status: "Active",
-    roomName: "Deluxe", roomDescription: "", maxOccupancy: "2", maxAdults: "2", maxChildren: "0",
-    mealPlan: "CP", priceSingle: "", priceDouble: "", priceExtraAdult: "", priceExtraChild: "",
-  },
-  activities: {
-    destinationId: "", name: "", description: "", duration: "", location: "", meetingPoint: "",
-    inclusions: "", exclusions: "", operatingHours: "", minChildAge: "3",
-    adultPrice: "", childPrice: "", currency: "INR", cancellationPolicy: "",
-    rateValidFrom: "", rateValidTo: "", status: "Active",
-  },
-  transfers: {
-    destinationId: "", name: "", transferType: "Private", vehicleType: "Sedan",
-    pickupLocation: "", dropLocation: "", pickupTime: "",
-    privatePrice: "", sharedPrice: "", currency: "INR",
-    rateValidFrom: "", rateValidTo: "", cancellationPolicy: "", status: "Active",
-  },
+type RoomForm = {
+  name: string;
+  description: string;
+  images: string;
+  maxOccupancy: string;
+  maxAdults: string;
+  maxChildren: string;
+  extraBedAllowed: string;
+  roomSize: string;
+  bedType: string;
+  mealPlan: string;
+  smoking: string;
+  priceSingle: string;
+  priceDouble: string;
+  priceTriple: string;
+  priceQuad: string;
+  priceExtraAdult: string;
+  priceExtraChild: string;
+  weekdaySingle: string;
+  weekdayDouble: string;
+  weekendSingle: string;
+  weekendDouble: string;
 };
+
+type VehiclePrice = { vehicleType: string; seats: string; price: string };
+type BlackoutRow = { label: string; dateFrom: string; dateTo: string };
+type InventoryRow = { roomName: string; date: string; available: string; soldOut: string; closed: string };
+
+const VEHICLE_OPTIONS = [
+  { label: "Sedan (4 Seater)", value: "Sedan", seats: "4" },
+  { label: "SUV (6 Seater)", value: "SUV", seats: "6" },
+  { label: "Van (8 Seater)", value: "Van", seats: "8" },
+  { label: "Mini Bus (12 Seater)", value: "Mini Bus", seats: "12" },
+  { label: "Coach (40 Seater)", value: "Coach", seats: "40" },
+];
+
+const EMPTY_ROOM = (): RoomForm => ({
+  name: "Deluxe Room",
+  description: "",
+  images: "",
+  maxOccupancy: "2",
+  maxAdults: "2",
+  maxChildren: "0",
+  extraBedAllowed: "No",
+  roomSize: "",
+  bedType: "King",
+  mealPlan: "CP",
+  smoking: "Non-Smoking",
+  priceSingle: "",
+  priceDouble: "",
+  priceTriple: "",
+  priceQuad: "",
+  priceExtraAdult: "",
+  priceExtraChild: "",
+  weekdaySingle: "",
+  weekdayDouble: "",
+  weekendSingle: "",
+  weekendDouble: "",
+});
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -56,20 +94,147 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+      <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+      {children}
+    </div>
+  );
+}
+
+function listFromText(value: string): string[] {
+  return value.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+}
+
+function textFromList(value: unknown): string {
+  if (Array.isArray(value)) return value.map(String).join("\n");
+  return "";
+}
+
+function num(value: string): number {
+  return parseInt(value, 10) || 0;
+}
+
+function roomFromRecord(room: Record<string, unknown>): RoomForm {
+  const pricing = (room.pricing as Record<string, number>) ?? {};
+  const weekday = (room.weekdayPricing as Record<string, number>) ?? {};
+  const weekend = (room.weekendPricing as Record<string, number>) ?? {};
+  return {
+    name: String(room.name ?? "Deluxe Room"),
+    description: String(room.description ?? ""),
+    images: textFromList(room.images),
+    maxOccupancy: String(room.maxOccupancy ?? 2),
+    maxAdults: String(room.maxAdults ?? 2),
+    maxChildren: String(room.maxChildren ?? 0),
+    extraBedAllowed: room.extraBedAllowed === true || room.extraBedAllowed === "Yes" ? "Yes" : "No",
+    roomSize: String(room.roomSize ?? ""),
+    bedType: String(room.bedType ?? "King"),
+    mealPlan: String(room.mealPlan ?? "CP"),
+    smoking: String(room.smoking ?? "Non-Smoking"),
+    priceSingle: String(pricing.single ?? ""),
+    priceDouble: String(pricing.double ?? ""),
+    priceTriple: String(pricing.triple ?? ""),
+    priceQuad: String(pricing.quad ?? ""),
+    priceExtraAdult: String(pricing.extraAdult ?? ""),
+    priceExtraChild: String(pricing.extraChild ?? ""),
+    weekdaySingle: String(weekday.single ?? ""),
+    weekdayDouble: String(weekday.double ?? ""),
+    weekendSingle: String(weekend.single ?? ""),
+    weekendDouble: String(weekend.double ?? ""),
+  };
+}
+
+function serializeRoom(room: RoomForm) {
+  return {
+    name: room.name,
+    description: room.description,
+    images: listFromText(room.images),
+    maxOccupancy: num(room.maxOccupancy),
+    maxAdults: num(room.maxAdults),
+    maxChildren: num(room.maxChildren),
+    extraBedAllowed: room.extraBedAllowed === "Yes",
+    roomSize: room.roomSize || null,
+    bedType: room.bedType,
+    mealPlan: room.mealPlan,
+    smoking: room.smoking,
+    pricing: {
+      single: num(room.priceSingle),
+      double: num(room.priceDouble),
+      triple: num(room.priceTriple),
+      quad: num(room.priceQuad),
+      extraAdult: num(room.priceExtraAdult),
+      extraChild: num(room.priceExtraChild),
+    },
+    weekdayPricing: {
+      single: num(room.weekdaySingle || room.priceSingle),
+      double: num(room.weekdayDouble || room.priceDouble),
+    },
+    weekendPricing: {
+      single: num(room.weekendSingle || room.priceSingle),
+      double: num(room.weekendDouble || room.priceDouble),
+    },
+  };
+}
+
 export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit }: ProductFormDialogProps) {
-  const [form, setForm] = useState<Record<string, string>>(EMPTY[kind]);
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [rooms, setRooms] = useState<RoomForm[]>([EMPTY_ROOM()]);
+  const [blackouts, setBlackouts] = useState<BlackoutRow[]>([]);
+  const [inventory, setInventory] = useState<InventoryRow[]>([]);
+  const [vehiclePricing, setVehiclePricing] = useState<VehiclePrice[]>([
+    { vehicleType: "Sedan", seats: "4", price: "" },
+  ]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (!initial) {
-      setForm(EMPTY[kind]);
+      if (kind === "hotels") {
+        setForm({
+          destinationId: "", name: "", description: "", starCategory: "3", address: "", city: "", country: "India",
+          mapsUrl: "", amenities: "", policies: "", checkInTime: "14:00", checkOutTime: "11:00",
+          contactPerson: "", contactPhone: "", contactEmail: "", website: "", images: "",
+          contractStart: "", contractEnd: "", childWithBed: "12 Years & Above", childWithoutBed: "Below 5 Years Complimentary",
+          currency: "INR", cancellationPolicy: "Free cancellation up to 15 days; else non-refundable", status: "Active",
+        });
+        setRooms([EMPTY_ROOM()]);
+      } else if (kind === "activities") {
+        setForm({
+          destinationId: "", name: "", description: "", images: "", duration: "", location: "", meetingPoint: "",
+          inclusions: "", exclusions: "", operatingHours: "", minChildAge: "3",
+          adultPrice: "", childPrice: "", infantPrice: "", currency: "INR", cancellationPolicy: "",
+          rateValidFrom: "", rateValidTo: "", status: "Active",
+        });
+      } else {
+        setForm({
+          destinationId: "", name: "", transferType: "Private", vehicleType: "Sedan",
+          pickupLocation: "", dropLocation: "", pickupTime: "", waitingCharges: "",
+          privatePrice: "", sharedAdultPrice: "", sharedChildPrice: "", currency: "INR",
+          rateValidFrom: "", rateValidTo: "", cancellationPolicy: "", status: "Active",
+        });
+        setVehiclePricing([{ vehicleType: "Sedan", seats: "4", price: "" }]);
+      }
+      setBlackouts([]);
+      setInventory([]);
       return;
     }
+
+    const blackoutSrc = Array.isArray(initial.blackoutDates)
+      ? (initial.blackoutDates as Record<string, unknown>[]).map((b) => ({
+          label: String(b.label ?? b.name ?? ""),
+          dateFrom: String(b.dateFrom ?? b.date ?? ""),
+          dateTo: String(b.dateTo ?? b.date ?? ""),
+        }))
+      : [];
+    setBlackouts(blackoutSrc);
+
     if (kind === "hotels") {
-      const rooms = Array.isArray(initial.roomCategories) ? (initial.roomCategories as Record<string, unknown>[]) : [];
-      const room = rooms[0] ?? {};
-      const pricing = (room.pricing as Record<string, number>) ?? {};
+      const roomsSrc = Array.isArray(initial.roomCategories)
+        ? (initial.roomCategories as Record<string, unknown>[]).map(roomFromRecord)
+        : [EMPTY_ROOM()];
+      const childPolicy = (initial.childPolicy as Record<string, string>) ?? {};
+      const policies = initial.policies;
       setForm({
         destinationId: String(initial.destinationId ?? ""),
         name: String(initial.name ?? ""),
@@ -80,31 +245,40 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
         country: String(initial.country ?? "India"),
         mapsUrl: String(initial.mapsUrl ?? ""),
         amenities: Array.isArray(initial.amenities) ? (initial.amenities as string[]).join(", ") : "",
+        policies: typeof policies === "string" ? policies : policies ? JSON.stringify(policies, null, 2) : "",
         checkInTime: String(initial.checkInTime ?? "14:00"),
         checkOutTime: String(initial.checkOutTime ?? "11:00"),
         contactPerson: String(initial.contactPerson ?? ""),
         contactPhone: String(initial.contactPhone ?? ""),
         contactEmail: String(initial.contactEmail ?? ""),
         website: String(initial.website ?? ""),
+        images: textFromList(initial.images),
+        contractStart: String(initial.contractStart ?? ""),
+        contractEnd: String(initial.contractEnd ?? ""),
+        childWithBed: String(childPolicy.withBed ?? "12 Years & Above"),
+        childWithoutBed: String(childPolicy.withoutBed ?? "Below 5 Years Complimentary"),
         currency: String(initial.currency ?? "INR"),
         cancellationPolicy: String(initial.cancellationPolicy ?? ""),
         status: String(initial.status ?? "Active"),
-        roomName: String(room.name ?? "Deluxe"),
-        roomDescription: String(room.description ?? ""),
-        maxOccupancy: String(room.maxOccupancy ?? 2),
-        maxAdults: String(room.maxAdults ?? 2),
-        maxChildren: String(room.maxChildren ?? 0),
-        mealPlan: String(room.mealPlan ?? "CP"),
-        priceSingle: String(pricing.single ?? ""),
-        priceDouble: String(pricing.double ?? ""),
-        priceExtraAdult: String(pricing.extraAdult ?? ""),
-        priceExtraChild: String(pricing.extraChild ?? ""),
       });
+      setRooms(roomsSrc.length ? roomsSrc : [EMPTY_ROOM()]);
+      setInventory(
+        Array.isArray(initial.inventory)
+          ? (initial.inventory as Record<string, unknown>[]).map((row) => ({
+              roomName: String(row.roomName ?? ""),
+              date: String(row.date ?? ""),
+              available: String(row.available ?? "0"),
+              soldOut: row.soldOut ? "Yes" : "No",
+              closed: row.closed ? "Yes" : "No",
+            }))
+          : []
+      );
     } else if (kind === "activities") {
       setForm({
         destinationId: String(initial.destinationId ?? ""),
         name: String(initial.name ?? ""),
         description: String(initial.description ?? ""),
+        images: textFromList(initial.images),
         duration: String(initial.duration ?? ""),
         location: String(initial.location ?? ""),
         meetingPoint: String(initial.meetingPoint ?? ""),
@@ -114,6 +288,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
         minChildAge: String(initial.minChildAge ?? 3),
         adultPrice: String(initial.adultPrice ?? ""),
         childPrice: String(initial.childPrice ?? ""),
+        infantPrice: String(initial.infantPrice ?? ""),
         currency: String(initial.currency ?? "INR"),
         cancellationPolicy: String(initial.cancellationPolicy ?? ""),
         rateValidFrom: String(initial.rateValidFrom ?? ""),
@@ -121,6 +296,13 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
         status: String(initial.status ?? "Active"),
       });
     } else {
+      const vp = Array.isArray(initial.vehiclePricing)
+        ? (initial.vehiclePricing as Record<string, unknown>[]).map((v) => ({
+            vehicleType: String(v.vehicleType ?? "Sedan"),
+            seats: String(v.seats ?? "4"),
+            price: String(v.price ?? ""),
+          }))
+        : [{ vehicleType: String(initial.vehicleType ?? "Sedan"), seats: "4", price: String(initial.privatePrice ?? "") }];
       setForm({
         destinationId: String(initial.destinationId ?? ""),
         name: String(initial.name ?? ""),
@@ -129,91 +311,127 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
         pickupLocation: String(initial.pickupLocation ?? ""),
         dropLocation: String(initial.dropLocation ?? ""),
         pickupTime: String(initial.pickupTime ?? ""),
+        waitingCharges: String(initial.waitingCharges ?? ""),
         privatePrice: String(initial.privatePrice ?? ""),
-        sharedPrice: String(initial.sharedPrice ?? ""),
+        sharedAdultPrice: String(initial.sharedAdultPrice ?? initial.sharedPrice ?? ""),
+        sharedChildPrice: String(initial.sharedChildPrice ?? ""),
         currency: String(initial.currency ?? "INR"),
         rateValidFrom: String(initial.rateValidFrom ?? ""),
         rateValidTo: String(initial.rateValidTo ?? ""),
         cancellationPolicy: String(initial.cancellationPolicy ?? ""),
         status: String(initial.status ?? "Active"),
       });
+      setVehiclePricing(vp.length ? vp : [{ vehicleType: "Sedan", seats: "4", price: "" }]);
     }
   }, [open, initial, kind]);
 
   const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
+  function updateRoom(index: number, key: keyof RoomForm, value: string) {
+    setRooms((prev) => prev.map((room, i) => (i === index ? { ...room, [key]: value } : room)));
+  }
+
   async function handleSave() {
-    if (!form.name.trim() || !form.destinationId) return;
+    if (!form.name?.trim() || !form.destinationId) return;
     setSaving(true);
     try {
-      let payload: Record<string, unknown> = { status: form.status, currency: form.currency, destinationId: form.destinationId || null };
+      const blackoutPayload = blackouts
+        .filter((b) => b.dateFrom)
+        .map((b) => ({ label: b.label || "Blackout", dateFrom: b.dateFrom, dateTo: b.dateTo || b.dateFrom }));
+
+      let payload: Record<string, unknown> = {
+        status: form.status,
+        currency: form.currency,
+        destinationId: form.destinationId || null,
+        blackoutDates: blackoutPayload,
+      };
+
       if (kind === "hotels") {
+        let policies: unknown = form.policies || {};
+        try {
+          if (form.policies.trim().startsWith("{")) policies = JSON.parse(form.policies);
+          else if (form.policies.trim()) policies = { text: form.policies };
+        } catch {
+          policies = { text: form.policies };
+        }
         payload = {
           ...payload,
           name: form.name,
           description: form.description || null,
-          starCategory: parseInt(form.starCategory, 10) || 3,
+          starCategory: num(form.starCategory) || 3,
           address: form.address || null,
           city: form.city,
           country: form.country,
           mapsUrl: form.mapsUrl || null,
-          amenities: form.amenities.split(",").map((s) => s.trim()).filter(Boolean),
+          amenities: listFromText(form.amenities.replace(/\n/g, ",")),
+          policies,
           checkInTime: form.checkInTime,
           checkOutTime: form.checkOutTime,
           contactPerson: form.contactPerson || null,
           contactPhone: form.contactPhone || null,
           contactEmail: form.contactEmail || null,
           website: form.website || null,
+          images: listFromText(form.images),
+          contractStart: form.contractStart || null,
+          contractEnd: form.contractEnd || null,
+          childPolicy: { withBed: form.childWithBed, withoutBed: form.childWithoutBed },
           cancellationPolicy: form.cancellationPolicy || null,
-          roomCategories: [{
-            name: form.roomName,
-            description: form.roomDescription,
-            maxOccupancy: parseInt(form.maxOccupancy, 10) || 2,
-            maxAdults: parseInt(form.maxAdults, 10) || 2,
-            maxChildren: parseInt(form.maxChildren, 10) || 0,
-            mealPlan: form.mealPlan,
-            pricing: {
-              single: parseInt(form.priceSingle, 10) || 0,
-              double: parseInt(form.priceDouble, 10) || 0,
-              extraAdult: parseInt(form.priceExtraAdult, 10) || 0,
-              extraChild: parseInt(form.priceExtraChild, 10) || 0,
-            },
-          }],
+          roomCategories: rooms.filter((r) => r.name.trim()).map(serializeRoom),
+          inventory: inventory
+            .filter((row) => row.roomName && row.date)
+            .map((row) => ({
+              roomName: row.roomName,
+              date: row.date,
+              available: num(row.available),
+              soldOut: row.soldOut === "Yes",
+              closed: row.closed === "Yes",
+            })),
         };
       } else if (kind === "activities") {
         payload = {
           ...payload,
           name: form.name,
           description: form.description || null,
+          images: listFromText(form.images),
           duration: form.duration || null,
           location: form.location || null,
           meetingPoint: form.meetingPoint || null,
-          inclusions: form.inclusions.split(",").map((s) => s.trim()).filter(Boolean),
-          exclusions: form.exclusions.split(",").map((s) => s.trim()).filter(Boolean),
+          inclusions: listFromText(form.inclusions.replace(/\n/g, ",")),
+          exclusions: listFromText(form.exclusions.replace(/\n/g, ",")),
           operatingHours: form.operatingHours || null,
-          minChildAge: parseInt(form.minChildAge, 10) || null,
-          adultPrice: parseInt(form.adultPrice, 10) || 0,
-          childPrice: parseInt(form.childPrice, 10) || 0,
+          minChildAge: form.minChildAge ? num(form.minChildAge) : null,
+          adultPrice: num(form.adultPrice),
+          childPrice: num(form.childPrice),
+          infantPrice: form.infantPrice ? num(form.infantPrice) : null,
           cancellationPolicy: form.cancellationPolicy || null,
           rateValidFrom: form.rateValidFrom || null,
           rateValidTo: form.rateValidTo || null,
         };
       } else {
+        const vehicles = vehiclePricing
+          .filter((v) => v.vehicleType)
+          .map((v) => ({ vehicleType: v.vehicleType, seats: num(v.seats), price: num(v.price) }));
+        const primaryPrivate = vehicles[0]?.price ?? (form.privatePrice ? num(form.privatePrice) : null);
         payload = {
           ...payload,
           name: form.name,
           transferType: form.transferType,
-          vehicleType: form.vehicleType || null,
+          vehicleType: vehicles[0]?.vehicleType || form.vehicleType || null,
           pickupLocation: form.pickupLocation,
           dropLocation: form.dropLocation,
           pickupTime: form.pickupTime || null,
-          privatePrice: form.privatePrice ? parseInt(form.privatePrice, 10) : null,
-          sharedPrice: form.sharedPrice ? parseInt(form.sharedPrice, 10) : null,
+          waitingCharges: form.waitingCharges ? num(form.waitingCharges) : null,
+          privatePrice: form.transferType === "Shared" ? null : primaryPrivate,
+          sharedAdultPrice: form.transferType === "Private" ? null : (form.sharedAdultPrice ? num(form.sharedAdultPrice) : null),
+          sharedChildPrice: form.transferType === "Private" ? null : (form.sharedChildPrice ? num(form.sharedChildPrice) : null),
+          sharedPrice: form.transferType === "Private" ? null : (form.sharedAdultPrice ? num(form.sharedAdultPrice) : null),
+          vehiclePricing: form.transferType === "Shared" ? [] : vehicles,
           cancellationPolicy: form.cancellationPolicy || null,
           rateValidFrom: form.rateValidFrom || null,
           rateValidTo: form.rateValidTo || null,
         };
       }
+
       await onSubmit(payload);
       onOpenChange(false);
     } finally {
@@ -225,140 +443,325 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="capitalize">{title}</DialogTitle>
         </DialogHeader>
 
         {kind === "hotels" && (
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
-              <Field label="Destination *">
-                <DestinationSelect value={form.destinationId} onChange={(v) => set("destinationId", v)} required />
-              </Field>
-            </div>
-            <Field label="Hotel Name *"><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
-            <Field label="Star Category">
-              <Select value={form.starCategory} onValueChange={(v) => set("starCategory", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{[1, 2, 3, 4, 5].map((s) => <SelectItem key={s} value={String(s)}>{s} Star</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
-            <div className="sm:col-span-2"><Field label="Description"><Textarea rows={2} value={form.description} onChange={(e) => set("description", e.target.value)} /></Field></div>
-            <Field label="Address"><Input value={form.address} onChange={(e) => set("address", e.target.value)} /></Field>
-            <Field label="City *"><Input value={form.city} onChange={(e) => set("city", e.target.value)} /></Field>
-            <Field label="Country"><Input value={form.country} onChange={(e) => set("country", e.target.value)} /></Field>
-            <Field label="Google Maps URL"><Input value={form.mapsUrl} onChange={(e) => set("mapsUrl", e.target.value)} /></Field>
-            <div className="sm:col-span-2"><Field label="Amenities (comma-separated)"><Input value={form.amenities} onChange={(e) => set("amenities", e.target.value)} /></Field></div>
-            <Field label="Check-in"><Input value={form.checkInTime} onChange={(e) => set("checkInTime", e.target.value)} /></Field>
-            <Field label="Check-out"><Input value={form.checkOutTime} onChange={(e) => set("checkOutTime", e.target.value)} /></Field>
-            <Field label="Contact Person"><Input value={form.contactPerson} onChange={(e) => set("contactPerson", e.target.value)} /></Field>
-            <Field label="Contact Phone"><Input value={form.contactPhone} onChange={(e) => set("contactPhone", e.target.value)} /></Field>
-            <Field label="Email"><Input value={form.contactEmail} onChange={(e) => set("contactEmail", e.target.value)} /></Field>
-            <Field label="Website"><Input value={form.website} onChange={(e) => set("website", e.target.value)} /></Field>
-            <Field label="Currency"><Input value={form.currency} onChange={(e) => set("currency", e.target.value)} /></Field>
-            <Field label="Status">
-              <Select value={form.status} onValueChange={(v) => set("status", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Draft">Draft</SelectItem>
-                  <SelectItem value="Archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <div className="sm:col-span-2"><Field label="Cancellation Policy"><Textarea rows={2} value={form.cancellationPolicy} onChange={(e) => set("cancellationPolicy", e.target.value)} /></Field></div>
-            <Field label="Room Category"><Input value={form.roomName} onChange={(e) => set("roomName", e.target.value)} /></Field>
-            <Field label="Meal Plan"><Input value={form.mealPlan} onChange={(e) => set("mealPlan", e.target.value)} /></Field>
-            <div className="sm:col-span-2"><Field label="Room Description"><Input value={form.roomDescription} onChange={(e) => set("roomDescription", e.target.value)} /></Field></div>
-            <Field label="Max Occupancy"><Input type="number" value={form.maxOccupancy} onChange={(e) => set("maxOccupancy", e.target.value)} /></Field>
-            <Field label="Max Adults"><Input type="number" value={form.maxAdults} onChange={(e) => set("maxAdults", e.target.value)} /></Field>
-            <Field label="Max Children"><Input type="number" value={form.maxChildren} onChange={(e) => set("maxChildren", e.target.value)} /></Field>
-            <Field label="Single Price"><Input type="number" value={form.priceSingle} onChange={(e) => set("priceSingle", e.target.value)} /></Field>
-            <Field label="Double Price"><Input type="number" value={form.priceDouble} onChange={(e) => set("priceDouble", e.target.value)} /></Field>
-            <Field label="Extra Adult"><Input type="number" value={form.priceExtraAdult} onChange={(e) => set("priceExtraAdult", e.target.value)} /></Field>
-            <Field label="Extra Child"><Input type="number" value={form.priceExtraChild} onChange={(e) => set("priceExtraChild", e.target.value)} /></Field>
+          <div className="space-y-4">
+            <Section title="Basic Hotel Information">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <Field label="Destination *">
+                    <DestinationSelect value={form.destinationId || ""} onChange={(v) => set("destinationId", v)} required />
+                  </Field>
+                </div>
+                <Field label="Hotel Name *"><Input value={form.name || ""} onChange={(e) => set("name", e.target.value)} /></Field>
+                <Field label="Star Category">
+                  <Select value={form.starCategory || "3"} onValueChange={(v) => set("starCategory", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{[1, 2, 3, 4, 5].map((s) => <SelectItem key={s} value={String(s)}>{s}★</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
+                <div className="sm:col-span-2"><Field label="Description"><Textarea rows={2} value={form.description || ""} onChange={(e) => set("description", e.target.value)} /></Field></div>
+                <div className="sm:col-span-2"><Field label="Hotel Images (one URL per line)"><Textarea rows={2} value={form.images || ""} onChange={(e) => set("images", e.target.value)} placeholder="https://..." /></Field></div>
+                <Field label="Address"><Input value={form.address || ""} onChange={(e) => set("address", e.target.value)} /></Field>
+                <Field label="City *"><Input value={form.city || ""} onChange={(e) => set("city", e.target.value)} /></Field>
+                <Field label="Country"><Input value={form.country || ""} onChange={(e) => set("country", e.target.value)} /></Field>
+                <Field label="Google Map Location"><Input value={form.mapsUrl || ""} onChange={(e) => set("mapsUrl", e.target.value)} /></Field>
+                <div className="sm:col-span-2"><Field label="Amenities (comma-separated)"><Input value={form.amenities || ""} onChange={(e) => set("amenities", e.target.value)} /></Field></div>
+                <div className="sm:col-span-2"><Field label="Hotel Policies"><Textarea rows={2} value={form.policies || ""} onChange={(e) => set("policies", e.target.value)} /></Field></div>
+                <Field label="Check-in Time"><Input value={form.checkInTime || ""} onChange={(e) => set("checkInTime", e.target.value)} /></Field>
+                <Field label="Check-out Time"><Input value={form.checkOutTime || ""} onChange={(e) => set("checkOutTime", e.target.value)} /></Field>
+                <Field label="Contact Person"><Input value={form.contactPerson || ""} onChange={(e) => set("contactPerson", e.target.value)} /></Field>
+                <Field label="Contact Number"><Input value={form.contactPhone || ""} onChange={(e) => set("contactPhone", e.target.value)} /></Field>
+                <Field label="Email ID"><Input value={form.contactEmail || ""} onChange={(e) => set("contactEmail", e.target.value)} /></Field>
+                <Field label="Website (Optional)"><Input value={form.website || ""} onChange={(e) => set("website", e.target.value)} /></Field>
+              </div>
+            </Section>
+
+            <Section title="Contract & Child Policy">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="Contract Start Date"><Input type="date" value={form.contractStart || ""} onChange={(e) => set("contractStart", e.target.value)} /></Field>
+                <Field label="Contract End Date"><Input type="date" value={form.contractEnd || ""} onChange={(e) => set("contractEnd", e.target.value)} /></Field>
+                <Field label="Currency"><Input value={form.currency || "INR"} onChange={(e) => set("currency", e.target.value)} /></Field>
+                <Field label="Status">
+                  <Select value={form.status || "Active"} onValueChange={(v) => set("status", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="Draft">Draft</SelectItem>
+                      <SelectItem value="Archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Child Age with Bed"><Input value={form.childWithBed || ""} onChange={(e) => set("childWithBed", e.target.value)} /></Field>
+                <Field label="Child Age without Bed"><Input value={form.childWithoutBed || ""} onChange={(e) => set("childWithoutBed", e.target.value)} /></Field>
+                <div className="sm:col-span-2"><Field label="Cancellation Policy"><Textarea rows={2} value={form.cancellationPolicy || ""} onChange={(e) => set("cancellationPolicy", e.target.value)} /></Field></div>
+              </div>
+            </Section>
+
+            <Section title="Room Categories">
+              <div className="space-y-4">
+                {rooms.map((room, index) => (
+                  <div key={index} className="rounded-md border border-border bg-background p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">Room {index + 1}</p>
+                      {rooms.length > 1 && (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setRooms((r) => r.filter((_, i) => i !== index))}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      <Field label="Room Type"><Input value={room.name} onChange={(e) => updateRoom(index, "name", e.target.value)} placeholder="Deluxe Room" /></Field>
+                      <Field label="Meal Plan"><Input value={room.mealPlan} onChange={(e) => updateRoom(index, "mealPlan", e.target.value)} /></Field>
+                      <div className="sm:col-span-2"><Field label="Room Description"><Textarea rows={2} value={room.description} onChange={(e) => updateRoom(index, "description", e.target.value)} /></Field></div>
+                      <div className="sm:col-span-2"><Field label="Room Images (one URL per line)"><Textarea rows={2} value={room.images} onChange={(e) => updateRoom(index, "images", e.target.value)} /></Field></div>
+                      <Field label="Max Occupancy"><Input type="number" value={room.maxOccupancy} onChange={(e) => updateRoom(index, "maxOccupancy", e.target.value)} /></Field>
+                      <Field label="Max Adults"><Input type="number" value={room.maxAdults} onChange={(e) => updateRoom(index, "maxAdults", e.target.value)} /></Field>
+                      <Field label="Max Children"><Input type="number" value={room.maxChildren} onChange={(e) => updateRoom(index, "maxChildren", e.target.value)} /></Field>
+                      <Field label="Extra Bed Allowed">
+                        <Select value={room.extraBedAllowed} onValueChange={(v) => updateRoom(index, "extraBedAllowed", v)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Yes">Yes</SelectItem>
+                            <SelectItem value="No">No</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field label="Room Size"><Input value={room.roomSize} onChange={(e) => updateRoom(index, "roomSize", e.target.value)} placeholder="28 sqm" /></Field>
+                      <Field label="Bed Type"><Input value={room.bedType} onChange={(e) => updateRoom(index, "bedType", e.target.value)} /></Field>
+                      <Field label="Smoking">
+                        <Select value={room.smoking} onValueChange={(v) => updateRoom(index, "smoking", v)}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Non-Smoking">Non-Smoking</SelectItem>
+                            <SelectItem value="Smoking">Smoking</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field label="Single Sharing"><Input type="number" value={room.priceSingle} onChange={(e) => updateRoom(index, "priceSingle", e.target.value)} /></Field>
+                      <Field label="Double Sharing"><Input type="number" value={room.priceDouble} onChange={(e) => updateRoom(index, "priceDouble", e.target.value)} /></Field>
+                      <Field label="Triple Sharing"><Input type="number" value={room.priceTriple} onChange={(e) => updateRoom(index, "priceTriple", e.target.value)} /></Field>
+                      <Field label="Quad Sharing"><Input type="number" value={room.priceQuad} onChange={(e) => updateRoom(index, "priceQuad", e.target.value)} /></Field>
+                      <Field label="Extra Adult"><Input type="number" value={room.priceExtraAdult} onChange={(e) => updateRoom(index, "priceExtraAdult", e.target.value)} /></Field>
+                      <Field label="Extra Child"><Input type="number" value={room.priceExtraChild} onChange={(e) => updateRoom(index, "priceExtraChild", e.target.value)} /></Field>
+                      <Field label="Weekday Single (Mon–Thu)"><Input type="number" value={room.weekdaySingle} onChange={(e) => updateRoom(index, "weekdaySingle", e.target.value)} /></Field>
+                      <Field label="Weekday Double (Mon–Thu)"><Input type="number" value={room.weekdayDouble} onChange={(e) => updateRoom(index, "weekdayDouble", e.target.value)} /></Field>
+                      <Field label="Weekend Single (Fri–Sun)"><Input type="number" value={room.weekendSingle} onChange={(e) => updateRoom(index, "weekendSingle", e.target.value)} /></Field>
+                      <Field label="Weekend Double (Fri–Sun)"><Input type="number" value={room.weekendDouble} onChange={(e) => updateRoom(index, "weekendDouble", e.target.value)} /></Field>
+                    </div>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => setRooms((r) => [...r, EMPTY_ROOM()])}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Room Category
+                </Button>
+              </div>
+            </Section>
+
+            <Section title="Blackout Dates">
+              <div className="space-y-2">
+                {blackouts.map((row, index) => (
+                  <div key={index} className="grid sm:grid-cols-4 gap-2 items-end">
+                    <Field label="Label"><Input value={row.label} onChange={(e) => setBlackouts((b) => b.map((x, i) => i === index ? { ...x, label: e.target.value } : x))} placeholder="Christmas" /></Field>
+                    <Field label="From"><Input type="date" value={row.dateFrom} onChange={(e) => setBlackouts((b) => b.map((x, i) => i === index ? { ...x, dateFrom: e.target.value } : x))} /></Field>
+                    <Field label="To"><Input type="date" value={row.dateTo} onChange={(e) => setBlackouts((b) => b.map((x, i) => i === index ? { ...x, dateTo: e.target.value } : x))} /></Field>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setBlackouts((b) => b.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => setBlackouts((b) => [...b, { label: "", dateFrom: "", dateTo: "" }])}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Blackout
+                </Button>
+              </div>
+            </Section>
+
+            <Section title="Inventory Management">
+              <div className="space-y-2">
+                {inventory.map((row, index) => (
+                  <div key={index} className="grid sm:grid-cols-6 gap-2 items-end">
+                    <Field label="Room"><Input value={row.roomName} onChange={(e) => setInventory((inv) => inv.map((x, i) => i === index ? { ...x, roomName: e.target.value } : x))} /></Field>
+                    <Field label="Date"><Input type="date" value={row.date} onChange={(e) => setInventory((inv) => inv.map((x, i) => i === index ? { ...x, date: e.target.value } : x))} /></Field>
+                    <Field label="Available"><Input type="number" value={row.available} onChange={(e) => setInventory((inv) => inv.map((x, i) => i === index ? { ...x, available: e.target.value } : x))} /></Field>
+                    <Field label="Sold Out">
+                      <Select value={row.soldOut} onValueChange={(v) => setInventory((inv) => inv.map((x, i) => i === index ? { ...x, soldOut: v } : x))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="No">No</SelectItem><SelectItem value="Yes">Yes</SelectItem></SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Closed">
+                      <Select value={row.closed} onValueChange={(v) => setInventory((inv) => inv.map((x, i) => i === index ? { ...x, closed: v } : x))}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="No">No</SelectItem><SelectItem value="Yes">Yes</SelectItem></SelectContent>
+                      </Select>
+                    </Field>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setInventory((inv) => inv.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => setInventory((inv) => [...inv, { roomName: rooms[0]?.name || "", date: "", available: "0", soldOut: "No", closed: "No" }])}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Inventory Row
+                </Button>
+              </div>
+            </Section>
           </div>
         )}
 
         {kind === "activities" && (
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
-              <Field label="Destination *">
-                <DestinationSelect value={form.destinationId} onChange={(v) => set("destinationId", v)} required />
-              </Field>
-            </div>
-            <Field label="Activity Name *"><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
-            <Field label="Duration"><Input value={form.duration} onChange={(e) => set("duration", e.target.value)} placeholder="6 hours" /></Field>
-            <div className="sm:col-span-2"><Field label="Description"><Textarea rows={2} value={form.description} onChange={(e) => set("description", e.target.value)} /></Field></div>
-            <Field label="Location"><Input value={form.location} onChange={(e) => set("location", e.target.value)} /></Field>
-            <Field label="Meeting Point"><Input value={form.meetingPoint} onChange={(e) => set("meetingPoint", e.target.value)} /></Field>
-            <div className="sm:col-span-2"><Field label="Inclusions (comma-separated)"><Input value={form.inclusions} onChange={(e) => set("inclusions", e.target.value)} /></Field></div>
-            <div className="sm:col-span-2"><Field label="Exclusions (comma-separated)"><Input value={form.exclusions} onChange={(e) => set("exclusions", e.target.value)} /></Field></div>
-            <Field label="Operating Hours"><Input value={form.operatingHours} onChange={(e) => set("operatingHours", e.target.value)} /></Field>
-            <Field label="Min Child Age"><Input type="number" value={form.minChildAge} onChange={(e) => set("minChildAge", e.target.value)} /></Field>
-            <Field label="Adult Price"><Input type="number" value={form.adultPrice} onChange={(e) => set("adultPrice", e.target.value)} /></Field>
-            <Field label="Child Price"><Input type="number" value={form.childPrice} onChange={(e) => set("childPrice", e.target.value)} /></Field>
-            <Field label="Currency"><Input value={form.currency} onChange={(e) => set("currency", e.target.value)} /></Field>
-            <Field label="Status">
-              <Select value={form.status} onValueChange={(v) => set("status", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Draft">Draft</SelectItem>
-                  <SelectItem value="Archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Rate Valid From"><Input type="date" value={form.rateValidFrom} onChange={(e) => set("rateValidFrom", e.target.value)} /></Field>
-            <Field label="Rate Valid To"><Input type="date" value={form.rateValidTo} onChange={(e) => set("rateValidTo", e.target.value)} /></Field>
-            <div className="sm:col-span-2"><Field label="Cancellation Policy"><Textarea rows={2} value={form.cancellationPolicy} onChange={(e) => set("cancellationPolicy", e.target.value)} /></Field></div>
+          <div className="space-y-4">
+            <Section title="Activity Details">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <Field label="Destination *">
+                    <DestinationSelect value={form.destinationId || ""} onChange={(v) => set("destinationId", v)} required />
+                  </Field>
+                </div>
+                <Field label="Activity Name *"><Input value={form.name || ""} onChange={(e) => set("name", e.target.value)} /></Field>
+                <Field label="Duration"><Input value={form.duration || ""} onChange={(e) => set("duration", e.target.value)} placeholder="6 hours" /></Field>
+                <div className="sm:col-span-2"><Field label="Description"><Textarea rows={2} value={form.description || ""} onChange={(e) => set("description", e.target.value)} /></Field></div>
+                <div className="sm:col-span-2"><Field label="Activity Images (one URL per line)"><Textarea rows={2} value={form.images || ""} onChange={(e) => set("images", e.target.value)} /></Field></div>
+                <Field label="Location"><Input value={form.location || ""} onChange={(e) => set("location", e.target.value)} /></Field>
+                <Field label="Meeting Point"><Input value={form.meetingPoint || ""} onChange={(e) => set("meetingPoint", e.target.value)} /></Field>
+                <div className="sm:col-span-2"><Field label="Inclusions"><Input value={form.inclusions || ""} onChange={(e) => set("inclusions", e.target.value)} /></Field></div>
+                <div className="sm:col-span-2"><Field label="Exclusions"><Input value={form.exclusions || ""} onChange={(e) => set("exclusions", e.target.value)} /></Field></div>
+                <Field label="Operating Hours"><Input value={form.operatingHours || ""} onChange={(e) => set("operatingHours", e.target.value)} /></Field>
+                <Field label="Min Child Age"><Input type="number" value={form.minChildAge || ""} onChange={(e) => set("minChildAge", e.target.value)} /></Field>
+                <Field label="Adult Price"><Input type="number" value={form.adultPrice || ""} onChange={(e) => set("adultPrice", e.target.value)} /></Field>
+                <Field label="Child Price"><Input type="number" value={form.childPrice || ""} onChange={(e) => set("childPrice", e.target.value)} /></Field>
+                <Field label="Infant Price (Optional)"><Input type="number" value={form.infantPrice || ""} onChange={(e) => set("infantPrice", e.target.value)} /></Field>
+                <Field label="Currency"><Input value={form.currency || "INR"} onChange={(e) => set("currency", e.target.value)} /></Field>
+                <Field label="Rate Valid From"><Input type="date" value={form.rateValidFrom || ""} onChange={(e) => set("rateValidFrom", e.target.value)} /></Field>
+                <Field label="Rate Valid To"><Input type="date" value={form.rateValidTo || ""} onChange={(e) => set("rateValidTo", e.target.value)} /></Field>
+                <Field label="Status">
+                  <Select value={form.status || "Active"} onValueChange={(v) => set("status", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="Draft">Draft</SelectItem>
+                      <SelectItem value="Archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <div className="sm:col-span-2"><Field label="Cancellation Policy"><Textarea rows={2} value={form.cancellationPolicy || ""} onChange={(e) => set("cancellationPolicy", e.target.value)} /></Field></div>
+              </div>
+            </Section>
+            <Section title="Blackout Dates">
+              <div className="space-y-2">
+                {blackouts.map((row, index) => (
+                  <div key={index} className="grid sm:grid-cols-4 gap-2 items-end">
+                    <Field label="Label"><Input value={row.label} onChange={(e) => setBlackouts((b) => b.map((x, i) => i === index ? { ...x, label: e.target.value } : x))} /></Field>
+                    <Field label="From"><Input type="date" value={row.dateFrom} onChange={(e) => setBlackouts((b) => b.map((x, i) => i === index ? { ...x, dateFrom: e.target.value } : x))} /></Field>
+                    <Field label="To"><Input type="date" value={row.dateTo} onChange={(e) => setBlackouts((b) => b.map((x, i) => i === index ? { ...x, dateTo: e.target.value } : x))} /></Field>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setBlackouts((b) => b.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => setBlackouts((b) => [...b, { label: "", dateFrom: "", dateTo: "" }])}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Blackout
+                </Button>
+              </div>
+            </Section>
           </div>
         )}
 
         {kind === "transfers" && (
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
-              <Field label="Destination *">
-                <DestinationSelect value={form.destinationId} onChange={(v) => set("destinationId", v)} required />
-              </Field>
-            </div>
-            <Field label="Transfer Name *"><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
-            <Field label="Transfer Type">
-              <Select value={form.transferType} onValueChange={(v) => set("transferType", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Private">Private</SelectItem>
-                  <SelectItem value="Shared">Shared</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Vehicle Type"><Input value={form.vehicleType} onChange={(e) => set("vehicleType", e.target.value)} /></Field>
-            <Field label="Pickup Time"><Input value={form.pickupTime} onChange={(e) => set("pickupTime", e.target.value)} /></Field>
-            <Field label="Pickup Location *"><Input value={form.pickupLocation} onChange={(e) => set("pickupLocation", e.target.value)} /></Field>
-            <Field label="Drop Location *"><Input value={form.dropLocation} onChange={(e) => set("dropLocation", e.target.value)} /></Field>
-            <Field label="Private Price"><Input type="number" value={form.privatePrice} onChange={(e) => set("privatePrice", e.target.value)} /></Field>
-            <Field label="Shared Price (per person)"><Input type="number" value={form.sharedPrice} onChange={(e) => set("sharedPrice", e.target.value)} /></Field>
-            <Field label="Currency"><Input value={form.currency} onChange={(e) => set("currency", e.target.value)} /></Field>
-            <Field label="Status">
-              <Select value={form.status} onValueChange={(v) => set("status", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Draft">Draft</SelectItem>
-                  <SelectItem value="Archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Rate Valid From"><Input type="date" value={form.rateValidFrom} onChange={(e) => set("rateValidFrom", e.target.value)} /></Field>
-            <Field label="Rate Valid To"><Input type="date" value={form.rateValidTo} onChange={(e) => set("rateValidTo", e.target.value)} /></Field>
-            <div className="sm:col-span-2"><Field label="Cancellation Policy"><Textarea rows={2} value={form.cancellationPolicy} onChange={(e) => set("cancellationPolicy", e.target.value)} /></Field></div>
+          <div className="space-y-4">
+            <Section title="Transfer Details">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <Field label="Destination *">
+                    <DestinationSelect value={form.destinationId || ""} onChange={(v) => set("destinationId", v)} required />
+                  </Field>
+                </div>
+                <Field label="Transfer Name *"><Input value={form.name || ""} onChange={(e) => set("name", e.target.value)} /></Field>
+                <Field label="Transfer Type">
+                  <Select value={form.transferType || "Private"} onValueChange={(v) => set("transferType", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Private">Private</SelectItem>
+                      <SelectItem value="Shared">Shared</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Pickup Location *"><Input value={form.pickupLocation || ""} onChange={(e) => set("pickupLocation", e.target.value)} /></Field>
+                <Field label="Drop Location *"><Input value={form.dropLocation || ""} onChange={(e) => set("dropLocation", e.target.value)} /></Field>
+                <Field label="Pickup Time"><Input value={form.pickupTime || ""} onChange={(e) => set("pickupTime", e.target.value)} /></Field>
+                <Field label="Waiting Charges"><Input type="number" value={form.waitingCharges || ""} onChange={(e) => set("waitingCharges", e.target.value)} /></Field>
+                <Field label="Currency"><Input value={form.currency || "INR"} onChange={(e) => set("currency", e.target.value)} /></Field>
+                <Field label="Status">
+                  <Select value={form.status || "Active"} onValueChange={(v) => set("status", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Active">Active</SelectItem>
+                      <SelectItem value="Draft">Draft</SelectItem>
+                      <SelectItem value="Archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Rate Valid From"><Input type="date" value={form.rateValidFrom || ""} onChange={(e) => set("rateValidFrom", e.target.value)} /></Field>
+                <Field label="Rate Valid To"><Input type="date" value={form.rateValidTo || ""} onChange={(e) => set("rateValidTo", e.target.value)} /></Field>
+                <div className="sm:col-span-2"><Field label="Cancellation Policy"><Textarea rows={2} value={form.cancellationPolicy || ""} onChange={(e) => set("cancellationPolicy", e.target.value)} /></Field></div>
+              </div>
+            </Section>
+
+            {form.transferType === "Private" ? (
+              <Section title="Private Pricing (by Vehicle Type)">
+                <div className="space-y-2">
+                  {vehiclePricing.map((row, index) => (
+                    <div key={index} className="grid sm:grid-cols-4 gap-2 items-end">
+                      <Field label="Vehicle">
+                        <Select
+                          value={row.vehicleType}
+                          onValueChange={(v) => {
+                            const opt = VEHICLE_OPTIONS.find((o) => o.value === v);
+                            setVehiclePricing((vp) => vp.map((x, i) => i === index ? { ...x, vehicleType: v, seats: opt?.seats || x.seats } : x));
+                          }}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {VEHICLE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                      <Field label="Seats"><Input value={row.seats} onChange={(e) => setVehiclePricing((vp) => vp.map((x, i) => i === index ? { ...x, seats: e.target.value } : x))} /></Field>
+                      <Field label="Price"><Input type="number" value={row.price} onChange={(e) => setVehiclePricing((vp) => vp.map((x, i) => i === index ? { ...x, price: e.target.value } : x))} /></Field>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setVehiclePricing((vp) => vp.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" size="sm" onClick={() => setVehiclePricing((vp) => [...vp, { vehicleType: "SUV", seats: "6", price: "" }])}>
+                    <Plus className="h-4 w-4 mr-1" /> Add Vehicle Price
+                  </Button>
+                </div>
+              </Section>
+            ) : (
+              <Section title="Shared Pricing (Per Person)">
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Field label="Adult Price"><Input type="number" value={form.sharedAdultPrice || ""} onChange={(e) => set("sharedAdultPrice", e.target.value)} /></Field>
+                  <Field label="Child Price"><Input type="number" value={form.sharedChildPrice || ""} onChange={(e) => set("sharedChildPrice", e.target.value)} /></Field>
+                </div>
+              </Section>
+            )}
+
+            <Section title="Blackout Dates">
+              <div className="space-y-2">
+                {blackouts.map((row, index) => (
+                  <div key={index} className="grid sm:grid-cols-4 gap-2 items-end">
+                    <Field label="Label"><Input value={row.label} onChange={(e) => setBlackouts((b) => b.map((x, i) => i === index ? { ...x, label: e.target.value } : x))} /></Field>
+                    <Field label="From"><Input type="date" value={row.dateFrom} onChange={(e) => setBlackouts((b) => b.map((x, i) => i === index ? { ...x, dateFrom: e.target.value } : x))} /></Field>
+                    <Field label="To"><Input type="date" value={row.dateTo} onChange={(e) => setBlackouts((b) => b.map((x, i) => i === index ? { ...x, dateTo: e.target.value } : x))} /></Field>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setBlackouts((b) => b.filter((_, i) => i !== index))}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" onClick={() => setBlackouts((b) => [...b, { label: "", dateFrom: "", dateTo: "" }])}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Blackout
+                </Button>
+              </div>
+            </Section>
           </div>
         )}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={saving || !form.name.trim() || !form.destinationId} onClick={handleSave}>
+          <Button disabled={saving || !form.name?.trim() || !form.destinationId} onClick={handleSave}>
             {saving ? "Saving..." : initial ? "Update" : "Create"}
           </Button>
         </DialogFooter>

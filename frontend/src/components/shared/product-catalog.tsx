@@ -344,9 +344,9 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
             </div>
           </div>
 
-          <div className="rounded-lg border overflow-x-auto">
+          <div className="rounded-lg border overflow-x-auto max-h-[70vh]">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 z-10 bg-background">
                 <TableRow>
                   {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
                   <TableHead>Status</TableHead>
