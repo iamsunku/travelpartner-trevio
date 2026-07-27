@@ -32,6 +32,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { InternationalQuotationDialog } from "@/components/views/international-quotation";
+import { ProductQuoteBuilderDialog } from "@/components/shared/product-quote-builder";
 
 const SERVICE_COLORS: Record<string, string> = {
   Flight: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400",
@@ -359,6 +360,7 @@ export function QuotationsView() {
         subtitle="Create, send and track quotations with GST, approvals and customer responses."
         action={
           <div className="flex gap-2">
+            <ProductQuoteBuilderDialog />
             <InternationalQuotationDialog />
             <CreateQuotationDialog />
           </div>

@@ -1,0 +1,1 @@
+ALTER TABLE "ActivityProduct" ADD COLUMN IF NOT EXISTS "transferOptions" JSONB NOT NULL DEFAULT '[]';

@@ -2,23 +2,10 @@
 
 import { ProductCatalog } from "@/components/shared/product-catalog";
 import { Badge } from "@/components/ui/badge";
+import { formatTransferPrice, normalizeCurrency } from "@/lib/currency";
+import type { ProductRecord } from "@/types";
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  INR: "₹",
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  SGD: "S$",
-  AUD: "A$",
-  CAD: "C$",
-  JPY: "¥",
-  CNY: "¥",
-  AED: "د.إ",
-  SAR: "﷼",
-  QAR: "﷼",
-};
-
-function ApprovalStatusBadge(item: any) {
+function ApprovalStatusBadge(item: ProductRecord) {
   const status = item.approvalStatus || "Draft";
   const badgeColor: Record<string, string> = {
     Draft: "bg-gray-100 text-gray-800",
@@ -31,24 +18,6 @@ function ApprovalStatusBadge(item: any) {
       {status}
     </Badge>
   );
-}
-
-function PriceDisplay(item: any) {
-  const currency = item.currency || "INR";
-  const symbol = CURRENCY_SYMBOLS[currency] || currency;
-  const privatePrice = Number(item.privatePrice ?? 0);
-  const sharedPrice = Number(item.sharedPrice ?? 0);
-
-  if (privatePrice && sharedPrice) {
-    return `${symbol}${privatePrice.toLocaleString("en-IN")} / ${symbol}${sharedPrice.toLocaleString("en-IN")}`;
-  }
-  if (privatePrice) {
-    return `${symbol}${privatePrice.toLocaleString("en-IN")}`;
-  }
-  if (sharedPrice) {
-    return `${symbol}${sharedPrice.toLocaleString("en-IN")}`;
-  }
-  return "—";
 }
 
 export function TransfersView() {
@@ -64,8 +33,8 @@ export function TransfersView() {
         { key: "pickupLocation", label: "Pickup" },
         { key: "dropLocation", label: "Drop" },
         { key: "vehicleType", label: "Vehicle" },
-        { key: "privatePrice", label: "Price", render: PriceDisplay },
-        { key: "currency", label: "Currency" },
+        { key: "privatePrice", label: "Price", render: (item) => formatTransferPrice(item) },
+        { key: "currency", label: "Currency", render: (item) => normalizeCurrency(item.currency as string) },
         { key: "approvalStatus", label: "Approval", render: ApprovalStatusBadge },
       ]}
     />

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { DestinationSelect } from "@/components/shared/destination-select";
+import { apiFetch } from "@/lib/api";
+import { normalizeCurrency } from "@/lib/currency";
+import { CurrencySelect } from "@/components/shared/currency-select";
+import { ROOM_CATEGORY_PRESETS } from "@/lib/currency-options";
 import type { ProductRecord } from "@/types";
 
 export type ProductKind = "hotels" | "activities" | "transfers";
@@ -32,6 +37,7 @@ type RoomForm = {
   maxOccupancy: string;
   maxAdults: string;
   maxChildren: string;
+  maxChildrenAtMaxAdults: string;
   extraBedAllowed: string;
   roomSize: string;
   bedType: string;
@@ -47,18 +53,22 @@ type RoomForm = {
   weekdayDouble: string;
   weekendSingle: string;
   weekendDouble: string;
+  weekdayExtraAdult: string;
+  weekendExtraAdult: string;
 };
 
 type VehiclePrice = { vehicleType: string; seats: string; price: string };
 type BlackoutRow = { label: string; dateFrom: string; dateTo: string };
 type InventoryRow = { roomName: string; date: string; available: string; soldOut: string; closed: string };
+type TransferLinkRow = { transferProductId: string; label: string };
 
 const VEHICLE_OPTIONS = [
-  { label: "Sedan (4 Seater)", value: "Sedan", seats: "4" },
-  { label: "SUV (6 Seater)", value: "SUV", seats: "6" },
-  { label: "Van (8 Seater)", value: "Van", seats: "8" },
-  { label: "Mini Bus (12 Seater)", value: "Mini Bus", seats: "12" },
-  { label: "Coach (40 Seater)", value: "Coach", seats: "40" },
+  { label: "4 Seater", value: "4 Seater", seats: "4" },
+  { label: "8 Seater", value: "8 Seater", seats: "8" },
+  { label: "12 Seater", value: "12 Seater", seats: "12" },
+  { label: "40 Seater", value: "40 Seater", seats: "40" },
+  { label: "Sedan", value: "Sedan", seats: "4" },
+  { label: "SUV", value: "SUV", seats: "6" },
 ];
 
 const EMPTY_ROOM = (): RoomForm => ({
@@ -68,6 +78,7 @@ const EMPTY_ROOM = (): RoomForm => ({
   maxOccupancy: "2",
   maxAdults: "2",
   maxChildren: "0",
+  maxChildrenAtMaxAdults: "1",
   extraBedAllowed: "No",
   roomSize: "",
   bedType: "King",
@@ -83,6 +94,8 @@ const EMPTY_ROOM = (): RoomForm => ({
   weekdayDouble: "",
   weekendSingle: "",
   weekendDouble: "",
+  weekdayExtraAdult: "",
+  weekendExtraAdult: "",
 });
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -127,6 +140,7 @@ function roomFromRecord(room: Record<string, unknown>): RoomForm {
     maxOccupancy: String(room.maxOccupancy ?? 2),
     maxAdults: String(room.maxAdults ?? 2),
     maxChildren: String(room.maxChildren ?? 0),
+    maxChildrenAtMaxAdults: String(room.maxChildrenAtMaxAdults ?? 1),
     extraBedAllowed: room.extraBedAllowed === true || room.extraBedAllowed === "Yes" ? "Yes" : "No",
     roomSize: String(room.roomSize ?? ""),
     bedType: String(room.bedType ?? "King"),
@@ -142,6 +156,8 @@ function roomFromRecord(room: Record<string, unknown>): RoomForm {
     weekdayDouble: String(weekday.double ?? ""),
     weekendSingle: String(weekend.single ?? ""),
     weekendDouble: String(weekend.double ?? ""),
+    weekdayExtraAdult: String(weekday.extraAdult ?? ""),
+    weekendExtraAdult: String(weekend.extraAdult ?? ""),
   };
 }
 
@@ -153,6 +169,7 @@ function serializeRoom(room: RoomForm) {
     maxOccupancy: num(room.maxOccupancy),
     maxAdults: num(room.maxAdults),
     maxChildren: num(room.maxChildren),
+    maxChildrenAtMaxAdults: num(room.maxChildrenAtMaxAdults),
     extraBedAllowed: room.extraBedAllowed === "Yes",
     roomSize: room.roomSize || null,
     bedType: room.bedType,
@@ -169,10 +186,12 @@ function serializeRoom(room: RoomForm) {
     weekdayPricing: {
       single: num(room.weekdaySingle || room.priceSingle),
       double: num(room.weekdayDouble || room.priceDouble),
+      extraAdult: num(room.weekdayExtraAdult || room.priceExtraAdult),
     },
     weekendPricing: {
       single: num(room.weekendSingle || room.priceSingle),
       double: num(room.weekendDouble || room.priceDouble),
+      extraAdult: num(room.weekendExtraAdult || room.priceExtraAdult),
     },
   };
 }
@@ -185,7 +204,19 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
   const [vehiclePricing, setVehiclePricing] = useState<VehiclePrice[]>([
     { vehicleType: "Sedan", seats: "4", price: "" },
   ]);
+  const [transferLinks, setTransferLinks] = useState<TransferLinkRow[]>([]);
+  const [availableTransfers, setAvailableTransfers] = useState<Array<{ id: string; name: string }>>([]);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open || kind !== "activities" || !form.destinationId) {
+      setAvailableTransfers([]);
+      return;
+    }
+    apiFetch<{ items: Array<{ id: string; name: string }> }>(`/api/products/transfers?destinationId=${form.destinationId}&status=Active&pageSize=100`)
+      .then((data) => setAvailableTransfers(data.items || []))
+      .catch(() => setAvailableTransfers([]));
+  }, [open, kind, form.destinationId]);
 
   useEffect(() => {
     if (!open) return;
@@ -195,8 +226,9 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
           destinationId: "", name: "", description: "", starCategory: "3", address: "", city: "", country: "India",
           mapsUrl: "", amenities: "", policies: "", checkInTime: "14:00", checkOutTime: "11:00",
           contactPerson: "", contactPhone: "", contactEmail: "", website: "", images: "",
-          contractStart: "", contractEnd: "", childWithBed: "12 Years & Above", childWithoutBed: "Below 5 Years Complimentary",
-          currency: "INR", cancellationPolicy: "Free cancellation up to 15 days; else non-refundable", status: "Active",
+          contractStart: "", contractEnd: "", childWithBedAge: "12", childWithoutBedAge: "5",
+          childWithBed: "12 Years & Above (considered adult with extra bed)", childWithoutBed: "Below 5 Years Complimentary",
+          currency: "INR", cancellationPolicy: "Free cancellation up to 15 days; else non-refundable", status: "Draft",
         });
         setRooms([EMPTY_ROOM()]);
       } else if (kind === "activities") {
@@ -204,14 +236,15 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
           destinationId: "", name: "", description: "", images: "", duration: "", location: "", meetingPoint: "",
           inclusions: "", exclusions: "", operatingHours: "", minChildAge: "3",
           adultPrice: "", childPrice: "", infantPrice: "", currency: "INR", cancellationPolicy: "",
-          rateValidFrom: "", rateValidTo: "", status: "Active",
+          rateValidFrom: "", rateValidTo: "", status: "Draft",
         });
+        setTransferLinks([]);
       } else {
         setForm({
           destinationId: "", name: "", transferType: "Private", vehicleType: "Sedan",
           pickupLocation: "", dropLocation: "", pickupTime: "", waitingCharges: "",
           privatePrice: "", sharedAdultPrice: "", sharedChildPrice: "", currency: "INR",
-          rateValidFrom: "", rateValidTo: "", cancellationPolicy: "", status: "Active",
+          rateValidFrom: "", rateValidTo: "", cancellationPolicy: "", status: "Draft",
         });
         setVehiclePricing([{ vehicleType: "Sedan", seats: "4", price: "" }]);
       }
@@ -257,6 +290,8 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
         contractEnd: String(initial.contractEnd ?? ""),
         childWithBed: String(childPolicy.withBed ?? "12 Years & Above"),
         childWithoutBed: String(childPolicy.withoutBed ?? "Below 5 Years Complimentary"),
+        childWithBedAge: String(childPolicy.withBedMinAge ?? childPolicy.withBedAge ?? "12"),
+        childWithoutBedAge: String(childPolicy.withoutBedMinAge ?? childPolicy.withoutBedAge ?? "5"),
         currency: String(initial.currency ?? "INR"),
         cancellationPolicy: String(initial.cancellationPolicy ?? ""),
         status: String(initial.status ?? "Active"),
@@ -295,6 +330,14 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
         rateValidTo: String(initial.rateValidTo ?? ""),
         status: String(initial.status ?? "Active"),
       });
+      setTransferLinks(
+        Array.isArray(initial.transferOptions)
+          ? (initial.transferOptions as TransferLinkRow[]).map((o) => ({
+              transferProductId: String(o.transferProductId ?? ""),
+              label: String(o.label ?? ""),
+            }))
+          : []
+      );
     } else {
       const vp = Array.isArray(initial.vehiclePricing)
         ? (initial.vehiclePricing as Record<string, unknown>[]).map((v) => ({
@@ -341,7 +384,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
 
       let payload: Record<string, unknown> = {
         status: form.status,
-        currency: form.currency,
+        currency: normalizeCurrency(form.currency),
         destinationId: form.destinationId || null,
         blackoutDates: blackoutPayload,
       };
@@ -374,7 +417,12 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
           images: listFromText(form.images),
           contractStart: form.contractStart || null,
           contractEnd: form.contractEnd || null,
-          childPolicy: { withBed: form.childWithBed, withoutBed: form.childWithoutBed },
+          childPolicy: {
+            withBed: form.childWithBed,
+            withoutBed: form.childWithoutBed,
+            withBedMinAge: num(form.childWithBedAge),
+            withoutBedMinAge: num(form.childWithoutBedAge),
+          },
           cancellationPolicy: form.cancellationPolicy || null,
           roomCategories: rooms.filter((r) => r.name.trim()).map(serializeRoom),
           inventory: inventory
@@ -406,6 +454,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
           cancellationPolicy: form.cancellationPolicy || null,
           rateValidFrom: form.rateValidFrom || null,
           rateValidTo: form.rateValidTo || null,
+          transferOptions: transferLinks.filter((t) => t.transferProductId),
         };
       } else {
         const vehicles = vehiclePricing
@@ -448,6 +497,22 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
           <DialogTitle className="capitalize">{title}</DialogTitle>
         </DialogHeader>
 
+        {initial?.pendingRateChanges && (
+          <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+            <AlertDescription className="text-sm">
+              You have rate changes awaiting admin approval. The values shown are your proposed rates — agents still see the last approved rates until an admin approves.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!initial && (
+          <Alert>
+            <AlertDescription className="text-sm">
+              New products and rate updates require admin approval before they go live for agents to book.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {kind === "hotels" && (
           <div className="space-y-4">
             <Section title="Basic Hotel Information">
@@ -485,7 +550,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
               <div className="grid sm:grid-cols-2 gap-3">
                 <Field label="Contract Start Date"><Input type="date" value={form.contractStart || ""} onChange={(e) => set("contractStart", e.target.value)} /></Field>
                 <Field label="Contract End Date"><Input type="date" value={form.contractEnd || ""} onChange={(e) => set("contractEnd", e.target.value)} /></Field>
-                <Field label="Currency"><Input value={form.currency || "INR"} onChange={(e) => set("currency", e.target.value)} /></Field>
+                <Field label="Currency"><CurrencySelect value={form.currency || "INR"} onChange={(v) => set("currency", v)} /></Field>
                 <Field label="Status">
                   <Select value={form.status || "Active"} onValueChange={(v) => set("status", v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -496,8 +561,10 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label="Child Age with Bed"><Input value={form.childWithBed || ""} onChange={(e) => set("childWithBed", e.target.value)} /></Field>
-                <Field label="Child Age without Bed"><Input value={form.childWithoutBed || ""} onChange={(e) => set("childWithoutBed", e.target.value)} /></Field>
+                <Field label="Min child age with bed (yrs)"><Input type="number" value={form.childWithBedAge || ""} onChange={(e) => set("childWithBedAge", e.target.value)} placeholder="12" /></Field>
+                <Field label="Min child age without bed (yrs)"><Input type="number" value={form.childWithoutBedAge || ""} onChange={(e) => set("childWithoutBedAge", e.target.value)} placeholder="5 — below is complimentary" /></Field>
+                <Field label="Child with bed note"><Input value={form.childWithBed || ""} onChange={(e) => set("childWithBed", e.target.value)} /></Field>
+                <Field label="Child without bed note"><Input value={form.childWithoutBed || ""} onChange={(e) => set("childWithoutBed", e.target.value)} /></Field>
                 <div className="sm:col-span-2"><Field label="Cancellation Policy"><Textarea rows={2} value={form.cancellationPolicy || ""} onChange={(e) => set("cancellationPolicy", e.target.value)} /></Field></div>
               </div>
             </Section>
@@ -515,13 +582,24 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
                       )}
                     </div>
                     <div className="grid sm:grid-cols-2 gap-3">
-                      <Field label="Room Type"><Input value={room.name} onChange={(e) => updateRoom(index, "name", e.target.value)} placeholder="Deluxe Room" /></Field>
+                      <Field label="Room category">
+                        <Select value={room.name} onValueChange={(v) => updateRoom(index, "name", v)}>
+                          <SelectTrigger><SelectValue placeholder="Room type" /></SelectTrigger>
+                          <SelectContent>
+                            {ROOM_CATEGORY_PRESETS.map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                            {!ROOM_CATEGORY_PRESETS.includes(room.name as typeof ROOM_CATEGORY_PRESETS[number]) && room.name && (
+                              <SelectItem value={room.name}>{room.name}</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </Field>
                       <Field label="Meal Plan"><Input value={room.mealPlan} onChange={(e) => updateRoom(index, "mealPlan", e.target.value)} /></Field>
                       <div className="sm:col-span-2"><Field label="Room Description"><Textarea rows={2} value={room.description} onChange={(e) => updateRoom(index, "description", e.target.value)} /></Field></div>
                       <div className="sm:col-span-2"><Field label="Room Images (one URL per line)"><Textarea rows={2} value={room.images} onChange={(e) => updateRoom(index, "images", e.target.value)} /></Field></div>
                       <Field label="Max Occupancy"><Input type="number" value={room.maxOccupancy} onChange={(e) => updateRoom(index, "maxOccupancy", e.target.value)} /></Field>
                       <Field label="Max Adults"><Input type="number" value={room.maxAdults} onChange={(e) => updateRoom(index, "maxAdults", e.target.value)} /></Field>
                       <Field label="Max Children"><Input type="number" value={room.maxChildren} onChange={(e) => updateRoom(index, "maxChildren", e.target.value)} /></Field>
+                      <Field label="Max kids when adults = max"><Input type="number" value={room.maxChildrenAtMaxAdults} onChange={(e) => updateRoom(index, "maxChildrenAtMaxAdults", e.target.value)} placeholder="e.g. 1" /></Field>
                       <Field label="Extra Bed Allowed">
                         <Select value={room.extraBedAllowed} onValueChange={(v) => updateRoom(index, "extraBedAllowed", v)}>
                           <SelectTrigger><SelectValue /></SelectTrigger>
@@ -552,6 +630,8 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
                       <Field label="Weekday Double (Mon–Thu)"><Input type="number" value={room.weekdayDouble} onChange={(e) => updateRoom(index, "weekdayDouble", e.target.value)} /></Field>
                       <Field label="Weekend Single (Fri–Sun)"><Input type="number" value={room.weekendSingle} onChange={(e) => updateRoom(index, "weekendSingle", e.target.value)} /></Field>
                       <Field label="Weekend Double (Fri–Sun)"><Input type="number" value={room.weekendDouble} onChange={(e) => updateRoom(index, "weekendDouble", e.target.value)} /></Field>
+                      <Field label="Weekday Extra Adult (Mon–Thu)"><Input type="number" value={room.weekdayExtraAdult} onChange={(e) => updateRoom(index, "weekdayExtraAdult", e.target.value)} /></Field>
+                      <Field label="Weekend Extra Adult (Fri–Sun)"><Input type="number" value={room.weekendExtraAdult} onChange={(e) => updateRoom(index, "weekendExtraAdult", e.target.value)} /></Field>
                     </div>
                   </div>
                 ))}
@@ -577,7 +657,10 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
               </div>
             </Section>
 
-            <Section title="Inventory Management">
+            <Section title="Daily Inventory (sold out / availability)">
+              <p className="text-xs text-muted-foreground mb-2">
+                Once rates are live, mark specific room categories sold out or closed on any date. Add one row per room per date.
+              </p>
               <div className="space-y-2">
                 {inventory.map((row, index) => (
                   <div key={index} className="grid sm:grid-cols-6 gap-2 items-end">
@@ -626,10 +709,11 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
                 <div className="sm:col-span-2"><Field label="Exclusions"><Input value={form.exclusions || ""} onChange={(e) => set("exclusions", e.target.value)} /></Field></div>
                 <Field label="Operating Hours"><Input value={form.operatingHours || ""} onChange={(e) => set("operatingHours", e.target.value)} /></Field>
                 <Field label="Min Child Age"><Input type="number" value={form.minChildAge || ""} onChange={(e) => set("minChildAge", e.target.value)} /></Field>
+                <p className="sm:col-span-2 text-xs text-muted-foreground -mt-1">Below this age the activity cannot be booked (e.g. Sky Diving 18 yrs).</p>
                 <Field label="Adult Price"><Input type="number" value={form.adultPrice || ""} onChange={(e) => set("adultPrice", e.target.value)} /></Field>
                 <Field label="Child Price"><Input type="number" value={form.childPrice || ""} onChange={(e) => set("childPrice", e.target.value)} /></Field>
                 <Field label="Infant Price (Optional)"><Input type="number" value={form.infantPrice || ""} onChange={(e) => set("infantPrice", e.target.value)} /></Field>
-                <Field label="Currency"><Input value={form.currency || "INR"} onChange={(e) => set("currency", e.target.value)} /></Field>
+                <Field label="Currency"><CurrencySelect value={form.currency || "INR"} onChange={(v) => set("currency", v)} /></Field>
                 <Field label="Rate Valid From"><Input type="date" value={form.rateValidFrom || ""} onChange={(e) => set("rateValidFrom", e.target.value)} /></Field>
                 <Field label="Rate Valid To"><Input type="date" value={form.rateValidTo || ""} onChange={(e) => set("rateValidTo", e.target.value)} /></Field>
                 <Field label="Status">
@@ -643,6 +727,49 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
                   </Select>
                 </Field>
                 <div className="sm:col-span-2"><Field label="Cancellation Policy"><Textarea rows={2} value={form.cancellationPolicy || ""} onChange={(e) => set("cancellationPolicy", e.target.value)} /></Field></div>
+              </div>
+            </Section>
+            <Section title="Bundled Transfer Options (optional)">
+              <p className="text-xs text-muted-foreground mb-2">
+                Link transfer products so agents can choose Ticket Only or add a transfer on the same activity card.
+              </p>
+              <div className="space-y-2">
+                {transferLinks.map((row, index) => (
+                  <div key={index} className="grid sm:grid-cols-3 gap-2 items-end">
+                    <Field label="Transfer product">
+                      <Select
+                        value={row.transferProductId}
+                        onValueChange={(v) => setTransferLinks((rows) => rows.map((x, i) => i === index ? { ...x, transferProductId: v } : x))}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Select transfer" /></SelectTrigger>
+                        <SelectContent>
+                          {availableTransfers.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Agent label">
+                      <Input
+                        value={row.label}
+                        onChange={(e) => setTransferLinks((rows) => rows.map((x, i) => i === index ? { ...x, label: e.target.value } : x))}
+                        placeholder="Private Car (2-Way Round Trip)"
+                      />
+                    </Field>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setTransferLinks((rows) => rows.filter((_, i) => i !== index))}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!form.destinationId}
+                  onClick={() => setTransferLinks((rows) => [...rows, { transferProductId: "", label: "" }])}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Link Transfer
+                </Button>
               </div>
             </Section>
             <Section title="Blackout Dates">
@@ -686,7 +813,7 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
                 <Field label="Drop Location *"><Input value={form.dropLocation || ""} onChange={(e) => set("dropLocation", e.target.value)} /></Field>
                 <Field label="Pickup Time"><Input value={form.pickupTime || ""} onChange={(e) => set("pickupTime", e.target.value)} /></Field>
                 <Field label="Waiting Charges"><Input type="number" value={form.waitingCharges || ""} onChange={(e) => set("waitingCharges", e.target.value)} /></Field>
-                <Field label="Currency"><Input value={form.currency || "INR"} onChange={(e) => set("currency", e.target.value)} /></Field>
+                <Field label="Currency"><CurrencySelect value={form.currency || "INR"} onChange={(v) => set("currency", v)} /></Field>
                 <Field label="Status">
                   <Select value={form.status || "Active"} onValueChange={(v) => set("status", v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>

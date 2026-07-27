@@ -432,7 +432,11 @@ model SupportTicket {
   subject     String
   description String
   status      String   @default("Open") // Open|In Progress|Resolved|Closed
-  priority    String   @default("Medium") // Low|Medium|High|Critical
+  priority    String   @default("Medium") // Low|Medium|High|Critical|Urgent
+  operationsType String @default("general_inquiry") // routes to department
+  deliveryType   String @default("remote") // how request will be fulfilled
+  department     String @default("General Support")
+  scheduledAt    DateTime? // when deliveryType = scheduled
   customerName String
   customerId  String?
   assignedTo  String?
@@ -440,6 +444,11 @@ model SupportTicket {
   updatedAt   DateTime @updatedAt
 
   messages    TicketMessage[]
+
+  @@index([operationsType])
+  @@index([deliveryType])
+  @@index([department])
+  @@index([status])
 }
 
 model TicketMessage {
@@ -517,6 +526,7 @@ model HotelProduct {
   inventory       Json     @default("[]") // [{ roomName, date, available, soldOut, closed }]
   status          String   @default("Active") // Active|Archived|Draft
   approvalStatus  String   @default("Draft") // Draft|Pending|Approved|Rejected
+  pendingRateChanges Json? // staged rate fields awaiting admin approval
   approvedBy      String?
   approvedAt      DateTime?
   rejectionReason String?
@@ -559,8 +569,10 @@ model ActivityProduct {
   rateValidFrom   String?
   rateValidTo     String?
   cancellationPolicy String?
+  transferOptions   Json     @default("[]") // [{ transferProductId, label }] bundled transfer choices for agents
   status          String   @default("Active") // Active|Draft|Archived
   approvalStatus  String   @default("Draft") // Draft|Pending|Approved|Rejected
+  pendingRateChanges Json? // staged rate fields awaiting admin approval
   approvedBy      String?
   approvedAt      DateTime?
   rejectionReason String?
@@ -603,6 +615,7 @@ model TransferProduct {
   cancellationPolicy String?
   status          String   @default("Active") // Active|Draft|Archived
   approvalStatus  String   @default("Draft") // Draft|Pending|Approved|Rejected
+  pendingRateChanges Json? // staged rate fields awaiting admin approval
   approvedBy      String?
   approvedAt      DateTime?
   rejectionReason String?

@@ -39,7 +39,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
     "trip-planner", "travel-proposals", "quotations", "payments", "tasks", "support", "notifications", "attendance", "leaves",
   ],
   product_executive: [
-    "hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers", "notifications",
+    "hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers", "quotations", "notifications",
   ],
 };
 
@@ -54,7 +54,7 @@ export const ROLE_CRUD: Record<Role, Record<string, CrudAction[]>> = {
   employee: Object.fromEntries(MODULES.map((m) => [m, SALES])),
   accountant: Object.fromEntries(MODULES.map((m) => [m, ["payments", "wallet", "commission", "finance", "reports"].includes(m) ? SALES : READ])),
   sales_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "destinations", "packages", "suppliers"].includes(m) ? READ : SALES])),
-  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers"].includes(m) ? FULL : READ])),
+  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers"].includes(m) ? FULL : m === "quotations" ? SALES : READ])),
 };
 
 export function effectivePermissions(user: Pick<User, "role" | "permissions">): Module[] {

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ProductCatalog, DestinationNameCell } from "@/components/shared/product-catalog";
+import { ActivityBookingPicker } from "@/components/shared/activity-booking-picker";
 import { PageHeader, SectionHeader, StatusBadge } from "@/components/shared/ui-helpers";
 import type { ProductRecord } from "@/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -9,17 +10,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Info } from "lucide-react";
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  INR: "₹",
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  SGD: "S$",
-  AUD: "A$",
-  CAD: "C$",
-  JPY: "¥",
-  CNY: "¥",
-};
+import { Info } from "lucide-react";
+import { formatActivityPrice, formatProductPrice, formatTransferPrice, normalizeCurrency } from "@/lib/currency";
 
 function ApprovalStatusBadge(item: ProductRecord) {
   const status = String(item.approvalStatus || "Draft");
@@ -31,75 +23,47 @@ function ApprovalStatusBadge(item: ProductRecord) {
   return <StatusBadge status={mapped} />;
 }
 
-function ActivityPriceDisplay(item: ProductRecord) {
-  const currency = String(item.currency || "INR");
-  const symbol = CURRENCY_SYMBOLS[currency] || currency;
-  const price = Number(item.adultPrice ?? 0);
-  return `${symbol}${price.toLocaleString("en-IN")}`;
-}
-
-function TransferPriceDisplay(item: ProductRecord) {
-  const currency = String(item.currency || "INR");
-  const symbol = CURRENCY_SYMBOLS[currency] || currency;
-  const privatePrice = Number(item.privatePrice ?? 0);
-  const sharedPrice = Number(item.sharedPrice ?? 0);
-
-  if (privatePrice && sharedPrice) {
-    return `${symbol}${privatePrice.toLocaleString("en-IN")} / ${symbol}${sharedPrice.toLocaleString("en-IN")}`;
-  }
-  if (privatePrice) {
-    return `${symbol}${privatePrice.toLocaleString("en-IN")}`;
-  }
-  if (sharedPrice) {
-    return `${symbol}${sharedPrice.toLocaleString("en-IN")}`;
-  }
-  return "—";
-}
-
 export function ActivityPackagesView() {
-  const [activeTab, setActiveTab] = useState("activities");
-
-  useEffect(() => {
-    const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab === "transfers" || tab === "activities") setActiveTab(tab);
-  }, []);
+  const [activeTab, setActiveTab] = useState("book");
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Activities & Experiences"
-        subtitle="Manage tours, activities, and bundled packages with transfers"
+        subtitle="Book ticket-only or activity + transfer bundles — transfers are linked to activities, not booked separately"
       />
 
       <Alert className="border-border">
         <Info className="h-4 w-4" />
         <AlertDescription>
-          <strong>Bundle Packages:</strong> Create complete travel experiences by combining activities with transfers. Agents can select ticket-only, transfer-only, or complete packages when booking.
+          <strong>How it works:</strong> Product team creates transfer products and links them to each activity. Agents then choose <em>Ticket Only</em> or add a bundled transfer on the same activity card.
         </AlertDescription>
       </Alert>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="activities">Activities</TabsTrigger>
-          <TabsTrigger value="transfers">Transfers</TabsTrigger>
+        <TabsList className="grid w-full max-w-2xl grid-cols-3">
+          <TabsTrigger value="book">Book Activities</TabsTrigger>
+          <TabsTrigger value="activities">Activity Catalog</TabsTrigger>
+          <TabsTrigger value="transfers">Transfer Inventory</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="book" className="mt-6">
+          <ActivityBookingPicker />
+        </TabsContent>
 
         <TabsContent value="activities" className="mt-6">
           <ProductCatalog
             title="Activities & Experiences"
-            subtitle="Manage tour experiences, pricing, and availability"
+            subtitle="Manage tour experiences, link optional transfers, and submit for approval"
             kind="activities"
             apiPath="/api/products/activities"
             columns={[
               { key: "name", label: "Activity Name" },
               { key: "destination", label: "Destination", render: (i) => <DestinationNameCell item={i} /> },
               { key: "duration", label: "Duration" },
-              { key: "adultPrice", label: "Adult Price", render: ActivityPriceDisplay },
-              { key: "childPrice", label: "Child Price", render: (i) => {
-                const currency = String(i.currency || "INR");
-                const symbol = CURRENCY_SYMBOLS[currency] || currency;
-                return `${symbol}${Number(i.childPrice ?? 0).toLocaleString("en-IN")}`;
-              }},
+              { key: "adultPrice", label: "Adult Price", render: (i) => formatActivityPrice(i) },
+              { key: "childPrice", label: "Child Price", render: (i) => formatProductPrice(Number(i.childPrice ?? 0), i.currency as string) },
+              { key: "currency", label: "Currency", render: (i) => normalizeCurrency(i.currency as string) },
               { key: "rateValidTo", label: "Validity", render: (i) => String(i.rateValidTo || "—") },
               { key: "approvalStatus", label: "Approval", render: ApprovalStatusBadge },
             ]}
@@ -108,8 +72,8 @@ export function ActivityPackagesView() {
 
         <TabsContent value="transfers" className="mt-6">
           <ProductCatalog
-            title="Transfers"
-            subtitle="Manage private and shared transfers with vehicle-based pricing"
+            title="Transfer Inventory"
+            subtitle="Create transfer products here, then link them to activities — agents never book transfers as a separate step"
             kind="transfers"
             apiPath="/api/products/transfers"
             columns={[
@@ -117,8 +81,8 @@ export function ActivityPackagesView() {
               { key: "transferType", label: "Shared/Private" },
               { key: "vehicleType", label: "Vehicle Type" },
               { key: "destination", label: "Destination", render: (i) => <DestinationNameCell item={i} /> },
-              { key: "privatePrice", label: "Price", render: TransferPriceDisplay },
-              { key: "currency", label: "Currency" },
+              { key: "privatePrice", label: "Price", render: (i) => formatTransferPrice(i) },
+              { key: "currency", label: "Currency", render: (i) => normalizeCurrency(i.currency as string) },
               { key: "rateValidTo", label: "Validity", render: (i) => String(i.rateValidTo || "—") },
               { key: "approvalStatus", label: "Approval", render: ApprovalStatusBadge },
             ]}
@@ -128,30 +92,12 @@ export function ActivityPackagesView() {
 
       <Card>
         <CardHeader className="pb-2">
-          <SectionHeader title="How to Create Bundles" description="Step-by-step guide for packaging activities with transfers" />
+          <SectionHeader title="Agent booking flow" description="Matches ticket-only vs activity + transfer selection" />
         </CardHeader>
-        <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <div className="space-y-2">
-            <p className="font-medium text-foreground">1. Create Your Activity</p>
-            <p>Add a tour or activity with pricing and details. Submit for approval.</p>
-          </div>
-          <div className="space-y-2">
-            <p className="font-medium text-foreground">2. Create Transfer Option</p>
-            <p>Add a private or shared transfer with pickup/drop locations and pricing.</p>
-          </div>
-          <div className="space-y-2">
-            <p className="font-medium text-foreground">3. Bundle in Quotations</p>
-            <p>When creating a quotation, select the activity and optional transfer together to create a complete package.</p>
-          </div>
-          <div className="space-y-2">
-            <p className="font-medium text-foreground">4. Agent Booking Options</p>
-            <p>Agents can book:</p>
-            <ul className="ml-4 space-y-1 list-disc">
-              <li>Activity only (ticket)</li>
-              <li>Transfer only (transport)</li>
-              <li>Activity + Transfer (complete experience)</li>
-            </ul>
-          </div>
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <p>1. Product team adds activities and transfer inventory for the same destination.</p>
+          <p>2. In the activity form, link one or more transfers (e.g. Private Car 2-way).</p>
+          <p>3. Agents open <strong>Book Activities</strong> and pick Ticket Only or bundled transfer on each tour.</p>
         </CardContent>
       </Card>
     </div>

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Plus, Search, Send, MessageCircle, Plane, CreditCard,
-  RefreshCw, FileText, User, Headphones, Bot, ArrowRight, CheckCircle2, Clock,
+  RefreshCw, FileText, User, Headphones, Bot, ArrowRight, CheckCircle2, Clock, Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,31 +28,22 @@ import {
 } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import {
-  PageShell, PageHeader, MetricCard, SectionHeader, BrandHero, StatusBadge, initials, avatarGradient,
+  PageShell, PageHeader, MetricCard, SectionHeader, BrandHero, StatusBadge,
 } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
-
-type Ticket = {
-  id: string;
-  subject: string;
-  customer: string;
-  priority: "Urgent" | "High" | "Medium" | "Low";
-  status: "Open" | "In Progress" | "Resolved" | "Closed";
-  createdAt: string;
-  assignedTo: string;
-  category: string;
-};
-
-const TICKETS: Ticket[] = [
-  { id: "TK-3402", subject: "Refund not received for cancelled flight", customer: "Karthik Venkat", priority: "Urgent", status: "Open", createdAt: "2025-01-20 14:32", assignedTo: "Nikhil Joshi", category: "Refunds" },
-  { id: "TK-3401", subject: "Unable to download e-ticket for BK-8849", customer: "Kavya Reddy", priority: "High", status: "In Progress", createdAt: "2025-01-20 12:18", assignedTo: "Nikhil Joshi", category: "Booking" },
-  { id: "TK-3398", subject: "Holiday package itinerary not loading", customer: "Meera Iyer", priority: "High", status: "In Progress", createdAt: "2025-01-19 18:45", assignedTo: "Aisha Khan", category: "Booking" },
-  { id: "TK-3395", subject: "Wallet balance mismatch after refund", customer: "TechCorp India", priority: "Medium", status: "Open", createdAt: "2025-01-19 16:02", assignedTo: "Vikram Iyer", category: "Payments" },
-  { id: "TK-3390", subject: "Hotel booking shows wrong check-in date", customer: "Rohit Gupta", priority: "High", status: "Resolved", createdAt: "2025-01-19 11:30", assignedTo: "Sneha Reddy", category: "Booking" },
-  { id: "TK-3385", subject: "GST invoice not generated for January", customer: "TechCorp India", priority: "Medium", status: "Resolved", createdAt: "2025-01-18 09:15", assignedTo: "Vikram Iyer", category: "Payments" },
-  { id: "TK-3380", subject: "Cannot add infant to existing booking", customer: "Anjali Desai", priority: "Low", status: "Closed", createdAt: "2025-01-17 14:50", assignedTo: "Sneha Reddy", category: "Booking" },
-  { id: "TK-3372", subject: "Razorpay payment failed but amount debited", customer: "Imran Khan", priority: "Urgent", status: "Open", createdAt: "2025-01-16 19:22", assignedTo: "Vikram Iyer", category: "Payments" },
-];
+import { api, type SupportTicketApi } from "@/lib/api";
+import { useAuthStore } from "@/store/app-store";
+import {
+  OPERATIONS_TYPES,
+  DELIVERY_TYPES,
+  departmentForOperationsType,
+  labelForOperationsType,
+  labelForDeliveryType,
+  purposeForOperationsType,
+  meaningForDeliveryType,
+  type OperationsTypeValue,
+  type DeliveryTypeValue,
+} from "@/lib/support-ticket-taxonomy";
 
 const FAQS = [
   { q: "How do I cancel a booking and get a refund?", a: "Visit Bookings → select the booking → click 'Cancel'. Refunds are processed within 5-7 business days to the original payment method. Cancellation charges depend on the airline/hotel policy and time of cancellation." },
@@ -96,13 +87,35 @@ const AGENT_REPLIES = [
 export function SupportView() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [operationsFilter, setOperationsFilter] = useState("All");
+  const [deliveryFilter, setDeliveryFilter] = useState("All");
   const [raiseOpen, setRaiseOpen] = useState(false);
+  const [tickets, setTickets] = useState<SupportTicketApi[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredTickets = TICKETS.filter((t) => {
-    if (statusFilter !== "All" && t.status !== statusFilter) return false;
-    if (search && !`${t.id} ${t.subject} ${t.customer}`.toLowerCase().includes(search.toLowerCase())) return false;
+  const loadTickets = useCallback(() => {
+    setLoading(true);
+    api.getSupportTickets({
+      status: statusFilter !== "All" ? statusFilter : undefined,
+      operationsType: operationsFilter !== "All" ? operationsFilter : undefined,
+      deliveryType: deliveryFilter !== "All" ? deliveryFilter : undefined,
+    })
+      .then((res) => setTickets(res.tickets))
+      .catch(() => setTickets([]))
+      .finally(() => setLoading(false));
+  }, [statusFilter, operationsFilter, deliveryFilter]);
+
+  useEffect(() => {
+    loadTickets();
+  }, [loadTickets]);
+
+  const filteredTickets = tickets.filter((t) => {
+    if (search && !`${t.ticketId} ${t.subject} ${t.customerName} ${t.department}`.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
+
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
   return (
     <PageShell>
@@ -122,28 +135,46 @@ export function SupportView() {
         {/* TICKETS */}
         <TabsContent value="tickets" className="space-y-4 mt-4">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <MetricCard icon={MessageCircle} label="Open Tickets" value={String(TICKETS.filter((t) => t.status === "Open").length)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={0} />
-            <MetricCard icon={RefreshCw} label="In Progress" value={String(TICKETS.filter((t) => t.status === "In Progress").length)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={1} />
-            <MetricCard icon={CheckCircle2} label="Resolved" value={String(TICKETS.filter((t) => t.status === "Resolved").length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={2} />
-            <MetricCard icon={Clock} label="Avg Response" value="1.4h" color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={3} />
+            <MetricCard icon={MessageCircle} label="Open Tickets" value={String(tickets.filter((t) => t.status === "Open").length)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={0} />
+            <MetricCard icon={RefreshCw} label="In Progress" value={String(tickets.filter((t) => t.status === "In Progress").length)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={1} />
+            <MetricCard icon={CheckCircle2} label="Resolved" value={String(tickets.filter((t) => t.status === "Resolved").length)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={2} />
+            <MetricCard icon={Clock} label="Total Tickets" value={String(tickets.length)} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={3} />
           </div>
 
           <Card>
             <CardContent className="p-3">
-              <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input placeholder="Search tickets..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input placeholder="Search tickets..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-8" />
+                  </div>
+                  <Button onClick={() => setRaiseOpen(true)} className="bg-primary hover:bg-primary/90 shrink-0">
+                    <Plus className="w-4 h-4 mr-1.5" /> Raise Ticket
+                  </Button>
                 </div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-full sm:w-[140px]"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {["All", "Open", "In Progress", "Resolved", "Closed"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <Button onClick={() => setRaiseOpen(true)} className="bg-primary hover:bg-primary/90">
-                  <Plus className="w-4 h-4 mr-1.5" /> Raise Ticket
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                    <SelectContent>
+                      {["All", "Open", "In Progress", "Resolved", "Closed"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={operationsFilter} onValueChange={setOperationsFilter}>
+                    <SelectTrigger className="w-full sm:flex-1"><SelectValue placeholder="Operations Type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Operations Types</SelectItem>
+                      {OPERATIONS_TYPES.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <Select value={deliveryFilter} onValueChange={setDeliveryFilter}>
+                    <SelectTrigger className="w-full sm:flex-1"><SelectValue placeholder="Delivery Type" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Delivery Types</SelectItem>
+                      {DELIVERY_TYPES.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -155,44 +186,63 @@ export function SupportView() {
                   <TableHeader className="sticky top-0 bg-card z-10">
                     <TableRow>
                       <TableHead>Ticket ID</TableHead>
-                      <TableHead className="min-w-[200px]">Subject</TableHead>
+                      <TableHead className="min-w-[180px]">Subject</TableHead>
                       <TableHead>Customer</TableHead>
-                      <TableHead>Category</TableHead>
+                      <TableHead>Operations</TableHead>
+                      <TableHead>Delivery</TableHead>
+                      <TableHead>Department</TableHead>
                       <TableHead>Priority</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Assigned To</TableHead>
+                      <TableHead>Assigned</TableHead>
                       <TableHead>Created</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredTickets.map((t) => (
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center py-12 text-sm text-muted-foreground">
+                          <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+                          Loading tickets...
+                        </TableCell>
+                      </TableRow>
+                    ) : filteredTickets.map((t) => (
                       <TableRow key={t.id} className="hover:bg-muted/40">
-                        <TableCell className="font-mono text-xs font-medium">{t.id}</TableCell>
+                        <TableCell className="font-mono text-xs font-medium">{t.ticketId}</TableCell>
                         <TableCell>
                           <p className="text-sm font-medium line-clamp-1">{t.subject}</p>
                         </TableCell>
-                        <TableCell className="text-sm">{t.customer}</TableCell>
-                        <TableCell><Badge variant="outline" className="text-[10px]">{t.category}</Badge></TableCell>
+                        <TableCell className="text-sm">{t.customerName}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-[10px]" title={purposeForOperationsType(t.operationsType)}>
+                            {labelForOperationsType(t.operationsType)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-[10px]" title={meaningForDeliveryType(t.deliveryType)}>
+                            {labelForDeliveryType(t.deliveryType)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{t.department}</TableCell>
                         <TableCell>
                           <span className={cn("inline-flex items-center gap-1 text-xs font-medium",
-                            t.priority === "Urgent" ? "text-rose-600" :
+                            t.priority === "Urgent" || t.priority === "Critical" ? "text-rose-600" :
                             t.priority === "High" ? "text-amber-600" :
                             t.priority === "Medium" ? "text-sky-600" : "text-slate-500")}>
                             <span className={cn("w-1.5 h-1.5 rounded-full",
-                              t.priority === "Urgent" ? "bg-rose-500" :
+                              t.priority === "Urgent" || t.priority === "Critical" ? "bg-rose-500" :
                               t.priority === "High" ? "bg-amber-500" :
                               t.priority === "Medium" ? "bg-sky-500" : "bg-slate-400")} />
                             {t.priority}
                           </span>
                         </TableCell>
                         <TableCell><StatusBadge status={t.status} /></TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{t.assignedTo}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{t.createdAt}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{t.assignedTo || "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{formatDate(t.createdAt)}</TableCell>
                       </TableRow>
                     ))}
-                    {filteredTickets.length === 0 && (
+                    {!loading && filteredTickets.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-12 text-sm text-muted-foreground">No tickets found.</TableCell>
+                        <TableCell colSpan={10} className="text-center py-12 text-sm text-muted-foreground">No tickets found.</TableCell>
                       </TableRow>
                     )}
                   </TableBody>
@@ -287,14 +337,14 @@ export function SupportView() {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline"><MessageCircle className="w-4 h-4 mr-1.5" /> Live Chat</Button>
-                <Button className="bg-primary hover:bg-primary/90"><Plus className="w-4 h-4 mr-1.5" /> Raise Ticket</Button>
+                <Button className="bg-primary hover:bg-primary/90" onClick={() => setRaiseOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Raise Ticket</Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-      <RaiseTicketDialog open={raiseOpen} onOpenChange={setRaiseOpen} />
+      <RaiseTicketDialog open={raiseOpen} onOpenChange={setRaiseOpen} onCreated={loadTickets} />
     </PageShell>
   );
 }
@@ -416,52 +466,139 @@ function LiveChat() {
   );
 }
 
-function RaiseTicketDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+function RaiseTicketDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onCreated: () => void;
+}) {
   const { toast } = useToast();
-  const handleSubmit = () => {
-    toast({ title: "Ticket raised", description: "Your ticket has been created. We'll respond within 2 hours." });
-    onOpenChange(false);
+  const user = useAuthStore((s) => s.user);
+  const [subject, setSubject] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("Medium");
+  const [operationsType, setOperationsType] = useState<OperationsTypeValue>("general_inquiry");
+  const [deliveryType, setDeliveryType] = useState<DeliveryTypeValue>("remote");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const resetForm = () => {
+    setSubject("");
+    setDescription("");
+    setPriority("Medium");
+    setOperationsType("general_inquiry");
+    setDeliveryType("remote");
+    setScheduledAt("");
   };
+
+  const handleSubmit = async () => {
+    if (!subject.trim() || !description.trim()) {
+      toast({ title: "Missing fields", description: "Subject and description are required.", variant: "destructive" });
+      return;
+    }
+    if (deliveryType === "scheduled" && !scheduledAt) {
+      toast({ title: "Schedule required", description: "Pick a date/time for scheduled delivery.", variant: "destructive" });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { ticket } = await api.createSupportTicket({
+        subject: subject.trim(),
+        description: description.trim(),
+        priority,
+        operationsType,
+        deliveryType,
+        scheduledAt: deliveryType === "scheduled" ? new Date(scheduledAt).toISOString() : undefined,
+        customerName: user?.name || "Support User",
+        customerId: user?.id,
+      });
+      toast({
+        title: "Ticket raised",
+        description: `${ticket.ticketId} routed to ${ticket.department}. We'll respond soon.`,
+      });
+      resetForm();
+      onOpenChange(false);
+      onCreated();
+    } catch {
+      toast({ title: "Failed to create ticket", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+    <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); onOpenChange(v); }}>
+      <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Raise Support Ticket</DialogTitle>
-          <DialogDescription>Describe your issue and our team will get back to you.</DialogDescription>
+          <DialogDescription>
+            Choose operations type (which team handles it) and delivery type (how it will be fulfilled).
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>Subject</Label>
-            <Input placeholder="Brief summary of the issue" />
+            <Input placeholder="Brief summary of the issue" value={subject} onChange={(e) => setSubject(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Operations Type</Label>
+            <Select value={operationsType} onValueChange={(v) => setOperationsType(v as OperationsTypeValue)}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {OPERATIONS_TYPES.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {purposeForOperationsType(operationsType)} · Routed to <span className="font-medium">{departmentForOperationsType(operationsType)}</span>
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Delivery Type</Label>
+            <Select value={deliveryType} onValueChange={(v) => setDeliveryType(v as DeliveryTypeValue)}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {DELIVERY_TYPES.map((d) => (
+                  <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">{meaningForDeliveryType(deliveryType)}</p>
+          </div>
+          {deliveryType === "scheduled" && (
             <div className="space-y-1.5">
-              <Label>Category</Label>
-              <Select defaultValue="Booking">
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["Booking", "Payments", "Refunds", "Account", "Technical"].map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label>Scheduled Date & Time</Label>
+              <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
             </div>
-            <div className="space-y-1.5">
-              <Label>Priority</Label>
-              <Select defaultValue="High">
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["Urgent", "High", "Medium", "Low"].map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label>Priority</Label>
+            <Select value={priority} onValueChange={setPriority}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {["Urgent", "High", "Medium", "Low"].map((p) => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Description</Label>
-            <Textarea placeholder="Provide details — booking ID, customer name, what happened, expected resolution..." rows={4} />
+            <Textarea
+              placeholder="Provide details — booking ID, customer name, what happened, expected resolution..."
+              rows={4}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90">Submit Ticket</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancel</Button>
+          <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90" disabled={submitting}>
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Ticket"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

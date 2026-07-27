@@ -69,7 +69,7 @@ function rowToPayload(kind: ProductKind, row: Record<string, string>): Record<st
       currency: row.currency || row.Currency || "INR",
       description: row.description || null,
       address: row.address || null,
-      status: row.status || "Active",
+      status: row.status || "Draft",
       amenities: (row.amenities || "").split("|").map((s) => s.trim()).filter(Boolean),
       roomCategories: [{
         name: row.roomName || "Standard",
@@ -97,7 +97,7 @@ function rowToPayload(kind: ProductKind, row: Record<string, string>): Record<st
       childPrice: parseInt(row.childPrice || "0", 10) || 0,
       currency: row.currency || "INR",
       description: row.description || null,
-      status: row.status || "Active",
+      status: row.status || "Draft",
       inclusions: (row.inclusions || "").split("|").map((s) => s.trim()).filter(Boolean),
       exclusions: (row.exclusions || "").split("|").map((s) => s.trim()).filter(Boolean),
     };
@@ -114,6 +114,22 @@ function rowToPayload(kind: ProductKind, row: Record<string, string>): Record<st
     currency: row.currency || "INR",
     status: row.status || "Active",
   };
+}
+
+function ApprovalStatusBadge({ item }: { item: ProductRecord }) {
+  const status = String(item.approvalStatus || "Draft");
+  const mapped =
+    status === "Approved" ? "Active" :
+    status === "Pending" ? "Pending" :
+    status === "Rejected" ? "Cancelled" :
+    "Draft";
+  return <StatusBadge status={mapped} />;
+}
+
+function mergePendingRates(item: ProductRecord): ProductRecord {
+  const pending = item.pendingRateChanges;
+  if (!pending || typeof pending !== "object") return item;
+  return { ...item, ...(pending as Record<string, unknown>) };
 }
 
 export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: ProductCatalogProps) {
@@ -218,11 +234,25 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
   const handleSubmit = async (payload: Record<string, unknown>) => {
     try {
       if (editing) {
-        await apiFetch(`${apiPath}/${editing.id}`, { method: "PATCH", body: JSON.stringify(payload) });
-        toast({ title: "Product updated" });
+        const res = await apiFetch<{ item: ProductRecord; message?: string; rateChangePending?: boolean }>(
+          `${apiPath}/${editing.id}`,
+          { method: "PATCH", body: JSON.stringify(payload) },
+        );
+        toast({
+          title: res.rateChangePending ? "Rates pending approval" : "Product updated",
+          description: res.message || (res.rateChangePending
+            ? "Admin must approve before new rates go live. Current live rates stay active."
+            : undefined),
+        });
       } else {
-        await apiFetch(apiPath, { method: "POST", body: JSON.stringify(payload) });
-        toast({ title: "Product created" });
+        const res = await apiFetch<{ item: ProductRecord; message?: string }>(apiPath, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        toast({
+          title: "Product created",
+          description: res.message || "Saved as draft. Submit for admin approval before rates go live.",
+        });
       }
       setEditing(null);
       load();
@@ -350,23 +380,32 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
                 <TableRow>
                   {columns.map((c) => <TableHead key={c.key}>{c.label}</TableHead>)}
                   <TableHead>Status</TableHead>
+                  <TableHead>Rate Approval</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={columns.length + 2} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={columns.length + 3} className="text-center py-8 text-muted-foreground">Loading...</TableCell></TableRow>
                 ) : items.length === 0 ? (
-                  <TableRow><TableCell colSpan={columns.length + 2} className="text-center py-8 text-muted-foreground">No products found</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={columns.length + 3} className="text-center py-8 text-muted-foreground">No products found</TableCell></TableRow>
                 ) : items.map((item) => (
                   <TableRow key={item.id}>
                     {columns.map((c) => (
                       <TableCell key={c.key}>{c.render ? c.render(item) : String(item[c.key] ?? "—")}</TableCell>
                     ))}
                     <TableCell><StatusBadge status={item.status} /></TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <ApprovalStatusBadge item={item} />
+                        {item.pendingRateChanges && (
+                          <p className="text-[10px] text-amber-600">New rates awaiting approval</p>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        {item.approvalStatus === "Draft" && (
+                        {(item.approvalStatus === "Draft" || item.approvalStatus === "Rejected") && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -374,10 +413,10 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
                             onClick={() => handleSubmitForApproval(item.id)}
                           >
                             <CheckCircle className="w-4 h-4 mr-1" />
-                            Submit
+                            Submit Rates
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" onClick={() => { setEditing(item); setFormOpen(true); }}><Pencil className="w-4 h-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => { setEditing(mergePendingRates(item)); setFormOpen(true); }}><Pencil className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleDuplicate(item.id)}><Copy className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleArchive(item.id)}><Archive className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}><Trash2 className="w-4 h-4 text-destructive" /></Button>

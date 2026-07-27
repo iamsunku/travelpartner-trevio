@@ -48,7 +48,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
     "trip-planner", "travel-proposals", "quotations", "payments", "tasks", "support", "notifications", "attendance", "leaves",
   ],
   product_executive: [
-    "hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers", "notifications",
+    "hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers", "quotations", "notifications",
   ],
 };
 
@@ -63,7 +63,7 @@ export const ROLE_CRUD: Record<Role, Record<string, CrudAction[]>> = {
   employee: Object.fromEntries(MODULES.map((m) => [m, SALES_CRUD])),
   accountant: Object.fromEntries(MODULES.map((m) => [m, ["payments", "wallet", "commission", "finance", "reports"].includes(m) ? SALES_CRUD : READ_ONLY])),
   sales_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "destinations", "packages", "suppliers"].includes(m) ? READ_ONLY : SALES_CRUD])),
-  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers"].includes(m) ? FULL_CRUD : READ_ONLY])),
+  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers"].includes(m) ? FULL_CRUD : m === "quotations" ? SALES_CRUD : READ_ONLY])),
 };
 
 export interface PermissionSubject {

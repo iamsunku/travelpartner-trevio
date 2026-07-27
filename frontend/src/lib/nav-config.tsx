@@ -15,6 +15,7 @@ export interface NavItem {
   label: string;
   icon: LucideIcon;
   module?: Module; // omitted for views everyone can always reach (e.g. dashboard)
+  roles?: Role[]; // if set, only these roles see the item
   badge?: string;
 }
 
@@ -44,9 +45,9 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "destinations", label: "Destinations", icon: Globe, module: "destinations" },
       { key: "hotel-products", label: "Hotels", icon: Hotel, module: "hotels" },
-      { key: "activity-packages", label: "Activities & Transfers", icon: MapPin, module: "activities" },
+      { key: "activity-packages", label: "Activities", icon: MapPin, module: "activities" },
       { key: "packages", label: "Packages", icon: Layers, module: "packages" },
-      { key: "product-approvals", label: "Rate Approvals", icon: CheckCircle, module: "activities" },
+      { key: "product-approvals", label: "Rate Approvals", icon: CheckCircle, module: "activities", roles: ["super_admin", "agency_admin"] },
     ],
   },
   {
@@ -111,13 +112,20 @@ export const NAV_SECTIONS: NavSection[] = [
 export function getNavForUser(user: Pick<User, "role" | "permissions">): NavSection[] {
   return NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((item) => !item.module || hasPermission(user, item.module)),
+    items: section.items.filter((item) => {
+      if (item.roles && !item.roles.includes(user.role)) return false;
+      return !item.module || hasPermission(user, item.module);
+    }),
   })).filter((section) => section.items.length > 0);
 }
 
 export function canAccessView(user: Pick<User, "role" | "permissions">, view: ViewKey): boolean {
   return NAV_SECTIONS.some((section) =>
-    section.items.some((item) => item.key === view && (!item.module || hasPermission(user, item.module)))
+    section.items.some((item) => {
+      if (item.key !== view) return false;
+      if (item.roles && !item.roles.includes(user.role)) return false;
+      return !item.module || hasPermission(user, item.module);
+    })
   );
 }
 

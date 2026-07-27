@@ -23,6 +23,11 @@ import { mountProposalPdfRoutes } from "./routes/proposal-pdf.js";
 import { analyticsMiddleware } from "./middleware/analytics.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import {
+  isValidOperationsType,
+  isValidDeliveryType,
+  departmentForOperationsType,
+} from "./lib/support-ticket-taxonomy.js";
+import {
   validate, loginSchema, bookingSchema, customerSchema, leadSchema, quotationSchema,
   paymentSchema, employeeSchema, employeeUpdateSchema, taskSchema, agencySchema,
   agencyUpdateSchema, branchSchema, branchUpdateSchema, walletSchema,
@@ -1580,9 +1585,19 @@ app.post("/api/management/keys", requireAuth, requireRole("super_admin", "agency
 
 app.get("/api/support/tickets", optionalAuth, async (req, res) => {
   try {
+    const operationsType = req.query.operationsType as string | undefined;
+    const deliveryType = req.query.deliveryType as string | undefined;
+    const department = req.query.department as string | undefined;
+    const status = req.query.status as string | undefined;
+    const where: Record<string, unknown> = {};
+    if (operationsType && operationsType !== "All") where.operationsType = operationsType;
+    if (deliveryType && deliveryType !== "All") where.deliveryType = deliveryType;
+    if (department && department !== "All") where.department = department;
+    if (status && status !== "All") where.status = status;
     const tickets = await db.supportTicket.findMany({
-      include: { messages: true },
-      orderBy: { createdAt: "desc" }
+      where,
+      include: { messages: { orderBy: { createdAt: "asc" } } },
+      orderBy: { createdAt: "desc" },
     });
     res.json({ tickets });
   } catch (e) {
@@ -1591,11 +1606,88 @@ app.get("/api/support/tickets", optionalAuth, async (req, res) => {
   }
 });
 
-app.post("/api/support/tickets", requireAuth, async (req, res) => {
+app.post("/api/support/tickets", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const data = req.body;
-    const ticket = await db.supportTicket.create({ data });
-    res.json(ticket);
+    const {
+      subject,
+      description,
+      priority = "Medium",
+      operationsType = "general_inquiry",
+      deliveryType = "remote",
+      scheduledAt,
+      customerName,
+      customerId,
+      assignedTo,
+    } = req.body ?? {};
+
+    if (!subject || !description || !customerName) {
+      res.status(400).json({ error: "subject, description, and customerName are required" });
+      return;
+    }
+
+    if (!isValidOperationsType(operationsType)) {
+      res.status(400).json({ error: "Invalid operations type" });
+      return;
+    }
+    if (!isValidDeliveryType(deliveryType)) {
+      res.status(400).json({ error: "Invalid delivery type" });
+      return;
+    }
+    if (deliveryType === "scheduled" && !scheduledAt) {
+      res.status(400).json({ error: "scheduledAt is required for scheduled delivery" });
+      return;
+    }
+
+    const count = await db.supportTicket.count();
+    const ticketId = `TK-${String(count + 3401).padStart(4, "0")}`;
+    const department = departmentForOperationsType(operationsType);
+
+    const ticket = await db.supportTicket.create({
+      data: {
+        ticketId,
+        subject: String(subject),
+        description: String(description),
+        priority: String(priority),
+        operationsType,
+        deliveryType,
+        department,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        customerName: String(customerName),
+        customerId: customerId || null,
+        assignedTo: assignedTo || null,
+        status: "Open",
+      },
+      include: { messages: true },
+    });
+    res.status(201).json({ ticket });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.patch("/api/support/tickets/:id", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { status, assignedTo, priority, deliveryType, scheduledAt } = req.body ?? {};
+    const data: Record<string, unknown> = {};
+    if (status) data.status = status;
+    if (assignedTo !== undefined) data.assignedTo = assignedTo;
+    if (priority) data.priority = priority;
+    if (deliveryType) {
+      if (!isValidDeliveryType(deliveryType)) {
+        res.status(400).json({ error: "Invalid delivery type" });
+        return;
+      }
+      data.deliveryType = deliveryType;
+    }
+    if (scheduledAt !== undefined) data.scheduledAt = scheduledAt ? new Date(scheduledAt) : null;
+    const ticket = await db.supportTicket.update({
+      where: { id },
+      data,
+      include: { messages: true },
+    });
+    res.json({ ticket });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });

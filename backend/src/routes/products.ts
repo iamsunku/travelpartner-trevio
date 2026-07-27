@@ -1,10 +1,17 @@
 import type { Express, Response } from "express";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { AuthRequest } from "../middleware/auth.js";
-import { requireAuth, requirePermission, requireCrudPermission } from "../middleware/auth.js";
+import { requireAuth, requireCrudPermission, requirePermission, requireRole } from "../middleware/auth.js";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
-import { sendEmail, generateApprovalEmail, generateRejectionEmail } from "../lib/email.js";
+import { sendEmail } from "../lib/email.js";
+import {
+  buildApproveData,
+  buildRateAwareUpdate,
+  buildRejectData,
+  sanitizeCreateBody,
+  type ProductKind,
+} from "../lib/product-rate-approval.js";
 
 type ScopeFn = (req: AuthRequest) => Record<string, unknown>;
 
@@ -13,10 +20,22 @@ function parseListQuery(req: AuthRequest) {
   const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 20));
   const q = (req.query.q as string)?.trim();
   const status = req.query.status as string | undefined;
+  const approvalStatus = req.query.approvalStatus as string | undefined;
+  const liveOnly = req.query.liveOnly === "true";
   const destinationId = req.query.destinationId as string | undefined;
   const sort = (req.query.sort as string) || "createdAt";
   const order = (req.query.order as string) === "asc" ? "asc" : "desc";
-  return { page, pageSize, q, status, destinationId, sort, order, skip: (page - 1) * pageSize };
+  return { page, pageSize, q, status, approvalStatus, liveOnly, destinationId, sort, order, skip: (page - 1) * pageSize };
+}
+
+function applyProductListFilters(where: Record<string, unknown>, query: ReturnType<typeof parseListQuery>) {
+  if (query.status && query.status !== "All") where.status = query.status;
+  if (query.approvalStatus && query.approvalStatus !== "All") where.approvalStatus = query.approvalStatus;
+  if (query.liveOnly) {
+    where.approvalStatus = "Approved";
+    where.status = "Active";
+  }
+  applyDestinationFilter(where, query.destinationId);
 }
 
 const PRODUCT_RELATIONS = {
@@ -51,28 +70,107 @@ async function trackProductActivity(userId: string, agencyId?: string | null) {
   });
 }
 
+const APPROVER_ROLES = ["super_admin", "agency_admin"] as const;
+
+type ProductDelegate = {
+  findFirst: (args: { where: Record<string, unknown> }) => Promise<Record<string, unknown> | null>;
+  update: (args: { where: { id: string }; data: Record<string, unknown>; include?: typeof PRODUCT_RELATIONS }) => Promise<Record<string, unknown> & { name: string }>;
+};
+
+async function approveProduct(
+  req: AuthRequest,
+  res: Response,
+  model: ProductDelegate,
+  productType: ProductKind,
+  label: string,
+) {
+  const id = paramId(req);
+  const existing = await model.findFirst({ where: { id } });
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  const creator = existing.createdById ? await db.user.findUnique({ where: { id: String(existing.createdById) } }) : null;
+  const item = await model.update({
+    where: { id },
+    data: {
+      ...buildApproveData(existing),
+      approvedBy: req.auth?.email,
+      approvedAt: new Date(),
+      updatedById: req.auth?.userId,
+    },
+    include: PRODUCT_RELATIONS,
+  });
+  if (creator?.email) {
+    await sendEmail({
+      to: creator.email,
+      subject: `✅ ${label} Approved: ${item.name}`,
+      template: "approval",
+      data: {
+        agentName: creator.name,
+        productName: item.name,
+        productType,
+        approverName: req.auth?.email,
+      },
+    });
+  }
+  res.json({ item });
+}
+
+async function rejectProduct(
+  req: AuthRequest,
+  res: Response,
+  model: ProductDelegate,
+  productType: ProductKind,
+  label: string,
+) {
+  const id = paramId(req);
+  const existing = await model.findFirst({ where: { id } });
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  const creator = existing.createdById ? await db.user.findUnique({ where: { id: String(existing.createdById) } }) : null;
+  const item = await model.update({
+    where: { id },
+    data: {
+      ...buildRejectData(existing, req.body.reason || ""),
+      updatedById: req.auth?.userId,
+    },
+    include: PRODUCT_RELATIONS,
+  });
+  if (creator?.email) {
+    await sendEmail({
+      to: creator.email,
+      subject: `❌ ${label} Rejected: ${item.name}`,
+      template: "rejection",
+      data: {
+        agentName: creator.name,
+        productName: item.name,
+        productType,
+        reason: req.body.reason || "No reason provided",
+        approverName: req.auth?.email,
+      },
+    });
+  }
+  res.json({ item });
+}
+
 function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
   const base = "/api/products/hotels";
 
   app.get(base, requireAuth, requireCrudPermission("hotels", "view"), async (req: AuthRequest, res: Response) => {
     try {
-      const { page, pageSize, q, status, destinationId, sort, order, skip } = parseListQuery(req);
+      const query = parseListQuery(req);
       const where: Record<string, unknown> = { ...agencyScope(req) };
-      if (status && status !== "All") where.status = status;
-      applyDestinationFilter(where, destinationId);
-      if (q) {
+      applyProductListFilters(where, query);
+      if (query.q) {
         where.OR = [
-          { name: { contains: q, mode: "insensitive" } },
-          { city: { contains: q, mode: "insensitive" } },
-          { country: { contains: q, mode: "insensitive" } },
-          { destination: { name: { contains: q, mode: "insensitive" } } },
+          { name: { contains: query.q, mode: "insensitive" } },
+          { city: { contains: query.q, mode: "insensitive" } },
+          { country: { contains: query.q, mode: "insensitive" } },
+          { destination: { name: { contains: query.q, mode: "insensitive" } } },
         ];
       }
       const [items, total] = await Promise.all([
-        db.hotelProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [sort]: order }, skip, take: pageSize }),
+        db.hotelProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [query.sort]: query.order }, skip: query.skip, take: query.pageSize }),
         db.hotelProduct.count({ where }),
       ]);
-      res.json({ items, total, page, pageSize });
+      res.json({ items, total, page: query.page, pageSize: query.pageSize });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -84,11 +182,16 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
       const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
       if (destError) { res.status(400).json({ error: destError }); return; }
       const item = await db.hotelProduct.create({
-        data: { ...req.body, agencyId: req.auth?.agencyId, createdById: req.auth?.userId, updatedById: req.auth?.userId },
+        data: {
+          ...sanitizeCreateBody(req.body),
+          agencyId: req.auth?.agencyId,
+          createdById: req.auth?.userId,
+          updatedById: req.auth?.userId,
+        } as Prisma.HotelProductCreateInput,
         include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
-      res.status(201).json({ item });
+      res.status(201).json({ item, message: "Product saved as draft. Submit rates for admin approval before they go live." });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -106,6 +209,11 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
           ...rest,
           name: `${existing.name} (Copy)`,
           status: "Draft",
+          approvalStatus: "Draft",
+          pendingRateChanges: Prisma.JsonNull,
+          approvedBy: null,
+          approvedAt: null,
+          rejectionReason: null,
           createdById: req.auth?.userId,
           updatedById: req.auth?.userId,
         } as Prisma.HotelProductCreateInput,
@@ -136,13 +244,20 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
         const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
         if (destError) { res.status(400).json({ error: destError }); return; }
       }
+      const { data, rateChangePending } = buildRateAwareUpdate(existing as Record<string, unknown>, req.body, "hotel");
       const item = await db.hotelProduct.update({
         where: { id },
-        data: { ...req.body, updatedById: req.auth?.userId },
+        data: { ...data, updatedById: req.auth?.userId },
         include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
-      res.json({ item });
+      res.json({
+        item,
+        rateChangePending,
+        message: rateChangePending
+          ? "Rate changes submitted for admin approval. Current live rates remain until approved."
+          : "Product updated",
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -158,7 +273,12 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
         try {
           if (!row?.name) { failed += 1; continue; }
           await db.hotelProduct.create({
-            data: { ...row, agencyId: req.auth?.agencyId, createdById: req.auth?.userId, updatedById: req.auth?.userId },
+            data: {
+              ...sanitizeCreateBody(row),
+              agencyId: req.auth?.agencyId,
+              createdById: req.auth?.userId,
+              updatedById: req.auth?.userId,
+            } as Prisma.HotelProductCreateInput,
           });
           imported += 1;
         } catch {
@@ -185,6 +305,41 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
       res.status(500).json({ error: "Server error" });
     }
   });
+
+  app.post(`${base}/:id/submit-for-approval`, requireAuth, requireCrudPermission("hotels", "edit"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      const existing = await db.hotelProduct.findFirst({ where: { id, ...agencyScope(req) } });
+      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const item = await db.hotelProduct.update({
+        where: { id },
+        data: { approvalStatus: "Pending", updatedById: req.auth?.userId },
+        include: PRODUCT_RELATIONS,
+      });
+      res.json({ item, message: "Rates submitted for admin approval." });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post(`${base}/:id/approve`, requireAuth, requireRole(...APPROVER_ROLES), async (req: AuthRequest, res: Response) => {
+    try {
+      await approveProduct(req, res, db.hotelProduct, "hotel", "Hotel");
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post(`${base}/:id/reject`, requireAuth, requireRole(...APPROVER_ROLES), async (req: AuthRequest, res: Response) => {
+    try {
+      await rejectProduct(req, res, db.hotelProduct, "hotel", "Hotel");
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
 }
 
 function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
@@ -192,22 +347,21 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
 
   app.get(base, requireAuth, requireCrudPermission("activities", "view"), async (req: AuthRequest, res: Response) => {
     try {
-      const { page, pageSize, q, status, destinationId, sort, order, skip } = parseListQuery(req);
+      const query = parseListQuery(req);
       const where: Record<string, unknown> = { ...agencyScope(req) };
-      if (status && status !== "All") where.status = status;
-      applyDestinationFilter(where, destinationId);
-      if (q) {
+      applyProductListFilters(where, query);
+      if (query.q) {
         where.OR = [
-          { name: { contains: q, mode: "insensitive" } },
-          { location: { contains: q, mode: "insensitive" } },
-          { destination: { name: { contains: q, mode: "insensitive" } } },
+          { name: { contains: query.q, mode: "insensitive" } },
+          { location: { contains: query.q, mode: "insensitive" } },
+          { destination: { name: { contains: query.q, mode: "insensitive" } } },
         ];
       }
       const [items, total] = await Promise.all([
-        db.activityProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [sort]: order }, skip, take: pageSize }),
+        db.activityProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [query.sort]: query.order }, skip: query.skip, take: query.pageSize }),
         db.activityProduct.count({ where }),
       ]);
-      res.json({ items, total, page, pageSize });
+      res.json({ items, total, page: query.page, pageSize: query.pageSize });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -219,11 +373,16 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
       const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
       if (destError) { res.status(400).json({ error: destError }); return; }
       const item = await db.activityProduct.create({
-        data: { ...req.body, agencyId: req.auth?.agencyId, createdById: req.auth?.userId, updatedById: req.auth?.userId },
+        data: {
+          ...sanitizeCreateBody(req.body),
+          agencyId: req.auth?.agencyId,
+          createdById: req.auth?.userId,
+          updatedById: req.auth?.userId,
+        } as Prisma.ActivityProductCreateInput,
         include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
-      res.status(201).json({ item });
+      res.status(201).json({ item, message: "Product saved as draft. Submit rates for admin approval before they go live." });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -241,6 +400,11 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
           ...rest,
           name: `${existing.name} (Copy)`,
           status: "Draft",
+          approvalStatus: "Draft",
+          pendingRateChanges: Prisma.JsonNull,
+          approvedBy: null,
+          approvedAt: null,
+          rejectionReason: null,
           createdById: req.auth?.userId,
           updatedById: req.auth?.userId,
         } as Prisma.ActivityProductCreateInput,
@@ -271,13 +435,20 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
         const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
         if (destError) { res.status(400).json({ error: destError }); return; }
       }
+      const { data, rateChangePending } = buildRateAwareUpdate(existing as Record<string, unknown>, req.body, "activity");
       const item = await db.activityProduct.update({
         where: { id },
-        data: { ...req.body, updatedById: req.auth?.userId },
+        data: { ...data, updatedById: req.auth?.userId },
         include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
-      res.json({ item });
+      res.json({
+        item,
+        rateChangePending,
+        message: rateChangePending
+          ? "Rate changes submitted for admin approval. Current live rates remain until approved."
+          : "Product updated",
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -293,7 +464,12 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
         try {
           if (!row?.name) { failed += 1; continue; }
           await db.activityProduct.create({
-            data: { ...row, agencyId: req.auth?.agencyId, createdById: req.auth?.userId, updatedById: req.auth?.userId },
+            data: {
+              ...sanitizeCreateBody(row),
+              agencyId: req.auth?.agencyId,
+              createdById: req.auth?.userId,
+              updatedById: req.auth?.userId,
+            } as Prisma.ActivityProductCreateInput,
           });
           imported += 1;
         } catch {
@@ -329,82 +505,27 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
       const item = await db.activityProduct.update({
         where: { id },
         data: { approvalStatus: "Pending", updatedById: req.auth?.userId },
+        include: PRODUCT_RELATIONS,
       });
-      res.json({ item });
+      res.json({ item, message: "Rates submitted for admin approval." });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
     }
   });
 
-  app.post(`${base}/:id/approve`, requireAuth, requirePermission("activities"), async (req: AuthRequest, res: Response) => {
+  app.post(`${base}/:id/approve`, requireAuth, requireRole(...APPROVER_ROLES), async (req: AuthRequest, res: Response) => {
     try {
-      const id = paramId(req);
-      const existing = await db.activityProduct.findFirst({ where: { id } });
-      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-      const creator = existing.createdById ? await db.user.findUnique({ where: { id: existing.createdById } }) : null;
-      const item = await db.activityProduct.update({
-        where: { id },
-        data: {
-          approvalStatus: "Approved",
-          status: "Active",
-          approvedBy: req.auth?.email,
-          approvedAt: new Date(),
-          updatedById: req.auth?.userId,
-        },
-      });
-      // Send approval email
-      if (creator?.email) {
-        await sendEmail({
-          to: creator.email,
-          subject: `✅ Activity Approved: ${item.name}`,
-          template: "approval",
-          data: {
-            agentName: creator.name,
-            productName: item.name,
-            productType: "activity",
-            approverName: req.auth?.email,
-          },
-        });
-      }
-      res.json({ item });
+      await approveProduct(req, res, db.activityProduct, "activity", "Activity");
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
     }
   });
 
-  app.post(`${base}/:id/reject`, requireAuth, requirePermission("activities"), async (req: AuthRequest, res: Response) => {
+  app.post(`${base}/:id/reject`, requireAuth, requireRole(...APPROVER_ROLES), async (req: AuthRequest, res: Response) => {
     try {
-      const id = paramId(req);
-      const existing = await db.activityProduct.findFirst({ where: { id } });
-      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-      const creator = existing.createdById ? await db.user.findUnique({ where: { id: existing.createdById } }) : null;
-      const item = await db.activityProduct.update({
-        where: { id },
-        data: {
-          approvalStatus: "Rejected",
-          status: "Draft",
-          rejectionReason: req.body.reason || "",
-          updatedById: req.auth?.userId,
-        },
-      });
-      // Send rejection email
-      if (creator?.email) {
-        await sendEmail({
-          to: creator.email,
-          subject: `❌ Activity Rejected: ${item.name}`,
-          template: "rejection",
-          data: {
-            agentName: creator.name,
-            productName: item.name,
-            productType: "activity",
-            reason: req.body.reason || "No reason provided",
-            approverName: req.auth?.email,
-          },
-        });
-      }
-      res.json({ item });
+      await rejectProduct(req, res, db.activityProduct, "activity", "Activity");
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -417,23 +538,22 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
 
   app.get(base, requireAuth, requireCrudPermission("transfers", "view"), async (req: AuthRequest, res: Response) => {
     try {
-      const { page, pageSize, q, status, destinationId, sort, order, skip } = parseListQuery(req);
+      const query = parseListQuery(req);
       const where: Record<string, unknown> = { ...agencyScope(req) };
-      if (status && status !== "All") where.status = status;
-      applyDestinationFilter(where, destinationId);
-      if (q) {
+      applyProductListFilters(where, query);
+      if (query.q) {
         where.OR = [
-          { name: { contains: q, mode: "insensitive" } },
-          { pickupLocation: { contains: q, mode: "insensitive" } },
-          { dropLocation: { contains: q, mode: "insensitive" } },
-          { destination: { name: { contains: q, mode: "insensitive" } } },
+          { name: { contains: query.q, mode: "insensitive" } },
+          { pickupLocation: { contains: query.q, mode: "insensitive" } },
+          { dropLocation: { contains: query.q, mode: "insensitive" } },
+          { destination: { name: { contains: query.q, mode: "insensitive" } } },
         ];
       }
       const [items, total] = await Promise.all([
-        db.transferProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [sort]: order }, skip, take: pageSize }),
+        db.transferProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [query.sort]: query.order }, skip: query.skip, take: query.pageSize }),
         db.transferProduct.count({ where }),
       ]);
-      res.json({ items, total, page, pageSize });
+      res.json({ items, total, page: query.page, pageSize: query.pageSize });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -445,11 +565,16 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
       const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
       if (destError) { res.status(400).json({ error: destError }); return; }
       const item = await db.transferProduct.create({
-        data: { ...req.body, agencyId: req.auth?.agencyId, createdById: req.auth?.userId, updatedById: req.auth?.userId },
+        data: {
+          ...sanitizeCreateBody(req.body),
+          agencyId: req.auth?.agencyId,
+          createdById: req.auth?.userId,
+          updatedById: req.auth?.userId,
+        } as Prisma.TransferProductCreateInput,
         include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
-      res.status(201).json({ item });
+      res.status(201).json({ item, message: "Product saved as draft. Submit rates for admin approval before they go live." });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -467,6 +592,11 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
           ...rest,
           name: `${existing.name} (Copy)`,
           status: "Draft",
+          approvalStatus: "Draft",
+          pendingRateChanges: Prisma.JsonNull,
+          approvedBy: null,
+          approvedAt: null,
+          rejectionReason: null,
           createdById: req.auth?.userId,
           updatedById: req.auth?.userId,
         } as Prisma.TransferProductCreateInput,
@@ -497,13 +627,20 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
         const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
         if (destError) { res.status(400).json({ error: destError }); return; }
       }
+      const { data, rateChangePending } = buildRateAwareUpdate(existing as Record<string, unknown>, req.body, "transfer");
       const item = await db.transferProduct.update({
         where: { id },
-        data: { ...req.body, updatedById: req.auth?.userId },
+        data: { ...data, updatedById: req.auth?.userId },
         include: PRODUCT_RELATIONS,
       });
       await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
-      res.json({ item });
+      res.json({
+        item,
+        rateChangePending,
+        message: rateChangePending
+          ? "Rate changes submitted for admin approval. Current live rates remain until approved."
+          : "Product updated",
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -519,7 +656,12 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
         try {
           if (!row?.name || !row?.pickupLocation || !row?.dropLocation) { failed += 1; continue; }
           await db.transferProduct.create({
-            data: { ...row, agencyId: req.auth?.agencyId, createdById: req.auth?.userId, updatedById: req.auth?.userId },
+            data: {
+              ...sanitizeCreateBody(row),
+              agencyId: req.auth?.agencyId,
+              createdById: req.auth?.userId,
+              updatedById: req.auth?.userId,
+            } as Prisma.TransferProductCreateInput,
           });
           imported += 1;
         } catch {
@@ -555,82 +697,27 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
       const item = await db.transferProduct.update({
         where: { id },
         data: { approvalStatus: "Pending", updatedById: req.auth?.userId },
+        include: PRODUCT_RELATIONS,
       });
-      res.json({ item });
+      res.json({ item, message: "Rates submitted for admin approval." });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
     }
   });
 
-  app.post(`${base}/:id/approve`, requireAuth, requirePermission("activities"), async (req: AuthRequest, res: Response) => {
+  app.post(`${base}/:id/approve`, requireAuth, requireRole(...APPROVER_ROLES), async (req: AuthRequest, res: Response) => {
     try {
-      const id = paramId(req);
-      const existing = await db.transferProduct.findFirst({ where: { id } });
-      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-      const creator = existing.createdById ? await db.user.findUnique({ where: { id: existing.createdById } }) : null;
-      const item = await db.transferProduct.update({
-        where: { id },
-        data: {
-          approvalStatus: "Approved",
-          status: "Active",
-          approvedBy: req.auth?.email,
-          approvedAt: new Date(),
-          updatedById: req.auth?.userId,
-        },
-      });
-      // Send approval email
-      if (creator?.email) {
-        await sendEmail({
-          to: creator.email,
-          subject: `✅ Transfer Approved: ${item.name}`,
-          template: "approval",
-          data: {
-            agentName: creator.name,
-            productName: item.name,
-            productType: "transfer",
-            approverName: req.auth?.email,
-          },
-        });
-      }
-      res.json({ item });
+      await approveProduct(req, res, db.transferProduct, "transfer", "Transfer");
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
     }
   });
 
-  app.post(`${base}/:id/reject`, requireAuth, requirePermission("activities"), async (req: AuthRequest, res: Response) => {
+  app.post(`${base}/:id/reject`, requireAuth, requireRole(...APPROVER_ROLES), async (req: AuthRequest, res: Response) => {
     try {
-      const id = paramId(req);
-      const existing = await db.transferProduct.findFirst({ where: { id } });
-      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
-      const creator = existing.createdById ? await db.user.findUnique({ where: { id: existing.createdById } }) : null;
-      const item = await db.transferProduct.update({
-        where: { id },
-        data: {
-          approvalStatus: "Rejected",
-          status: "Draft",
-          rejectionReason: req.body.reason || "",
-          updatedById: req.auth?.userId,
-        },
-      });
-      // Send rejection email
-      if (creator?.email) {
-        await sendEmail({
-          to: creator.email,
-          subject: `❌ Transfer Rejected: ${item.name}`,
-          template: "rejection",
-          data: {
-            agentName: creator.name,
-            productName: item.name,
-            productType: "transfer",
-            reason: req.body.reason || "No reason provided",
-            approverName: req.auth?.email,
-          },
-        });
-      }
-      res.json({ item });
+      await rejectProduct(req, res, db.transferProduct, "transfer", "Transfer");
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });

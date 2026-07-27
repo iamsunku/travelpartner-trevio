@@ -329,8 +329,19 @@ export const api = {
   getApiKeys: () => apiFetch<{ keys: any[] }>("/api/management/keys"),
   createApiKey: (body: any) => apiFetch<any>("/api/management/keys", { method: "POST", body: JSON.stringify(body) }),
 
-  getSupportTickets: () => apiFetch<{ tickets: any[] }>("/api/support/tickets"),
-  createSupportTicket: (body: any) => apiFetch<any>("/api/support/tickets", { method: "POST", body: JSON.stringify(body) }),
+  getSupportTickets: (params?: { operationsType?: string; deliveryType?: string; department?: string; status?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.operationsType) q.set("operationsType", params.operationsType);
+    if (params?.deliveryType) q.set("deliveryType", params.deliveryType);
+    if (params?.department) q.set("department", params.department);
+    if (params?.status) q.set("status", params.status);
+    const qs = q.toString();
+    return apiFetch<{ tickets: SupportTicketApi[] }>(`/api/support/tickets${qs ? `?${qs}` : ""}`);
+  },
+  createSupportTicket: (body: CreateSupportTicketBody) =>
+    apiFetch<{ ticket: SupportTicketApi }>("/api/support/tickets", { method: "POST", body: JSON.stringify(body) }),
+  updateSupportTicket: (id: string, body: Partial<{ status: string; assignedTo: string; priority: string; deliveryType: string; scheduledAt: string | null }>) =>
+    apiFetch<{ ticket: SupportTicketApi }>(`/api/support/tickets/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   getSettings: () => apiFetch<any>("/api/settings"),
   updateSettings: (body: any) => apiFetch<any>("/api/settings", { method: "PUT", body: JSON.stringify(body) }),
@@ -479,6 +490,36 @@ export interface ApiTask {
   dueDate: string;
   relatedTo?: string | null;
   createdAt: string;
+}
+
+export interface SupportTicketApi {
+  id: string;
+  ticketId: string;
+  subject: string;
+  description: string;
+  status: string;
+  priority: string;
+  operationsType: string;
+  deliveryType: string;
+  department: string;
+  scheduledAt?: string | null;
+  customerName: string;
+  customerId?: string | null;
+  assignedTo?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSupportTicketBody {
+  subject: string;
+  description: string;
+  priority?: string;
+  operationsType: string;
+  deliveryType: string;
+  scheduledAt?: string;
+  customerName: string;
+  customerId?: string;
+  assignedTo?: string;
 }
 
 export interface ApiAuditLog {

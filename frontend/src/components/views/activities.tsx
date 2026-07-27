@@ -2,23 +2,10 @@
 
 import { ProductCatalog } from "@/components/shared/product-catalog";
 import { Badge } from "@/components/ui/badge";
+import { formatActivityPrice } from "@/lib/currency";
+import type { ProductRecord } from "@/types";
 
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  INR: "₹",
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  SGD: "S$",
-  AUD: "A$",
-  CAD: "C$",
-  JPY: "¥",
-  CNY: "¥",
-  AED: "د.إ",
-  SAR: "﷼",
-  QAR: "﷼",
-};
-
-function ApprovalStatusBadge(item: any) {
+function ApprovalStatusBadge(item: ProductRecord) {
   const status = item.approvalStatus || "Draft";
   const badgeColor: Record<string, string> = {
     Draft: "bg-gray-100 text-gray-800",
@@ -33,13 +20,6 @@ function ApprovalStatusBadge(item: any) {
   );
 }
 
-function PriceDisplay(item: any) {
-  const currency = item.currency || "INR";
-  const symbol = CURRENCY_SYMBOLS[currency] || currency;
-  const price = Number(item.adultPrice ?? 0);
-  return `${symbol}${price.toLocaleString("en-IN")}`;
-}
-
 export function ActivitiesView() {
   return (
     <ProductCatalog
@@ -51,8 +31,8 @@ export function ActivitiesView() {
         { key: "name", label: "Activity" },
         { key: "location", label: "Location" },
         { key: "duration", label: "Duration" },
-        { key: "adultPrice", label: "Adult Price", render: PriceDisplay },
-        { key: "currency", label: "Currency" },
+        { key: "adultPrice", label: "Adult Price", render: (item) => formatActivityPrice(item) },
+        { key: "currency", label: "Currency", render: (item) => String(item.currency || "INR").toUpperCase() },
         { key: "approvalStatus", label: "Approval", render: ApprovalStatusBadge },
       ]}
     />
