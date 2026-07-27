@@ -3,13 +3,15 @@ import { logger } from "./logger.js";
 export interface EmailPayload {
   to: string;
   subject: string;
-  template: "approval" | "rejection";
+  template: "approval" | "rejection" | "password_reset" | "temp_credentials";
   data: {
     agentName: string;
-    productName: string;
-    productType: "activity" | "transfer" | "hotel";
+    productName?: string;
+    productType?: "activity" | "transfer" | "hotel";
     reason?: string;
     approverName?: string;
+    tempPassword?: string;
+    loginEmail?: string;
   };
 }
 
@@ -37,12 +39,16 @@ function loadSendGrid(): Promise<SendGridMail | null> {
   return sgMailPromise;
 }
 
+function buildHtml(payload: EmailPayload): string {
+  if (payload.template === "approval") return generateApprovalEmail(payload);
+  if (payload.template === "rejection") return generateRejectionEmail(payload);
+  if (payload.template === "password_reset") return generatePasswordResetEmail(payload);
+  return generateTempCredentialsEmail(payload);
+}
+
 export async function sendEmail(payload: EmailPayload): Promise<boolean> {
   try {
-    const html = payload.template === "approval"
-      ? generateApprovalEmail(payload)
-      : generateRejectionEmail(payload);
-
+    const html = buildHtml(payload);
     const sgMail = await loadSendGrid();
     if (sgMail) {
       await sgMail.send({
@@ -61,6 +67,20 @@ export async function sendEmail(payload: EmailPayload): Promise<boolean> {
     logger.error(`Email send failed: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
+}
+
+/** True when plaintext temp passwords may be returned in API responses (dev/test only). */
+export function allowInsecureTempPasswordResponse(): boolean {
+  if (process.env.ALLOW_INSECURE_TEMP_PASSWORD_RESPONSE === "true") return true;
+  if (process.env.ALLOW_INSECURE_TEMP_PASSWORD_RESPONSE === "false") return false;
+  return process.env.NODE_ENV !== "production";
+}
+
+/** Demo checkout is allowed only outside production, unless explicitly enabled. */
+export function allowDemoPayments(): boolean {
+  if (process.env.ALLOW_DEMO_PAYMENTS === "true") return true;
+  if (process.env.ALLOW_DEMO_PAYMENTS === "false") return false;
+  return process.env.NODE_ENV !== "production";
 }
 
 export function generateApprovalEmail(payload: EmailPayload): string {
@@ -86,5 +106,29 @@ export function generateRejectionEmail(payload: EmailPayload): string {
     <p>Please review and edit the rates, then resubmit for approval.</p>
     <p>Rejected by: <strong>${approverName || "Admin"}</strong></p>
     <p>Best regards,<br/>TravelPartner Pro Team</p>
+  `;
+}
+
+export function generatePasswordResetEmail(payload: EmailPayload): string {
+  const { agentName, tempPassword } = payload.data;
+  return `
+    <h2>Password Reset</h2>
+    <p>Hi ${agentName},</p>
+    <p>Your password has been reset. Use this temporary password to sign in, then change it immediately:</p>
+    <p style="background:#f3f4f6;padding:12px;font-size:18px;font-weight:bold;letter-spacing:1px;">${tempPassword}</p>
+    <p>If you did not request this, contact your administrator.</p>
+    <p>Best regards,<br/>Trevio Global Team</p>
+  `;
+}
+
+export function generateTempCredentialsEmail(payload: EmailPayload): string {
+  const { agentName, loginEmail, tempPassword } = payload.data;
+  return `
+    <h2>Your Trevio Account</h2>
+    <p>Hi ${agentName},</p>
+    <p>An account has been created for you.</p>
+    <p><strong>Login:</strong> ${loginEmail}<br/><strong>Temporary password:</strong> ${tempPassword}</p>
+    <p>Please sign in and change your password.</p>
+    <p>Best regards,<br/>Trevio Global Team</p>
   `;
 }

@@ -111,6 +111,11 @@ export const quotationSchema = z.object({
     description: z.string(),
     qty: z.number().int().min(1),
     price: z.number().min(0),
+    type: z.string().optional(),
+    imageUrl: z.string().optional(),
+    currency: z.string().optional(),
+    title: z.string().optional(),
+    meta: z.string().optional(),
   })).optional(),
 });
 

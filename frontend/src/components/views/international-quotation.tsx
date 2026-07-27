@@ -14,7 +14,6 @@ import { useDemoDataStore } from "@/store/demo-data-store";
 import { formatFullINR } from "@/components/shared/ui-helpers";
 import { downloadInternationalQuotationPdf } from "@/lib/quotation-pdf";
 import type { NewQuotationInput } from "@/types";
-import { api } from "@/lib/api";
 
 function persistQuotation(input: NewQuotationInput) {
   useDemoDataStore.getState().addQuotation(input);
@@ -118,9 +117,9 @@ export function InternationalQuotationDialog() {
     };
 
     try {
-      await api.createQuotation(payload);
       persistQuotation(payload);
       toast({ title: send ? "International quotation sent" : "International quotation saved" });
+      if (send) exportPdf();
       setOpen(false);
       setForm({
         ...EMPTY_FORM,

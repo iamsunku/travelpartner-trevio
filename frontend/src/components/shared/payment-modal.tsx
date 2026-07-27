@@ -66,7 +66,11 @@ export function PaymentModal({
     const result = await payWithRazorpay({ amount, name: "TravelPro", description });
     setProcessing(false);
     if (!result.success) {
-      toast({ title: "Payment cancelled or failed", description: "No amount was charged.", variant: "destructive" });
+      toast({
+        title: "Payment cancelled or failed",
+        description: result.error || "No amount was charged.",
+        variant: "destructive",
+      });
       return;
     }
     if (result.demo) {

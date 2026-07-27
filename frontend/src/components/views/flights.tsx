@@ -38,6 +38,7 @@ import { api } from "@/lib/api";
 import { mapApiFlight } from "@/lib/api-mappers";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { payWithRazorpay } from "@/lib/razorpay";
+import { mockInventoryBannerText } from "@/lib/runtime-mode";
 import { ShareTicket } from "@/components/shared/share-ticket";
 import type { Flight } from "@/types";
 
@@ -476,7 +477,7 @@ export function FlightsView() {
       const result = await payWithRazorpay({ amount: totalFare, name: "TravelPro", description, prefillEmail: contactEmail, prefillContact: contactPhone });
       if (!result.success) {
         setPaying(false);
-        toast({ title: "Payment cancelled or failed", description: "No amount was charged.", variant: "destructive" });
+        toast({ title: "Payment cancelled or failed", description: result.error || "No amount was charged.", variant: "destructive" });
         return;
       }
       if (result.demo) {
@@ -528,11 +529,14 @@ export function FlightsView() {
         title="Flight Booking"
         subtitle="Search and book domestic & international flights at the best fares"
         action={
-          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400 border-0">
-            <Sparkles className="w-3 h-3 mr-1" /> Best Price Guarantee
+          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400 border-0">
+            Demo inventory
           </Badge>
         }
       />
+      <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 mb-4">
+        {mockInventoryBannerText()}
+      </div>
 
       {/* SEARCH PANEL — always visible at top in search/results */}
       <SearchPanel

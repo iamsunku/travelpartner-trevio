@@ -27,6 +27,7 @@ export interface RazorpayCheckoutResult {
   success: boolean;
   demo: boolean;
   paymentId?: string;
+  error?: string;
 }
 
 export interface RazorpayCheckoutOptions {
@@ -39,27 +40,44 @@ export interface RazorpayCheckoutOptions {
 
 /**
  * Opens real Razorpay checkout when the backend has live keys configured.
- * Falls back to a simulated success after a short delay ("demo mode") when
- * no keys are set, so the booking flow keeps working before go-live.
+ * Demo mode only when backend returns demoAllowed (non-production by default).
+ * Production without keys fails closed — no fake "paid" success.
  */
 export async function payWithRazorpay(opts: RazorpayCheckoutOptions): Promise<RazorpayCheckoutResult> {
   let order: Awaited<ReturnType<typeof api.createRazorpayOrder>>;
   try {
     order = await api.createRazorpayOrder(opts.amount);
-  } catch {
-    order = { configured: false };
+  } catch (e) {
+    return {
+      success: false,
+      demo: false,
+      error: e instanceof Error ? e.message : "Unable to start payment",
+    };
   }
 
   if (!order.configured || !order.orderId || !order.keyId) {
-    // Demo mode — no real Razorpay keys configured on the backend yet.
-    await new Promise((r) => setTimeout(r, 1600));
-    return { success: true, demo: true };
+    if (order.demoAllowed) {
+      await new Promise((r) => setTimeout(r, 800));
+      return { success: true, demo: true };
+    }
+    return {
+      success: false,
+      demo: false,
+      error: "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the server.",
+    };
   }
 
   const scriptReady = await loadCheckoutScript();
   if (!scriptReady || !window.Razorpay) {
-    await new Promise((r) => setTimeout(r, 1600));
-    return { success: true, demo: true };
+    if (order.demoAllowed) {
+      await new Promise((r) => setTimeout(r, 800));
+      return { success: true, demo: true };
+    }
+    return {
+      success: false,
+      demo: false,
+      error: "Razorpay checkout failed to load. Check your network and try again.",
+    };
   }
 
   return new Promise((resolve) => {
@@ -68,7 +86,7 @@ export async function payWithRazorpay(opts: RazorpayCheckoutOptions): Promise<Ra
       amount: order.amount,
       currency: order.currency,
       order_id: order.orderId,
-      name: "TravelPro",
+      name: "Trevio Global",
       description: opts.description,
       prefill: { email: opts.prefillEmail, contact: opts.prefillContact },
       handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
@@ -80,13 +98,13 @@ export async function payWithRazorpay(opts: RazorpayCheckoutOptions): Promise<Ra
           );
           resolve({ success: verify.verified, demo: false, paymentId: response.razorpay_payment_id });
         } catch {
-          resolve({ success: false, demo: false });
+          resolve({ success: false, demo: false, error: "Payment verification failed" });
         }
       },
       modal: {
-        ondismiss: () => resolve({ success: false, demo: false }),
+        ondismiss: () => resolve({ success: false, demo: false, error: "Payment cancelled" }),
       },
-      theme: { color: "#0d9488" },
+      theme: { color: "#2A7BBD" },
     });
     rzp.open();
   });

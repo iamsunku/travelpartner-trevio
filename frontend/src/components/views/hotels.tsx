@@ -32,6 +32,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { formatFullINR, PageHeader, PageShell } from "@/components/shared/ui-helpers";
+import { mockInventoryBannerText } from "@/lib/runtime-mode";
 import { CitySearchField, type CityOption } from "@/components/shared/city-search-field";
 import { generateHotels } from "@/lib/mock-data";
 import { api } from "@/lib/api";
@@ -299,7 +300,7 @@ export function HotelsView() {
       const result = await payWithRazorpay({ amount: total, name: "TravelPro", description, prefillEmail: guestEmail, prefillContact: guestPhone });
       if (!result.success) {
         setPaying(false);
-        toast({ title: "Payment cancelled or failed", description: "No amount was charged.", variant: "destructive" });
+        toast({ title: "Payment cancelled or failed", description: result.error || "No amount was charged.", variant: "destructive" });
         return;
       }
       if (result.demo) {
@@ -348,11 +349,14 @@ export function HotelsView() {
         title="Hotel Booking"
         subtitle="Book from 50,000+ hotels worldwide · Best price guaranteed"
         action={
-          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400 border-0">
-            <Sparkles className="w-3 h-3 mr-1" /> Up to 40% off
+          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-400 border-0">
+            Demo inventory
           </Badge>
         }
       />
+      <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 mb-4">
+        {mockInventoryBannerText()}
+      </div>
 
       {/* SEARCH PANEL */}
       <HotelSearchPanel

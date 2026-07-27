@@ -3,10 +3,10 @@
 import { useMemo, useState } from "react";
 import {
   FileText, Send, FileDown, Plus, Trash2, CheckCircle2, Clock,
-  XCircle, AlertCircle, Mail, MessageCircle, Eye, TrendingUp, Wallet,
-  IndianRupee, Percent,
+  Mail, MessageCircle, Eye, TrendingUp, Wallet, Percent,
 } from "lucide-react";
 import { useDemoDataStore } from "@/store/demo-data-store";
+import { useAuthStore } from "@/store/app-store";
 import type { Quotation } from "@/types";
 import {
   formatINR, formatFullINR, StatusBadge, PageHeader, PageShell, MetricCard,
@@ -33,6 +33,12 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { InternationalQuotationDialog } from "@/components/views/international-quotation";
 import { ProductQuoteBuilderDialog } from "@/components/shared/product-quote-builder";
+import {
+  downloadQuotationPdf,
+  getQuotationLineItems,
+  shareQuotationViaEmail,
+  shareQuotationViaWhatsApp,
+} from "@/lib/quotation-actions";
 
 const SERVICE_COLORS: Record<string, string> = {
   Flight: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400",
@@ -45,10 +51,56 @@ const SERVICE_COLORS: Record<string, string> = {
 
 interface QuoteItem { id: string; description: string; qty: number; price: number; }
 
+function useQuoteActions() {
+  const { toast } = useToast();
+  const updateQuotationStatus = useDemoDataStore((s) => s.updateQuotationStatus);
+
+  function pdf(quote: Quotation) {
+    const ok = downloadQuotationPdf(quote);
+    toast({
+      title: ok ? "PDF ready" : "Popup blocked",
+      description: ok
+        ? "Use the print dialog → Save as PDF. Then share the file with your client."
+        : "Allow popups to open the quotation PDF.",
+      variant: ok ? "default" : "destructive",
+    });
+    return ok;
+  }
+
+  function email(quote: Quotation) {
+    pdf(quote);
+    shareQuotationViaEmail(quote);
+    if (quote.status === "Draft") updateQuotationStatus(quote.id, "Sent");
+    toast({
+      title: "Email draft opened",
+      description: "Attach the PDF from the print dialog, then send to the client.",
+    });
+  }
+
+  function whatsapp(quote: Quotation) {
+    pdf(quote);
+    shareQuotationViaWhatsApp(quote);
+    if (quote.status === "Draft") updateQuotationStatus(quote.id, "Sent");
+    toast({
+      title: "WhatsApp opened",
+      description: "Message pre-filled. Attach the PDF quotation if the client needs the full document.",
+    });
+  }
+
+  function markSent(quote: Quotation) {
+    updateQuotationStatus(quote.id, "Sent");
+    toast({ title: "Marked as sent", description: `${quote.quoteNo} → ${quote.customerName}` });
+  }
+
+  return { pdf, email, whatsapp, markSent };
+}
+
 function CreateQuotationDialog() {
   const { toast } = useToast();
+  const { pdf, email, whatsapp } = useQuoteActions();
   const customers = useDemoDataStore((s) => s.customers);
   const addQuotation = useDemoDataStore((s) => s.addQuotation);
+  const user = useAuthStore((s) => s.user);
   const [open, setOpen] = useState(false);
   const [customer, setCustomer] = useState("");
   const [service, setService] = useState("Flight");
@@ -56,7 +108,9 @@ function CreateQuotationDialog() {
     { id: "1", description: "Flight - DEL → DXB (Return)", qty: 1, price: 28000 },
   ]);
   const [discount, setDiscount] = useState(0);
+  const [shareQuote, setShareQuote] = useState<Quotation | null>(null);
 
+  const selectedCustomer = customers.find((c) => c.name === customer);
   const subtotal = items.reduce((s, i) => s + i.qty * i.price, 0);
   const discountAmount = (subtotal * discount) / 100;
   const taxableAmount = subtotal - discountAmount;
@@ -72,6 +126,7 @@ function CreateQuotationDialog() {
   function updateRow(id: string, field: keyof QuoteItem, value: string | number) {
     setItems(items.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
   }
+
   function save(asDraft: boolean) {
     if (!customer) {
       toast({ title: "Select customer", description: "Please choose a customer first", variant: "destructive" });
@@ -81,7 +136,7 @@ function CreateQuotationDialog() {
       toast({ title: "Add line items", description: "Add at least one item with a price", variant: "destructive" });
       return;
     }
-    addQuotation({
+    const quote = addQuotation({
       customerName: customer,
       service: service as Quotation["service"],
       items: items.length,
@@ -89,118 +144,165 @@ function CreateQuotationDialog() {
       gst,
       total,
       validTill: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
-      createdBy: "Sneha Reddy",
+      createdBy: user?.name || "Team",
+      contactEmail: selectedCustomer?.email,
+      contactPhone: selectedCustomer?.phone,
+      status: asDraft ? "Draft" : "Sent",
+      lineItems: items.map((i) => ({
+        description: i.description || `${service} item`,
+        qty: i.qty,
+        price: i.price,
+      })),
     });
     toast({
-      title: asDraft ? "Quotation saved as draft" : "Quotation sent to customer",
-      description: `${customer} · Total ${formatINR(total)} ${asDraft ? "(Draft)" : "(Sent)"}`,
+      title: asDraft ? "Quotation saved as draft" : "Quotation created",
+      description: `${customer} · Total ${formatINR(total)}`,
     });
     setOpen(false);
     setCustomer("");
     setService("Flight");
     setItems([{ id: "1", description: "", qty: 1, price: 0 }]);
     setDiscount(0);
+    if (!asDraft) setShareQuote(quote);
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="bg-primary hover:bg-primary/90">
-          <Plus className="w-4 h-4 mr-1" /> Create Quotation
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Create Quotation</DialogTitle>
-          <DialogDescription>Build a detailed quotation with line items, discount and GST.</DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button className="bg-primary hover:bg-primary/90">
+            <Plus className="w-4 h-4 mr-1" /> Create Quotation
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Create Quotation</DialogTitle>
+            <DialogDescription>
+              Build a client quote from their requirements, then download PDF or share via email / WhatsApp.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Customer</Label>
-            <Select value={customer} onValueChange={setCustomer}>
-              <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
-              <SelectContent>
-                {customers.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Service Type</Label>
-            <Select value={service} onValueChange={setService}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {["Flight", "Hotel", "Holiday"].map((s) => (
-                  <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Line Items</Label>
-            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addRow}>
-              <Plus className="w-3 h-3 mr-1" /> Add Row
-            </Button>
-          </div>
-          <div className="rounded-lg border max-h-48 overflow-y-auto scroll-thin">
-            {items.map((item) => (
-              <div key={item.id} className="grid grid-cols-12 gap-2 p-2 border-b last:border-0 items-center">
-                <Input
-                  className="col-span-6 h-8 text-xs"
-                  placeholder="Description"
-                  value={item.description}
-                  onChange={(e) => updateRow(item.id, "description", e.target.value)}
-                />
-                <Input
-                  className="col-span-2 h-8 text-xs"
-                  type="number"
-                  placeholder="Qty"
-                  value={item.qty}
-                  onChange={(e) => updateRow(item.id, "qty", Number(e.target.value))}
-                />
-                <Input
-                  className="col-span-3 h-8 text-xs"
-                  type="number"
-                  placeholder="Price ₹"
-                  value={item.price}
-                  onChange={(e) => updateRow(item.id, "price", Number(e.target.value))}
-                />
-                <Button variant="ghost" size="sm" className="col-span-1 h-8 text-rose-500" onClick={() => removeRow(item.id)}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label>Discount (%)</Label>
-            <div className="relative">
-              <Percent className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <Input type="number" min={0} max={100} value={discount} onChange={(e) => setDiscount(Number(e.target.value))} className="pl-8" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Customer</Label>
+              <Select value={customer} onValueChange={setCustomer}>
+                <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
+                <SelectContent>
+                  {customers.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Service Type</Label>
+              <Select value={service} onValueChange={setService}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["Flight", "Hotel", "Holiday"].map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <div className="rounded-lg bg-muted/40 p-3 text-xs space-y-1">
-            <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatFullINR(subtotal)}</span></div>
-            {discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount ({discount}%)</span><span>-{formatFullINR(discountAmount)}</span></div>}
-            <div className="flex justify-between"><span className="text-muted-foreground">GST @ 18%</span><span>{formatFullINR(gst)}</span></div>
-            <Separator className="my-1" />
-            <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-teal-600">{formatFullINR(total)}</span></div>
-          </div>
-        </div>
 
-        <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => save(true)}>Save as Draft</Button>
-          <Button onClick={() => save(false)} className="bg-primary hover:bg-primary/90">
-            <Send className="w-4 h-4 mr-1" /> Send to Customer
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs uppercase tracking-wide text-muted-foreground">Line Items</Label>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addRow}>
+                <Plus className="w-3 h-3 mr-1" /> Add Row
+              </Button>
+            </div>
+            <div className="rounded-lg border max-h-48 overflow-y-auto scroll-thin">
+              {items.map((item) => (
+                <div key={item.id} className="grid grid-cols-12 gap-2 p-2 border-b last:border-0 items-center">
+                  <Input
+                    className="col-span-6 h-8 text-xs"
+                    placeholder="Description"
+                    value={item.description}
+                    onChange={(e) => updateRow(item.id, "description", e.target.value)}
+                  />
+                  <Input
+                    className="col-span-2 h-8 text-xs"
+                    type="number"
+                    placeholder="Qty"
+                    value={item.qty}
+                    onChange={(e) => updateRow(item.id, "qty", Number(e.target.value))}
+                  />
+                  <Input
+                    className="col-span-3 h-8 text-xs"
+                    type="number"
+                    placeholder="Price ₹"
+                    value={item.price}
+                    onChange={(e) => updateRow(item.id, "price", Number(e.target.value))}
+                  />
+                  <Button variant="ghost" size="sm" className="col-span-1 h-8 text-rose-500" onClick={() => removeRow(item.id)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Discount (%)</Label>
+              <div className="relative">
+                <Percent className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <Input type="number" min={0} max={100} value={discount} onChange={(e) => setDiscount(Number(e.target.value))} className="pl-8" />
+              </div>
+            </div>
+            <div className="rounded-lg bg-muted/40 p-3 text-xs space-y-1">
+              <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatFullINR(subtotal)}</span></div>
+              {discount > 0 && <div className="flex justify-between text-emerald-600"><span>Discount ({discount}%)</span><span>-{formatFullINR(discountAmount)}</span></div>}
+              <div className="flex justify-between"><span className="text-muted-foreground">GST @ 18%</span><span>{formatFullINR(gst)}</span></div>
+              <Separator className="my-1" />
+              <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-teal-600">{formatFullINR(total)}</span></div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => save(true)}>Save as Draft</Button>
+            <Button onClick={() => save(false)} className="bg-primary hover:bg-primary/90">
+              <Send className="w-4 h-4 mr-1" /> Save & Share
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!shareQuote} onOpenChange={(v) => { if (!v) setShareQuote(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Share with client</DialogTitle>
+            <DialogDescription>
+              {shareQuote?.quoteNo} · {shareQuote?.customerName} · {shareQuote ? formatFullINR(shareQuote.total) : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <Button
+              variant="outline"
+              onClick={() => shareQuote && pdf(shareQuote)}
+            >
+              <FileDown className="w-4 h-4 mr-2" /> Download PDF
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => shareQuote && email(shareQuote)}
+            >
+              <Mail className="w-4 h-4 mr-2" /> Email client
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => shareQuote && whatsapp(shareQuote)}
+            >
+              <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp client
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShareQuote(null)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -212,16 +314,11 @@ const APPROVAL_STEPS = [
 
 function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
+  const { pdf, email, whatsapp, markSent } = useQuoteActions();
   const [approvalStep, setApprovalStep] = useState(0);
   if (!quote) return null;
-  const items = Array.from({ length: quote.items }).map((_, i) => ({
-    description: ["Flight / Hotel / Service", "Taxes & Fees", "Add-ons"][i % 3],
-    qty: 1, price: Math.round(quote.amount / quote.items),
-  }));
+  const items = getQuotationLineItems(quote);
 
-  function action(label: string, desc: string) {
-    toast({ title: label, description: desc });
-  }
   function requestApproval() {
     if (approvalStep < 2) {
       setApprovalStep(approvalStep + 1);
@@ -239,14 +336,17 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 {quote.quoteNo}
                 <StatusBadge status={quote.status} />
               </DialogTitle>
-              <DialogDescription>{quote.customerName} · {quote.service} · Created {new Date(quote.createdAt).toLocaleDateString("en-IN")}</DialogDescription>
+              <DialogDescription>
+                {quote.customerName} · {quote.service}
+                {quote.destination ? ` · ${quote.destination}` : ""}
+                {" · "}Created {new Date(quote.createdAt).toLocaleDateString("en-IN")}
+              </DialogDescription>
             </div>
             <Badge variant="secondary" className={SERVICE_COLORS[quote.service]}>{quote.service}</Badge>
           </div>
         </DialogHeader>
 
         <div className="space-y-3">
-          {/* Approval workflow */}
           <div className="rounded-lg border p-3 bg-muted/20">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Approval Workflow</p>
             <div className="flex items-center justify-between">
@@ -264,7 +364,6 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             </div>
           </div>
 
-          {/* Line items */}
           <div className="rounded-lg border overflow-hidden">
             <Table>
               <TableHeader>
@@ -280,7 +379,15 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 {items.map((it, i) => (
                   <TableRow key={i}>
                     <TableCell className="text-xs">{i + 1}</TableCell>
-                    <TableCell className="text-xs">{it.description}</TableCell>
+                    <TableCell className="text-xs">
+                      <div className="flex items-center gap-2">
+                        {it.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={it.imageUrl} alt="" className="w-10 h-8 rounded object-cover border" />
+                        ) : null}
+                        <span>{it.description}</span>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs text-center">{it.qty}</TableCell>
                     <TableCell className="text-xs text-right">{formatFullINR(it.price)}</TableCell>
                     <TableCell className="text-xs text-right font-medium">{formatFullINR(it.qty * it.price)}</TableCell>
@@ -290,12 +397,13 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             </Table>
           </div>
 
-          {/* Totals */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1 text-xs">
               <div className="flex justify-between"><span className="text-muted-foreground">Valid Till</span><span>{new Date(quote.validTill).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Created By</span><span>{quote.createdBy}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Items</span><span>{quote.items}</span></div>
+              {quote.contactEmail && <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span>{quote.contactEmail}</span></div>}
+              {quote.contactPhone && <div className="flex justify-between"><span className="text-muted-foreground">Phone</span><span>{quote.contactPhone}</span></div>}
             </div>
             <div className="rounded-lg bg-muted/40 p-3 text-xs space-y-1">
               <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatFullINR(quote.amount)}</span></div>
@@ -306,9 +414,12 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => action("PDF Generated", `${quote.quoteNo}.pdf downloaded`)}><FileDown className="w-3.5 h-3.5 mr-1" /> Generate PDF</Button>
-            <Button variant="outline" size="sm" onClick={() => action("Email sent", `Quotation emailed to ${quote.customerName}`)}><Mail className="w-3.5 h-3.5 mr-1" /> Send Email</Button>
-            <Button variant="outline" size="sm" onClick={() => action("WhatsApp sent", `Quotation shared via WhatsApp to ${quote.customerName}`)}><MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp</Button>
+            <Button variant="outline" size="sm" onClick={() => pdf(quote)}><FileDown className="w-3.5 h-3.5 mr-1" /> Download PDF</Button>
+            <Button variant="outline" size="sm" onClick={() => email(quote)}><Mail className="w-3.5 h-3.5 mr-1" /> Email</Button>
+            <Button variant="outline" size="sm" onClick={() => whatsapp(quote)}><MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp</Button>
+            {quote.status === "Draft" && (
+              <Button variant="outline" size="sm" onClick={() => markSent(quote)}><Send className="w-3.5 h-3.5 mr-1" /> Mark Sent</Button>
+            )}
             {approvalStep < 2 && (
               <Button size="sm" className="bg-primary hover:bg-primary/90 ml-auto" onClick={requestApproval}>
                 <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> {approvalStep === 0 ? "Request Approval" : "Mark Approved"}
@@ -322,7 +433,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
 }
 
 export function QuotationsView() {
-  const { toast } = useToast();
+  const { pdf, markSent } = useQuoteActions();
   const quotations = useDemoDataStore((s) => s.quotations);
   const [selected, setSelected] = useState<Quotation | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -331,7 +442,11 @@ export function QuotationsView() {
   const filtered = useMemo(() => {
     if (!search) return quotations;
     const q = search.toLowerCase();
-    return quotations.filter((qt) => qt.quoteNo.toLowerCase().includes(q) || qt.customerName.toLowerCase().includes(q));
+    return quotations.filter((qt) =>
+      qt.quoteNo.toLowerCase().includes(q) ||
+      qt.customerName.toLowerCase().includes(q) ||
+      (qt.destination || "").toLowerCase().includes(q)
+    );
   }, [search, quotations]);
 
   const total = quotations.length;
@@ -357,9 +472,9 @@ export function QuotationsView() {
     <PageShell>
       <PageHeader
         title="Quotations"
-        subtitle="Create, send and track quotations with GST, approvals and customer responses."
+        subtitle="Create client quotes (classic, product with images/places, or international), download PDF, and share via email or WhatsApp."
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <ProductQuoteBuilderDialog />
             <InternationalQuotationDialog />
             <CreateQuotationDialog />
@@ -374,7 +489,7 @@ export function QuotationsView() {
       <Card>
         <CardContent className="p-4">
           <Input
-            placeholder="Search by quote no or customer..."
+            placeholder="Search by quote no, customer, or destination..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-sm mb-3 h-9"
@@ -400,7 +515,10 @@ export function QuotationsView() {
                 {filtered.map((q) => (
                   <TableRow key={q.id} className="hover:bg-muted/40">
                     <TableCell className="font-medium text-xs">{q.quoteNo}</TableCell>
-                    <TableCell className="text-xs">{q.customerName}</TableCell>
+                    <TableCell className="text-xs">
+                      <div>{q.customerName}</div>
+                      {q.destination && <div className="text-[10px] text-muted-foreground">{q.destination}</div>}
+                    </TableCell>
                     <TableCell><Badge variant="secondary" className={cn("text-[10px]", SERVICE_COLORS[q.service])}>{q.service}</Badge></TableCell>
                     <TableCell className="text-center text-xs">{q.items}</TableCell>
                     <TableCell className="text-right text-xs">{formatFullINR(q.amount)}</TableCell>
@@ -414,10 +532,10 @@ export function QuotationsView() {
                         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="View" onClick={() => openDetail(q)}>
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-cyan-600" title="Send" onClick={() => toast({ title: "Quotation sent", description: `${q.quoteNo} sent to ${q.customerName}` })}>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-cyan-600" title="Mark sent" onClick={() => markSent(q)}>
                           <Send className="w-3.5 h-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-rose-600" title="PDF" onClick={() => toast({ title: "PDF generated", description: `${q.quoteNo}.pdf downloaded` })}>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-rose-600" title="Download PDF" onClick={() => pdf(q)}>
                           <FileDown className="w-3.5 h-3.5" />
                         </Button>
                       </div>

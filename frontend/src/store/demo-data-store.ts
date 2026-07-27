@@ -69,6 +69,7 @@ interface DemoDataState {
   addLead: (lead: Omit<Lead, "id" | "stage" | "createdAt">) => Lead;
   updateLeadStage: (id: string, stage: Lead["stage"]) => void;
   addQuotation: (q: NewQuotationInput) => Quotation;
+  updateQuotationStatus: (id: string, status: Quotation["status"]) => void;
   addEmployee: (e: Omit<Employee, "id" | "joinDate" | "status" | "incentives" | "achieved" | "attendance"> & { branchId?: string; permissions?: Module[] | null }) => Promise<Employee & { tempPassword?: string }>;
   updateEmployee: (id: string, patch: Partial<Employee> & { branchId?: string | null; permissions?: Module[] | null }) => Promise<void>;
   addTask: (t: Omit<Task, "id" | "createdAt" | "status">) => Task;
@@ -318,6 +319,13 @@ export const useDemoDataStore = create<DemoDataState>()(
         return quotation;
       },
 
+      updateQuotationStatus: (id, status) => {
+        set((s) => ({
+          quotations: s.quotations.map((q) => (q.id === id ? { ...q, status } : q)),
+        }));
+        api.updateQuotation(id, { status }).catch(() => reportSyncFailure("Quotation status"));
+      },
+
       addEmployee: async (input) => {
         const { branchId, permissions, ...employeeFields } = input;
         const employee: Employee = {
@@ -496,33 +504,19 @@ export const useDemoDataStore = create<DemoDataState>()(
         api.getCommission(),
       ]);
 
-    const patch: Partial<DemoDataState> = {};
+    // Always replace API-backed collections on successful hydrate — including empty
+          // arrays — so stale localStorage demo rows cannot mask a real empty DB.
+          const patch: Partial<DemoDataState> = {
+            bookings: (bookingsRes.bookings ?? []).map(mapApiBooking),
+            customers: (customersRes.customers ?? []).map(mapApiCustomer),
+            notifications: (notificationsRes.notifications ?? []).map(mapApiNotification),
+            leads: (leadsRes.leads ?? []).map(mapApiLead),
+            quotations: (quotationsRes.quotations ?? []).map(mapApiQuotation),
+            payments: (paymentsRes.payments ?? []).map(mapApiPayment),
+            employees: (employeesRes.employees ?? []).map(mapApiEmployee),
+            tasks: (tasksRes.tasks ?? []).map(mapApiTask),
+          };
 
-          if (bookingsRes.bookings?.length) {
-            patch.bookings = bookingsRes.bookings.map(mapApiBooking);
-          }
-          if (customersRes.customers?.length) {
-            patch.customers = customersRes.customers.map(mapApiCustomer);
-          }
-          if (notificationsRes.notifications?.length) {
-            patch.notifications = notificationsRes.notifications.map(mapApiNotification);
-          }
-          if (leadsRes.leads?.length) {
-            patch.leads = leadsRes.leads.map(mapApiLead);
-          }
-          if (quotationsRes.quotations?.length) {
-            patch.quotations = quotationsRes.quotations.map(mapApiQuotation);
-          }
-          if (paymentsRes.payments?.length) {
-            patch.payments = paymentsRes.payments.map(mapApiPayment);
-          }
-          if (employeesRes.employees?.length) {
-            patch.employees = employeesRes.employees.map(mapApiEmployee);
-          }
-          if (tasksRes.tasks?.length) {
-            patch.tasks = tasksRes.tasks.map(mapApiTask);
-          }
-          
           if (dashboardRes?.stats) patch.dashboardStats = dashboardRes.stats;
           if (financeRes?.summary) patch.financeStats = mapApiFinance(financeRes);
           if (commissionRes?.summary) patch.commissionStats = mapApiCommission(commissionRes);
@@ -531,15 +525,13 @@ export const useDemoDataStore = create<DemoDataState>()(
             try {
               const walletRes = await api.getWallet(agencyId);
               patch.walletBalance = walletRes.balance;
-              if (walletRes.transactions?.length) {
-                patch.walletTxns = walletRes.transactions.map(mapApiWalletTxn);
-              }
+              patch.walletTxns = (walletRes.transactions ?? []).map(mapApiWalletTxn);
             } catch {
               /* wallet optional */
             }
           }
 
-          if (Object.keys(patch).length) set(patch);
+          set(patch);
         } catch {
           /* offline — keep local demo data */
         }

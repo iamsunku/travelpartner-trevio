@@ -32,4 +32,18 @@ services:
       # Replace with your real Vercel origin after frontend deploy (no trailing slash)
       - key: CORS_ORIGIN
         value: "https://trevioglobal-frontend.vercel.app"
+      # Payments — set real keys in Render dashboard (required for live checkout)
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: ALLOW_DEMO_PAYMENTS
+        value: "true"
+      # Email — required for forgot-password / invite emails in production
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: SENDGRID_FROM_EMAIL
+        sync: false
+      - key: ALLOW_INSECURE_TEMP_PASSWORD_RESPONSE
+        value: "false"
 

@@ -20,6 +20,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { AgentRegistrationForm } from "@/components/auth/agent-registration-form";
+import { isDemoLoginEnabled } from "@/lib/runtime-mode";
 
 const DEMO_PASSWORD = "Passw0rd@123";
 
@@ -44,11 +45,12 @@ export function LoginScreen() {
   const loginWithApi = useAuthStore((s) => s.loginWithApi);
   const hydrateFromApi = useDemoDataStore((s) => s.hydrateFromApi);
   const { toast } = useToast();
+  const showDemoLogin = isDemoLoginEnabled();
   const [selectedRole, setSelectedRole] = useState<Role>("agency_admin");
   const [mode, setMode] = useState<Mode>("login");
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState(ROLE_USERS.agency_admin.email);
-  const [password, setPassword] = useState(DEMO_PASSWORD);
+  const [email, setEmail] = useState(showDemoLogin ? ROLE_USERS.agency_admin.email : "");
+  const [password, setPassword] = useState(showDemoLogin ? DEMO_PASSWORD : "");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
@@ -56,6 +58,7 @@ export function LoginScreen() {
 
   const selectRole = (role: Role) => {
     setSelectedRole(role);
+    if (!showDemoLogin) return;
     setEmail(ROLE_USERS[role].email);
     setPassword(DEMO_PASSWORD);
   };
@@ -74,12 +77,12 @@ export function LoginScreen() {
   };
 
   const handleOtpVerify = () => {
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast({ title: "OTP login is a demo-only flow", description: "Please sign in with email and password instead." });
-      setMode("login");
-    }, 600);
+    toast({
+      title: "OTP login not available",
+      description: "Use email and password. OTP sign-in will be enabled after SMS provider setup.",
+      variant: "destructive",
+    });
+    setMode("login");
   };
 
   const handleForgotPassword = async () => {
@@ -92,11 +95,19 @@ export function LoginScreen() {
       const res = await api.forgotPassword(forgotEmail.trim());
       if (res.tempPassword) {
         toast({
-          title: "Password reset",
-          description: `This demo has no email delivery — your new temporary password is: ${res.tempPassword} (copy it now, it won't be shown again).`,
+          title: "Password reset (dev)",
+          description: `Temporary password: ${res.tempPassword} (shown only in development — configure SendGrid for production).`,
+        });
+      } else if (res.emailed) {
+        toast({
+          title: "Check your email",
+          description: "If an account exists for that address, a temporary password has been sent.",
         });
       } else {
-        toast({ title: "Check that email", description: "If an account exists for that address, it has been reset." });
+        toast({
+          title: "Request received",
+          description: res.message || "If an account exists for that address, password reset instructions will follow.",
+        });
       }
       setMode("login");
       setForgotEmail("");
@@ -208,11 +219,14 @@ export function LoginScreen() {
                   <div>
                     <h2 className="text-2xl font-bold">Sign in to your account</h2>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Select your role to continue. Each role has a tailored experience.
+                      {showDemoLogin
+                        ? "Select a demo role to autofill credentials, or enter your own email and password."
+                        : "Enter your agency email and password to continue."}
                     </p>
                   </div>
 
-                  {/* Role selector */}
+                  {showDemoLogin && (
+                  <>
                   <div className="grid grid-cols-3 gap-2">
                     {ROLE_CARDS.map((rc) => {
                       const active = selectedRole === rc.role;
@@ -245,6 +259,8 @@ export function LoginScreen() {
                     <p className="text-xs font-medium">{ROLE_LABELS[selectedRole]}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{ROLE_DESCRIPTIONS[selectedRole]}</p>
                   </div>
+                  </>
+                  )}
 
                   <div className="space-y-3">
                     <div className="space-y-1.5">
@@ -297,12 +313,14 @@ export function LoginScreen() {
                       </span>
                     ) : (
                       <span className="flex items-center gap-2">
-                        Sign in as {ROLE_LABELS[selectedRole]}
+                        {showDemoLogin ? `Sign in as ${ROLE_LABELS[selectedRole]}` : "Sign in"}
                         <ArrowRight className="w-4 h-4" />
                       </span>
                     )}
                   </Button>
 
+                  {showDemoLogin && (
+                  <>
                   <div className="flex items-center gap-3">
                     <div className="flex-1 h-px bg-border" />
                     <span className="text-xs text-muted-foreground">or</span>
@@ -315,8 +333,10 @@ export function LoginScreen() {
                     className="w-full h-11"
                   >
                     <Phone className="w-4 h-4 mr-2" />
-                    Login with OTP
+                    Login with OTP (demo stub)
                   </Button>
+                  </>
+                  )}
 
                   <p className="text-center text-sm text-muted-foreground">
                     New travel agent?{" "}

@@ -230,6 +230,10 @@ async function main() {
   console.log("━".repeat(60));
   console.log("");
   console.log("⚠️  IMPORTANT: Change all passwords after first login in production!");
+  console.log("⚠️  Never reuse seed passwords on a public/production database.");
+  if (process.env.NODE_ENV === "production") {
+    console.log("⚠️  NODE_ENV=production: seed credentials are for bootstrap only — rotate immediately.");
+  }
 }
 
 main()

@@ -126,6 +126,11 @@ export function mapApiLead(l: ApiLead): Lead {
   };
 }
 
+function asStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((v): v is string => typeof v === "string");
+}
+
 export function mapApiQuotation(q: ApiQuotation): Quotation {
   return {
     id: q.id,
@@ -140,6 +145,35 @@ export function mapApiQuotation(q: ApiQuotation): Quotation {
     validTill: q.validTill,
     createdBy: q.createdBy,
     createdAt: q.createdAt.slice(0, 10),
+    isInternational: q.isInternational ?? false,
+    contactPerson: q.contactPerson ?? undefined,
+    contactEmail: q.contactEmail ?? undefined,
+    contactPhone: q.contactPhone ?? undefined,
+    destination: q.destination ?? undefined,
+    country: q.country ?? undefined,
+    travelDates: q.travelDates ?? undefined,
+    adults: q.adults ?? undefined,
+    children: q.children ?? undefined,
+    infants: q.infants ?? undefined,
+    hotelStarPreference: q.hotelStarPreference ?? undefined,
+    location: q.location ?? undefined,
+    budget: q.budget ?? undefined,
+    currency: q.currency ?? undefined,
+    packageIncludes: asStringList(q.packageIncludes),
+    packageExcludes: asStringList(q.packageExcludes),
+    paymentTerms: q.paymentTerms ?? undefined,
+    cancellationPolicy: q.cancellationPolicy ?? undefined,
+    approvalStatus: (q.approvalStatus as Quotation["approvalStatus"]) ?? undefined,
+    lineItems: Array.isArray(q.lineItems)
+      ? q.lineItems.map((li) => ({
+          description: li.description || li.title || "Item",
+          qty: li.qty,
+          price: li.price,
+          type: li.type,
+          imageUrl: li.imageUrl,
+          currency: li.currency,
+        }))
+      : undefined,
   };
 }
 

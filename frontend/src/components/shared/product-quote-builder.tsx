@@ -19,10 +19,10 @@ import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { apiFetch } from "@/lib/api";
 import type { NewQuotationInput } from "@/types";
-import { api } from "@/lib/api";
 import { formatProductPrice } from "@/lib/currency";
 import { CurrencySelect } from "@/components/shared/currency-select";
 import { downloadProductQuotationPdf, type ProductQuoteLine } from "@/lib/product-quotation-pdf";
+import { shareQuotationViaWhatsApp } from "@/lib/quotation-actions";
 import type { ProductRecord } from "@/types";
 
 type Destination = { id: string; name: string; country?: string };
@@ -220,6 +220,8 @@ export function ProductQuoteBuilderDialog() {
       total,
       validTill: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
       createdBy: user?.name || "Team",
+      contactEmail: contactEmail || undefined,
+      contactPhone: contactPhone || undefined,
       destination: destinationName,
       travelDates: `${travelFrom}${travelTo ? ` → ${travelTo}` : ""}`,
       nights: parseInt(nights, 10) || 0,
@@ -242,9 +244,29 @@ export function ProductQuoteBuilderDialog() {
       approvalStatus: "Draft",
     };
     try {
-      await api.createQuotation(payload);
-      useDemoDataStore.getState().addQuotation(payload);
+      const quote = useDemoDataStore.getState().addQuotation(payload);
       toast({ title: send ? "Quotation saved & marked sent" : "Quotation saved as draft" });
+      if (send) {
+        downloadProductQuotationPdf({
+          quoteNo: quote.quoteNo,
+          customerName,
+          contactEmail,
+          contactPhone,
+          destination: destinationName,
+          travelDates: `${travelFrom}${travelTo ? ` → ${travelTo}` : ""} (${nights}N)`,
+          adults: parseInt(adults, 10),
+          children: parseInt(children, 10),
+          lines,
+          includes: includes.split(",").map((s) => s.trim()).filter(Boolean),
+          excludes: excludes.split(",").map((s) => s.trim()).filter(Boolean),
+          paymentTerms,
+          cancellationPolicy,
+          currency,
+          gst,
+          createdBy: user?.name || "Team",
+        });
+        shareQuotationViaWhatsApp(quote);
+      }
       setOpen(false);
     } catch {
       useDemoDataStore.getState().addQuotation(payload);

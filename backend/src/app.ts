@@ -10,7 +10,12 @@ import { validateEnv } from "./lib/env.js";
 import { logger } from "./lib/logger.js";
 import { db } from "./lib/db.js";
 import { signToken } from "./lib/jwt.js";
-import { requireAuth, optionalAuth, requireRole, requirePermission, requireAnyPermission, type AuthRequest } from "./middleware/auth.js";
+import {
+  allowDemoPayments,
+  allowInsecureTempPasswordResponse,
+  sendEmail,
+} from "./lib/email.js";
+import { requireAuth, requireRole, requirePermission, requireAnyPermission, type AuthRequest } from "./middleware/auth.js";
 import { generateFlights, generateHotels } from "./lib/mock-data.js";
 import { effectivePermissions } from "./lib/permissions.js";
 import { mountProductRoutes } from "./routes/products.js";
@@ -273,11 +278,9 @@ app.get("/api/auth/me", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// This demo deployment has no outbound email service, so — like the temp
-// password shown to admins when they onboard a new employee/agency — the new
-// password is returned directly in the response instead of emailed. The
-// frontend must show it once and tell the user to note it down; it is never
-// logged or persisted anywhere in cleartext.
+// Forgot password: always resets when the user exists.
+// Production never returns the temp password in JSON — email via SendGrid.
+// Dev/test may return tempPassword so local smoke tests and demos keep working.
 app.post("/api/auth/forgot-password", authLimiter, validate(forgotPasswordSchema), async (req, res) => {
   try {
     const { email } = req.body;
@@ -285,7 +288,7 @@ app.post("/api/auth/forgot-password", authLimiter, validate(forgotPasswordSchema
     if (!user) {
       // Same generic response whether or not the email exists, to avoid
       // leaking which addresses have accounts.
-      res.json({ ok: true });
+      res.json({ ok: true, emailed: false });
       return;
     }
     const tempPassword = generateTempPassword();
@@ -294,7 +297,29 @@ app.post("/api/auth/forgot-password", authLimiter, validate(forgotPasswordSchema
     await db.auditLog.create({
       data: { userId: user.id, agencyId: user.agencyId, userName: user.name, action: "Password Reset", module: "Auth", ip: req.ip || "0.0.0.0" },
     });
-    res.json({ ok: true, tempPassword });
+
+    const emailed = await sendEmail({
+      to: user.email,
+      subject: "Your Trevio password was reset",
+      template: "password_reset",
+      data: { agentName: user.name, tempPassword },
+    });
+
+    if (allowInsecureTempPasswordResponse()) {
+      res.json({ ok: true, emailed, tempPassword });
+      return;
+    }
+
+    if (!emailed) {
+      logger.warn({ email: user.email }, "Password reset without SendGrid — temp password not returned (production)");
+    }
+    res.json({
+      ok: true,
+      emailed,
+      message: emailed
+        ? "If an account exists, a temporary password has been emailed."
+        : "Password was reset. Configure SENDGRID_API_KEY to email temporary passwords.",
+    });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -441,7 +466,7 @@ app.post("/api/bookings", requireAuth, requireAnyPermission("flights", "hotels",
   }
 });
 
-app.patch("/api/bookings/:id", requireAuth, async (req, res) => {
+app.patch("/api/bookings/:id", requireAuth, requirePermission("bookings"), async (req, res) => {
   try {
     const { status, paymentStatus } = req.body;
     const data: Record<string, string> = {};
@@ -530,7 +555,7 @@ app.post("/api/leads", requireAuth, requirePermission("crm"), validate(leadSchem
   }
 });
 
-app.patch("/api/leads/:id", requireAuth, async (req, res) => {
+app.patch("/api/leads/:id", requireAuth, requirePermission("crm"), async (req, res) => {
   try {
     const { stage } = req.body;
     const lead = await db.lead.update({
@@ -661,14 +686,14 @@ app.post("/api/payments", requireAuth, requirePermission("payments"), validate(p
 });
 
 // ── Razorpay: order creation + signature verification ─────────────────────
-// Falls back to { configured: false } when no keys are set so the frontend
-// can simulate payment locally (demo mode) without erroring out.
-app.post("/api/payments/razorpay/order", requireAuth, async (req, res) => {
+// When keys are missing: { configured: false, demoAllowed }.
+// demoAllowed is false in production unless ALLOW_DEMO_PAYMENTS=true.
+app.post("/api/payments/razorpay/order", requireAuth, requireAnyPermission("payments", "wallet"), async (req, res) => {
   try {
     const keyId = process.env.RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     if (!keyId || !keySecret) {
-      return res.json({ configured: false });
+      return res.json({ configured: false, demoAllowed: allowDemoPayments() });
     }
 
     const amount = Number(req.body?.amount);
@@ -701,7 +726,7 @@ app.post("/api/payments/razorpay/order", requireAuth, async (req, res) => {
   }
 });
 
-app.post("/api/payments/razorpay/verify", requireAuth, async (req, res) => {
+app.post("/api/payments/razorpay/verify", requireAuth, requireAnyPermission("payments", "wallet"), async (req, res) => {
   try {
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     const { orderId, paymentId, signature } = req.body ?? {};
@@ -822,13 +847,23 @@ app.post("/api/employees", requireAuth, requireRole("super_admin", "agency_admin
           permissions: permissions ?? undefined,
         },
       });
+      await sendEmail({
+        to: body.email,
+        subject: "Your Trevio employee login",
+        template: "temp_credentials",
+        data: { agentName: body.name, loginEmail: body.email, tempPassword },
+      });
     } catch {
       // Email already has a login (or another conflict) — the Employee record
       // above still succeeds; no new/duplicate login is created.
       tempPassword = undefined;
     }
 
-    res.status(201).json({ employee, tempPassword });
+    res.status(201).json({
+      employee,
+      tempPassword: allowInsecureTempPasswordResponse() ? tempPassword : undefined,
+      emailedCredentials: Boolean(tempPassword),
+    });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -870,7 +905,7 @@ app.post("/api/tasks", requireAuth, requirePermission("tasks"), validate(taskSch
   }
 });
 
-app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
+app.patch("/api/tasks/:id", requireAuth, requirePermission("tasks"), async (req, res) => {
   try {
     const { status, priority } = req.body;
     const data: Record<string, string> = {};
@@ -936,14 +971,14 @@ app.get("/api/reports", requireAuth, requirePermission("reports"), async (req: A
   }
 });
 
-app.get("/api/flights/search", optionalAuth, async (req, res) => {
+app.get("/api/flights/search", requireAuth, requirePermission("flights"), async (req, res) => {
   const origin = (req.query.origin as string) || "BOM";
   const destination = (req.query.destination as string) || "DEL";
   const count = Math.min(parseInt(req.query.count as string) || 8, 20);
   res.json({ flights: generateFlights(origin, destination, count) });
 });
 
-app.get("/api/hotels/search", optionalAuth, async (req, res) => {
+app.get("/api/hotels/search", requireAuth, requirePermission("hotels"), async (req, res) => {
   const city = (req.query.city as string) || "Mumbai";
   const count = Math.min(parseInt(req.query.count as string) || 8, 20);
   res.json({ hotels: generateHotels(city, count) });
@@ -1139,7 +1174,7 @@ app.post("/api/wallet", requireAuth, requirePermission("wallet"), validate(walle
 
 
 // ── PATCH /api/quotations/:id ────────────────────────────────────────────────
-app.patch("/api/quotations/:id", requireAuth, async (req, res) => {
+app.patch("/api/quotations/:id", requireAuth, requirePermission("quotations"), async (req, res) => {
   try {
     const { status, validTill } = req.body;
     const data: Record<string, string> = {};
@@ -1154,7 +1189,7 @@ app.patch("/api/quotations/:id", requireAuth, async (req, res) => {
 });
 
 // ── PATCH /api/customers/:id ─────────────────────────────────────────────────
-app.patch("/api/customers/:id", requireAuth, async (req, res) => {
+app.patch("/api/customers/:id", requireAuth, requirePermission("customers"), async (req, res) => {
   try {
     const { name, email, phone, type, tier, passportNo, visaStatus, city } = req.body;
     const data: Record<string, string | undefined> = {};
@@ -1317,11 +1352,21 @@ app.post("/api/agencies", requireAuth, requireRole("super_admin"), validate(agen
           agencyId: agency.id,
         },
       });
+      await sendEmail({
+        to: body.email,
+        subject: "Your Trevio agency admin login",
+        template: "temp_credentials",
+        data: { agentName: body.owner, loginEmail: body.email, tempPassword },
+      });
     } catch {
       tempPassword = undefined;
     }
 
-    res.status(201).json({ agency, tempPassword });
+    res.status(201).json({
+      agency,
+      tempPassword: allowInsecureTempPasswordResponse() ? tempPassword : undefined,
+      emailedCredentials: Boolean(tempPassword),
+    });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -1611,7 +1656,7 @@ app.get("/api/analytics/employees", requireAuth, requireRole("super_admin", "age
 
 // --- Phase 2 Endpoints ---
 
-app.get("/api/marketing/campaigns", optionalAuth, async (req, res) => {
+app.get("/api/marketing/campaigns", requireAuth, requirePermission("marketing"), async (req, res) => {
   try {
     const campaigns = await db.marketingCampaign.findMany({ orderBy: { createdAt: "desc" } });
     res.json({ campaigns });
@@ -1632,7 +1677,7 @@ app.post("/api/marketing/campaigns", requireAuth, requireRole("super_admin", "ag
   }
 });
 
-app.get("/api/cms/pages", optionalAuth, async (req, res) => {
+app.get("/api/cms/pages", requireAuth, requirePermission("cms"), async (req, res) => {
   try {
     const pages = await db.contentPage.findMany({ orderBy: { createdAt: "desc" } });
     res.json({ pages });
@@ -1653,7 +1698,7 @@ app.post("/api/cms/pages", requireAuth, requireRole("super_admin", "agency_admin
   }
 });
 
-app.get("/api/management/keys", optionalAuth, async (req, res) => {
+app.get("/api/management/keys", requireAuth, requirePermission("api-management"), async (req, res) => {
   try {
     const keys = await db.apiKey.findMany({ orderBy: { createdAt: "desc" } });
     res.json({ keys });
@@ -1674,7 +1719,7 @@ app.post("/api/management/keys", requireAuth, requireRole("super_admin", "agency
   }
 });
 
-app.get("/api/support/tickets", optionalAuth, async (req, res) => {
+app.get("/api/support/tickets", requireAuth, requirePermission("support"), async (req, res) => {
   try {
     const operationsType = req.query.operationsType as string | undefined;
     const deliveryType = req.query.deliveryType as string | undefined;

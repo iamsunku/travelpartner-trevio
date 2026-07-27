@@ -114,7 +114,7 @@ export const api = {
     }),
 
   forgotPassword: (email: string) =>
-    apiFetch<{ ok: boolean; tempPassword?: string }>("/api/auth/forgot-password", {
+    apiFetch<{ ok: boolean; tempPassword?: string; emailed?: boolean; message?: string }>("/api/auth/forgot-password", {
       method: "POST",
       body: JSON.stringify({ email }),
     }),
@@ -313,10 +313,14 @@ export const api = {
     apiFetch<ApiEmployeeAnalytics>(`/api/analytics/employees?range=${range}`),
 
   createRazorpayOrder: (amount: number) =>
-    apiFetch<{ configured: boolean; orderId?: string; amount?: number; currency?: string; keyId?: string }>(
-      "/api/payments/razorpay/order",
-      { method: "POST", body: JSON.stringify({ amount }) }
-    ),
+    apiFetch<{
+      configured: boolean;
+      demoAllowed?: boolean;
+      orderId?: string;
+      amount?: number;
+      currency?: string;
+      keyId?: string;
+    }>("/api/payments/razorpay/order", { method: "POST", body: JSON.stringify({ amount }) }),
 
   verifyRazorpayPayment: (orderId: string, paymentId: string, signature: string) =>
     apiFetch<{ verified: boolean }>("/api/payments/razorpay/verify", {
@@ -658,6 +662,35 @@ export interface ApiQuotation {
   validTill: string;
   createdBy: string;
   createdAt: string;
+  isInternational?: boolean;
+  contactPerson?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  destination?: string | null;
+  country?: string | null;
+  travelDates?: string | null;
+  adults?: number | null;
+  children?: number | null;
+  infants?: number | null;
+  hotelStarPreference?: string | null;
+  location?: string | null;
+  budget?: number | null;
+  currency?: string | null;
+  packageIncludes?: unknown;
+  packageExcludes?: unknown;
+  paymentTerms?: string | null;
+  cancellationPolicy?: string | null;
+  approvalStatus?: string | null;
+  lineItems?: Array<{
+    description: string;
+    qty: number;
+    price: number;
+    type?: string;
+    imageUrl?: string;
+    currency?: string;
+    title?: string;
+    meta?: string;
+  }> | null;
 }
 
 export interface ApiPayment {

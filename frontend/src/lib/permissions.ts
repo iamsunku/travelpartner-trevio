@@ -18,7 +18,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
     "trip-planner", "travel-proposals", "quotations", "quote-templates", "payments", "wallet", "commission", "finance",
     "reports", "analytics", "employees", "attendance", "leaves", "tasks", "support",
     "notifications", "marketing", "cms", "api-management",
-    "audit-logs", "branches", "suppliers",
+    "settings", "audit-logs", "branches", "suppliers",
   ],
   branch_manager: [
     "flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages", "bookings", "crm", "customers",
@@ -49,7 +49,7 @@ const READ: CrudAction[] = ["view"];
 
 export const ROLE_CRUD: Record<Role, Record<string, CrudAction[]>> = {
   super_admin: Object.fromEntries(MODULES.map((m) => [m, FULL])),
-  agency_admin: Object.fromEntries(MODULES.map((m) => [m, m === "settings" ? READ : FULL])),
+  agency_admin: Object.fromEntries(MODULES.map((m) => [m, FULL])),
   branch_manager: Object.fromEntries(MODULES.map((m) => [m, SALES])),
   employee: Object.fromEntries(MODULES.map((m) => [m, SALES])),
   accountant: Object.fromEntries(MODULES.map((m) => [m, ["payments", "wallet", "commission", "finance", "reports"].includes(m) ? SALES : READ])),

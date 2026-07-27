@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { Module, Role, User, ViewKey } from "@/types";
 import { hasPermission } from "@/lib/permissions";
+import { isMockInventoryEnabled } from "@/lib/runtime-mode";
 
 export interface NavItem {
   key: ViewKey;
@@ -17,6 +18,8 @@ export interface NavItem {
   module?: Module; // omitted for views everyone can always reach (e.g. dashboard)
   roles?: Role[]; // if set, only these roles see the item
   badge?: string;
+  /** When true, item is only shown if mock inventory is enabled (demo flights/hotels). */
+  mockInventoryOnly?: boolean;
 }
 
 export interface NavSection {
@@ -34,8 +37,8 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: "Bookings",
     items: [
-      { key: "flights", label: "Flights", icon: Plane, module: "flights" },
-      { key: "hotels", label: "Hotels", icon: Hotel, module: "hotels" },
+      { key: "flights", label: "Flights", icon: Plane, module: "flights", mockInventoryOnly: true, badge: "Demo" },
+      { key: "hotels", label: "Hotels", icon: Hotel, module: "hotels", mockInventoryOnly: true, badge: "Demo" },
       { key: "holiday", label: "Holiday Packages", icon: Palmtree, module: "holiday" },
       { key: "bookings", label: "Booking Management", icon: Ticket, module: "bookings" },
     ],
@@ -83,7 +86,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: "attendance", label: "Attendance & Leave", icon: CalendarCheck, module: "attendance" },
       { key: "tasks", label: "Task Management", icon: CheckSquare, module: "tasks" },
       { key: "support", label: "Support", icon: LifeBuoy, module: "support" },
-      { key: "notifications", label: "Notifications", icon: Bell, module: "notifications", badge: "3" },
+      { key: "notifications", label: "Notifications", icon: Bell, module: "notifications" },
     ],
   },
   {
@@ -110,9 +113,11 @@ export const NAV_SECTIONS: NavSection[] = [
 ];
 
 export function getNavForUser(user: Pick<User, "role" | "permissions">): NavSection[] {
+  const mockOk = isMockInventoryEnabled();
   return NAV_SECTIONS.map((section) => ({
     ...section,
     items: section.items.filter((item) => {
+      if (item.mockInventoryOnly && !mockOk) return false;
       if (item.roles && !item.roles.includes(user.role)) return false;
       return !item.module || hasPermission(user, item.module);
     }),
@@ -120,9 +125,11 @@ export function getNavForUser(user: Pick<User, "role" | "permissions">): NavSect
 }
 
 export function canAccessView(user: Pick<User, "role" | "permissions">, view: ViewKey): boolean {
+  const mockOk = isMockInventoryEnabled();
   return NAV_SECTIONS.some((section) =>
     section.items.some((item) => {
       if (item.key !== view) return false;
+      if (item.mockInventoryOnly && !mockOk) return false;
       if (item.roles && !item.roles.includes(user.role)) return false;
       return !item.module || hasPermission(user, item.module);
     })
