@@ -290,18 +290,47 @@ export interface Quotation {
   }>;
 }
 
-export type NewQuotationInput = Pick<
-  Quotation,
-  "customerName" | "service" | "items" | "amount" | "gst" | "total" | "validTill" | "createdBy"
-> &
-  Partial<
-    Omit<
-      Quotation,
-      "id" | "quoteNo" | "createdAt" | "customerName" | "service" | "items" | "amount" | "gst" | "total" | "validTill" | "createdBy"
-    >
-  > & {
-    status?: Quotation["status"];
-  };
+export type NewQuotationInput = {
+  customerName: string;
+  service: Quotation["service"];
+  items: number;
+  amount: number;
+  gst: number;
+  total: number;
+  validTill: string;
+  createdBy: string;
+  status?: Quotation["status"];
+  approvalStatus?: Quotation["approvalStatus"];
+  isInternational?: boolean;
+  contactPerson?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  destination?: string;
+  country?: string;
+  departureCity?: string;
+  travelDates?: string;
+  returnDate?: string;
+  nights?: number;
+  days?: number;
+  adults?: number;
+  children?: number;
+  infants?: number;
+  hotelStarPreference?: string;
+  roomTypePreference?: string;
+  mealPlanPreference?: string;
+  location?: string;
+  budget?: number;
+  currency?: string;
+  packageIncludes?: string[];
+  packageExcludes?: string[];
+  termsAndConditions?: string;
+  paymentTerms?: string;
+  cancellationPolicy?: string;
+  salesExecutiveName?: string;
+  salesExecutivePhone?: string;
+  salesExecutiveEmail?: string;
+  lineItems?: Quotation["lineItems"];
+};
 
 export interface ProductRecord {
   id: string;

@@ -271,7 +271,7 @@ export const useDemoDataStore = create<DemoDataState>()(
         api.updateLeadStage(id, stage).catch(() => reportSyncFailure("Lead update"));
       },
 
-      addQuotation: (input) => {
+      addQuotation: (input: NewQuotationInput) => {
         const quoteNo = `QT-2025-${String(get().quotations.length + 19).padStart(3, "0")}`;
         const quotation: Quotation = {
           ...input,

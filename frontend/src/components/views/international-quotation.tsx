@@ -116,7 +116,7 @@ export function InternationalQuotationDialog() {
 
     try {
       await api.createQuotation(payload);
-      addQuotation(payload);
+      addQuotation(payload satisfies NewQuotationInput);
       toast({ title: send ? "International quotation sent" : "International quotation saved" });
       setOpen(false);
       setForm({
@@ -126,7 +126,7 @@ export function InternationalQuotationDialog() {
         salesExecutiveEmail: user?.email || "",
       });
     } catch (e) {
-      addQuotation(payload);
+      addQuotation(payload satisfies NewQuotationInput);
       toast({
         title: send ? "Quotation saved locally" : "Draft saved locally",
         description: e instanceof Error ? e.message : "API unavailable — stored in session.",
