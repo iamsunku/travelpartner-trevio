@@ -256,21 +256,43 @@ export interface Quotation {
   contactEmail?: string;
   contactPhone?: string;
   destination?: string;
+  country?: string;
+  departureCity?: string;
   travelDates?: string;
+  returnDate?: string;
+  nights?: number;
+  days?: number;
   adults?: number;
   children?: number;
   infants?: number;
   hotelStarPreference?: string;
+  roomTypePreference?: string;
+  mealPlanPreference?: string;
   location?: string;
   budget?: number;
   currency?: string;
   packageIncludes?: string[];
   packageExcludes?: string[];
+  termsAndConditions?: string;
   paymentTerms?: string;
   cancellationPolicy?: string;
+  salesExecutiveName?: string;
+  salesExecutivePhone?: string;
+  salesExecutiveEmail?: string;
   approvalStatus?: "Draft" | "Pending" | "Approved" | "Rejected";
-  lineItems?: { description: string; qty: number; price: number }[];
+  lineItems?: Array<{
+    description: string;
+    qty: number;
+    price: number;
+    type?: string;
+    imageUrl?: string;
+    currency?: string;
+  }>;
 }
+
+export type NewQuotationInput = Omit<Quotation, "id" | "quoteNo" | "createdAt" | "status"> & {
+  status?: Quotation["status"];
+};
 
 export interface ProductRecord {
   id: string;

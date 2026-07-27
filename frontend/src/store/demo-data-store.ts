@@ -7,6 +7,7 @@ import type {
   Customer,
   Lead,
   Quotation,
+  NewQuotationInput,
   Employee,
   Payment,
   WalletTransaction,
@@ -67,7 +68,7 @@ interface DemoDataState {
   addCustomer: (customer: Omit<Customer, "id" | "totalBookings" | "totalSpent" | "loyaltyPoints" | "createdAt">) => Customer;
   addLead: (lead: Omit<Lead, "id" | "stage" | "createdAt">) => Lead;
   updateLeadStage: (id: string, stage: Lead["stage"]) => void;
-  addQuotation: (q: Omit<Quotation, "id" | "quoteNo" | "createdAt" | "status"> & { status?: Quotation["status"] }) => Quotation;
+  addQuotation: (q: NewQuotationInput) => Quotation;
   addEmployee: (e: Omit<Employee, "id" | "joinDate" | "status" | "incentives" | "achieved" | "attendance"> & { branchId?: string; permissions?: Module[] | null }) => Promise<Employee & { tempPassword?: string }>;
   updateEmployee: (id: string, patch: Partial<Employee> & { branchId?: string | null; permissions?: Module[] | null }) => Promise<void>;
   addTask: (t: Omit<Task, "id" | "createdAt" | "status">) => Task;

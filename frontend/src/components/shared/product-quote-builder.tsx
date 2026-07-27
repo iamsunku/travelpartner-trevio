@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { apiFetch } from "@/lib/api";
+import type { NewQuotationInput } from "@/types";
 import { api } from "@/lib/api";
 import { formatProductPrice } from "@/lib/currency";
 import { CurrencySelect } from "@/components/shared/currency-select";
@@ -211,7 +212,7 @@ export function ProductQuoteBuilderDialog() {
       return;
     }
     setSaving(true);
-    const payload = {
+    const payload: NewQuotationInput = {
       customerName,
       service: "Holiday" as const,
       items: lines.length,

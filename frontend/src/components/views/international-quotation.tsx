@@ -13,6 +13,7 @@ import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { formatFullINR } from "@/components/shared/ui-helpers";
 import { downloadInternationalQuotationPdf } from "@/lib/quotation-pdf";
+import type { NewQuotationInput } from "@/types";
 import { api } from "@/lib/api";
 
 const EMPTY_FORM = {
@@ -72,7 +73,7 @@ export function InternationalQuotationDialog() {
       return;
     }
     setSaving(true);
-    const payload = {
+    const payload: NewQuotationInput = {
       customerName: form.customerName,
       service: "International" as const,
       items: 4,
