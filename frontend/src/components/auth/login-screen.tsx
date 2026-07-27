@@ -125,7 +125,11 @@ export function LoginScreen() {
 
         <div className="relative z-10">
           <div className="flex items-center gap-2.5 mb-2">
-            <img src="/trevio-logo.png" alt="Trevio Global" className="h-10 w-auto brightness-0 invert" />
+            <img
+              src="/trevio-logo.png"
+              alt="Trevio Global"
+              className="h-10 w-auto drop-shadow-md"
+            />
           </div>
           <p className="text-xs text-white/70 mt-1">Enterprise Travel SaaS Platform</p>
         </div>
