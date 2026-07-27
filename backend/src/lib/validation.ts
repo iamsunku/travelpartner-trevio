@@ -201,6 +201,29 @@ export const agencySchema = z.object({
 
 export const agencyUpdateSchema = agencySchema.partial();
 
+export const agentRegistrationSchema = z
+  .object({
+    fullName: z.string().min(2, "Full name is required"),
+    companyName: z.string().min(2, "Company name is required"),
+    address: z.string().min(5, "Business address is required"),
+    email: z.string().email(),
+    countryCode: z.string().min(2).default("+91"),
+    phone: z.string().min(8, "Valid mobile number is required"),
+    country: z.string().min(1, "Country is required"),
+    state: z.string().min(1, "State/Province is required"),
+    city: z.string().min(1, "City is required"),
+    panNumber: z.string().optional(),
+    password: passwordSchema,
+    confirmPassword: z.string(),
+    gstNumber: z.string().optional(),
+    gstProofUrl: z.string().optional(),
+    termsAccepted: z.literal(true, { message: "You must accept the terms and conditions" }),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+
 export const branchSchema = z.object({
   agencyId: z.string().optional(),
   name: z.string().min(1),

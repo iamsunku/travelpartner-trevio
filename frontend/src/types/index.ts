@@ -290,9 +290,18 @@ export interface Quotation {
   }>;
 }
 
-export type NewQuotationInput = Omit<Quotation, "id" | "quoteNo" | "createdAt" | "status"> & {
-  status?: Quotation["status"];
-};
+export type NewQuotationInput = Pick<
+  Quotation,
+  "customerName" | "service" | "items" | "amount" | "gst" | "total" | "validTill" | "createdBy"
+> &
+  Partial<
+    Omit<
+      Quotation,
+      "id" | "quoteNo" | "createdAt" | "customerName" | "service" | "items" | "amount" | "gst" | "total" | "validTill" | "createdBy"
+    >
+  > & {
+    status?: Quotation["status"];
+  };
 
 export interface ProductRecord {
   id: string;

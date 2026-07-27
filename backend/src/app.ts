@@ -32,6 +32,7 @@ import {
   paymentSchema, employeeSchema, employeeUpdateSchema, taskSchema, agencySchema,
   agencyUpdateSchema, branchSchema, branchUpdateSchema, walletSchema,
   attendanceCheckSchema, leaveSchema, leaveStatusSchema, forgotPasswordSchema,
+  agentRegistrationSchema,
 } from "./lib/validation.js";
 
 validateEnv();
@@ -294,6 +295,96 @@ app.post("/api/auth/forgot-password", authLimiter, validate(forgotPasswordSchema
       data: { userId: user.id, agencyId: user.agencyId, userName: user.name, action: "Password Reset", module: "Auth", ip: req.ip || "0.0.0.0" },
     });
     res.json({ ok: true, tempPassword });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), async (req, res) => {
+  try {
+    const body = req.body;
+    const email = String(body.email).trim().toLowerCase();
+    const existing = await db.user.findUnique({ where: { email } });
+    if (existing) {
+      res.status(409).json({ error: "An account with this email already exists" });
+      return;
+    }
+
+    const phone = `${body.countryCode} ${body.phone}`.trim();
+    const passwordHash = await bcrypt.hash(body.password, 10);
+
+    const result = await db.$transaction(async (tx) => {
+      const agency = await tx.agency.create({
+        data: {
+          name: body.companyName,
+          owner: body.fullName,
+          email,
+          phone,
+          plan: "Starter",
+          status: "Trial",
+          address: body.address,
+          country: body.country,
+          state: body.state,
+          city: body.city,
+          panNumber: body.panNumber || null,
+          gstNumber: body.gstNumber || null,
+          vatNumber: body.gstNumber || null,
+          gstProofUrl: body.gstProofUrl || null,
+          termsAcceptedAt: new Date(),
+          apiAllocation: { flights: 5000, hotels: 3000 },
+        },
+      });
+
+      const branch = await tx.branch.create({
+        data: {
+          agencyId: agency.id,
+          name: `${body.companyName} — ${body.city}`,
+          manager: body.fullName,
+          city: body.city,
+        },
+      });
+
+      const user = await tx.user.create({
+        data: {
+          name: body.fullName,
+          email,
+          phone,
+          password: passwordHash,
+          role: "agency_admin",
+          designation: "Agency Owner",
+          agencyId: agency.id,
+          branchId: branch.id,
+        },
+        include: { agency: true, branch: true },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          agencyId: agency.id,
+          userName: user.name,
+          action: "Agent Registration",
+          module: "Auth",
+          ip: req.ip || "0.0.0.0",
+          details: `New agency registered: ${agency.name}`,
+        },
+      });
+
+      return user;
+    });
+
+    const token = signToken({
+      userId: result.id,
+      email: result.email,
+      role: result.role,
+      agencyId: result.agencyId,
+      branchId: result.branchId,
+      permissions: null,
+    });
+
+    const { password: _password, ...safeUser } = result;
+    res.status(201).json({ user: safeUser, token });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });

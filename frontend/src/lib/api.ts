@@ -119,6 +119,12 @@ export const api = {
       body: JSON.stringify({ email }),
     }),
 
+  registerAgent: (body: AgentRegistrationBody) =>
+    apiFetch<{ user: ApiUser; token: string }>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   getBookings: (params?: Record<string, string>) => {
     const q = params ? `?${new URLSearchParams(params)}` : "";
     return apiFetch<{ bookings: ApiBooking[]; total: number }>(`/api/bookings${q}`);
@@ -362,6 +368,24 @@ export const api = {
     apiFetch<{ leave: ApiLeave }>(`/api/leaves/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
 };
 
+
+export interface AgentRegistrationBody {
+  fullName: string;
+  companyName: string;
+  address: string;
+  email: string;
+  countryCode: string;
+  phone: string;
+  country: string;
+  state: string;
+  city: string;
+  panNumber?: string;
+  password: string;
+  confirmPassword: string;
+  gstNumber?: string;
+  gstProofUrl?: string;
+  termsAccepted: true;
+}
 
 export interface ApiUser {
   id: string;

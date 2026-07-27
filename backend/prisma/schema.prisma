@@ -58,7 +58,13 @@ model Agency {
   apiAllocation   Json     @default("{}") // {flights,hotels}
   gstNumber       String?
   panNumber       String?
+  vatNumber       String?
   address         String?
+  country         String?
+  state           String?
+  city            String?
+  gstProofUrl     String?
+  termsAcceptedAt DateTime?
   logo            String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

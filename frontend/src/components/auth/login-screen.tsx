@@ -19,10 +19,11 @@ import { Label } from "@/components/ui/label";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { AgentRegistrationForm } from "@/components/auth/agent-registration-form";
 
 const DEMO_PASSWORD = "Passw0rd@123";
 
-type Mode = "login" | "otp" | "forgot";
+type Mode = "login" | "otp" | "forgot" | "register";
 
 const ROLE_CARDS: { role: Role; icon: React.ElementType; gradient: string }[] = [
   { role: "super_admin", icon: Shield, gradient: "from-blue-600 to-indigo-700" },
@@ -105,6 +106,10 @@ export function LoginScreen() {
       setForgotLoading(false);
     }
   };
+
+  if (mode === "register") {
+    return <AgentRegistrationForm onLogin={() => setMode("login")} />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-background">
@@ -312,6 +317,13 @@ export function LoginScreen() {
                     <Phone className="w-4 h-4 mr-2" />
                     Login with OTP
                   </Button>
+
+                  <p className="text-center text-sm text-muted-foreground">
+                    New travel agent?{" "}
+                    <button type="button" onClick={() => setMode("register")} className="text-primary font-semibold hover:underline">
+                      Register with Trevio Global
+                    </button>
+                  </p>
                 </div>
               )}
 
