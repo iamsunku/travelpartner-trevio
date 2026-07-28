@@ -10,7 +10,7 @@ import {
 import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/nav-config";
-import { ROLE_USERS } from "@/lib/mock-data";
+import { ROLE_USERS, DEMO_LOGIN_PASSWORD, DEMO_LOGIN_ROWS } from "@/lib/mock-data";
 import { api } from "@/lib/api";
 import type { Role } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -22,8 +22,6 @@ import { cn } from "@/lib/utils";
 import { AgentRegistrationForm } from "@/components/auth/agent-registration-form";
 import { isDemoLoginEnabled } from "@/lib/runtime-mode";
 
-const DEMO_PASSWORD = "Passw0rd@123";
-
 type Mode = "login" | "otp" | "forgot" | "register";
 
 const ROLE_CARDS: { role: Role; icon: React.ElementType; gradient: string }[] = [
@@ -32,6 +30,8 @@ const ROLE_CARDS: { role: Role; icon: React.ElementType; gradient: string }[] = 
   { role: "branch_manager", icon: UserCog, gradient: "from-teal-500 to-cyan-600" },
   { role: "employee", icon: User, gradient: "from-sky-500 to-blue-600" },
   { role: "accountant", icon: TrendingUp, gradient: "from-teal-600 to-emerald-600" },
+  { role: "sales_executive", icon: Sparkles, gradient: "from-violet-500 to-fuchsia-600" },
+  { role: "product_executive", icon: Globe, gradient: "from-cyan-500 to-blue-600" },
 ];
 
 const HIGHLIGHTS = [
@@ -50,17 +50,18 @@ export function LoginScreen() {
   const [mode, setMode] = useState<Mode>("login");
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState(showDemoLogin ? ROLE_USERS.agency_admin.email : "");
-  const [password, setPassword] = useState(showDemoLogin ? DEMO_PASSWORD : "");
+  const [password, setPassword] = useState(showDemoLogin ? DEMO_LOGIN_PASSWORD : "");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [showCreds, setShowCreds] = useState(false);
 
   const selectRole = (role: Role) => {
     setSelectedRole(role);
     if (!showDemoLogin) return;
     setEmail(ROLE_USERS[role].email);
-    setPassword(DEMO_PASSWORD);
+    setPassword(DEMO_LOGIN_PASSWORD);
   };
 
   const handleLogin = async () => {
@@ -227,7 +228,7 @@ export function LoginScreen() {
 
                   {showDemoLogin && (
                   <>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                     {ROLE_CARDS.map((rc) => {
                       const active = selectedRole === rc.role;
                       return (
@@ -336,6 +337,39 @@ export function LoginScreen() {
                     Login with OTP (demo stub)
                   </Button>
                   </>
+                  )}
+
+                  {showDemoLogin && (
+                    <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreds((v) => !v)}
+                        className="text-xs font-medium text-primary hover:underline"
+                      >
+                        {showCreds ? "Hide demo logins" : "Show all demo logins"}
+                      </button>
+                      <p className="text-[11px] text-muted-foreground">
+                        Shared password: <span className="font-mono text-foreground">{DEMO_LOGIN_PASSWORD}</span>
+                      </p>
+                      {showCreds && (
+                        <div className="max-h-40 overflow-y-auto space-y-1.5 scroll-thin">
+                          {DEMO_LOGIN_ROWS.map((row) => (
+                            <button
+                              key={row.email}
+                              type="button"
+                              className="w-full text-left rounded-md border border-border/60 bg-background/80 px-2 py-1.5 hover:border-primary/40"
+                              onClick={() => {
+                                setEmail(row.email);
+                                setPassword(row.password);
+                              }}
+                            >
+                              <p className="text-[11px] font-medium">{row.role}</p>
+                              <p className="text-[10px] font-mono text-muted-foreground">{row.email}</p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
 
                   <p className="text-center text-sm text-muted-foreground">

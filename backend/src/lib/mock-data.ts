@@ -30,7 +30,31 @@ export const ROLE_USERS: Record<string, User> = {
     phone: "+91 98500 44444", role: "accountant", agencyId: "ag-1",
     designation: "Finance Manager",
   },
+  sales_executive: {
+    id: "u-se-1", name: "Ananya Kapoor", email: "sales@wanderlusttravels.in",
+    phone: "+91 98600 55555", role: "sales_executive", agencyId: "ag-1", branchId: "br-1",
+    designation: "Sales Executive",
+  },
+  product_executive: {
+    id: "u-pe-1", name: "Rohan Desai", email: "products@wanderlusttravels.in",
+    phone: "+91 98700 66666", role: "product_executive", agencyId: "ag-1",
+    designation: "Product Executive",
+  },
 };
+
+/** Shared demo password for all ROLE_USERS accounts after seed. */
+export const DEMO_LOGIN_PASSWORD = "Passw0rd@123";
+
+export const DEMO_LOGIN_ROWS: Array<{ role: string; email: string; password: string; note?: string }> = [
+  { role: "Super Admin", email: "superadmin@travelpartner.pro", password: DEMO_LOGIN_PASSWORD },
+  { role: "Agency Admin", email: "admin@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
+  { role: "Branch Manager", email: "manager.mumbai@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
+  { role: "Employee / Agent", email: "sneha@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
+  { role: "Accountant", email: "accounts@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
+  { role: "Sales Executive", email: "sales@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
+  { role: "Product Executive", email: "products@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
+  { role: "Platform Super Admin (alt)", email: "admin@travelpartner.pro", password: "TravioAdmin@2024!", note: "Created separately by seed" },
+];
 
 export const AGENCIES: Agency[] = [
   { id: "ag-1", name: "Wanderlust Travels", owner: "Priya Sharma", email: "admin@wanderlusttravels.in", phone: "+91 98200 12345", plan: "Enterprise", status: "Active", walletBalance: 845000, commissionEarned: 1240000, totalBookings: 3420, monthlyRevenue: 2850000, apiAllocation: { flights: 50000, hotels: 30000 }, createdAt: "2023-02-14", branches: 4, employees: 38 },

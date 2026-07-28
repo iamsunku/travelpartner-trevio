@@ -214,19 +214,16 @@ async function main() {
 
   console.log("🔐 LOGIN CREDENTIALS:");
   console.log("━".repeat(60));
-  console.log("SUPER ADMIN (Platform Owner):");
+  console.log("PLATFORM SUPER ADMIN (alt):");
   console.log(`  Email: ${SUPER_ADMIN_EMAIL}`);
   console.log(`  Password: ${SUPER_ADMIN_PASSWORD}`);
   console.log("");
-  console.log("DEMO USERS (All use same password):");
+  console.log("DEMO USERS (same password for all ROLE_USERS):");
   console.log(`  Password: ${DEFAULT_SEED_PASSWORD}`);
   console.log("");
-  console.log("Roles:");
-  console.log("  • super_admin@travelpartner.pro (Super Admin)");
-  console.log("  • agency@travelpartner.pro (Agency Admin)");
-  console.log("  • branch@travelpartner.pro (Branch Manager)");
-  console.log("  • employee@travelpartner.pro (Employee)");
-  console.log("  • accountant@travelpartner.pro (Accountant)");
+  for (const [, u] of Object.entries(ROLE_USERS)) {
+    console.log(`  • ${u.email} (${u.role})`);
+  }
   console.log("━".repeat(60));
   console.log("");
   console.log("⚠️  IMPORTANT: Change all passwords after first login in production!");
