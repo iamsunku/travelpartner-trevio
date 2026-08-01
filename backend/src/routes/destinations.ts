@@ -111,6 +111,7 @@ export function mountDestinationRoutes(app: Express, agencyScope: ScopeFn) {
         db.destination.findMany({ where, orderBy, skip, take: pageSize }),
         db.destination.count({ where }),
       ]);
+      res.setHeader("Cache-Control", "no-store");
       res.json({ items, total, page, pageSize });
     } catch (e) {
       logger.error(e);

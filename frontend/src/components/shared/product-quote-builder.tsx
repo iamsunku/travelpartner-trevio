@@ -21,6 +21,7 @@ import { apiFetch } from "@/lib/api";
 import type { NewQuotationInput } from "@/types";
 import { formatProductPrice } from "@/lib/currency";
 import { CurrencySelect } from "@/components/shared/currency-select";
+import { DestinationSelect } from "@/components/shared/destination-select";
 import { downloadProductQuotationPdf, type ProductQuoteLine } from "@/lib/product-quotation-pdf";
 import { shareQuotationViaWhatsApp } from "@/lib/quotation-actions";
 import type { ProductRecord } from "@/types";
@@ -79,10 +80,25 @@ export function ProductQuoteBuilderDialog() {
 
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     apiFetch<{ items: Destination[] }>("/api/destinations?pageSize=100&status=Active")
-      .then((d) => setDestinations(d.items || []))
-      .catch(() => setDestinations([]));
-  }, [open]);
+      .then((d) => {
+        if (!cancelled) setDestinations(d.items || []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDestinations([]);
+          toast({
+            title: "Could not load destinations",
+            description: "Check your connection, or create destinations under Products → Destinations.",
+            variant: "destructive",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, toast]);
 
   useEffect(() => {
     if (!destinationId) {
@@ -330,12 +346,17 @@ export function ProductQuoteBuilderDialog() {
                   <div className="space-y-1"><Label className="text-xs">Phone</Label><Input value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} /></div>
                   <div className="space-y-1">
                     <Label className="text-xs">Destination *</Label>
-                    <Select value={destinationId} onValueChange={setDestinationId}>
-                      <SelectTrigger><SelectValue placeholder="Select destination" /></SelectTrigger>
-                      <SelectContent>
-                        {destinations.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+                    <DestinationSelect
+                      value={destinationId}
+                      onChange={(id) => {
+                        setDestinationId(id);
+                        setSelectedHotelId("");
+                        setSelectedRoom("");
+                        setSelectedActivityIds([]);
+                      }}
+                      required
+                      placeholder={destinations.length ? "Select destination" : "No destinations yet — add under Products → Destinations"}
+                    />
                   </div>
                   <div className="space-y-1"><Label className="text-xs">Travel from *</Label><Input type="date" value={travelFrom} onChange={(e) => setTravelFrom(e.target.value)} /></div>
                   <div className="space-y-1"><Label className="text-xs">Travel to</Label><Input type="date" value={travelTo} onChange={(e) => setTravelTo(e.target.value)} /></div>
@@ -356,18 +377,26 @@ export function ProductQuoteBuilderDialog() {
                 <h4 className="text-sm font-semibold">2. Select Products (approved rates only)</h4>
                 <div className="space-y-1">
                   <Label className="text-xs">Hotel</Label>
-                  <Select value={selectedHotelId} onValueChange={(v) => { setSelectedHotelId(v); setSelectedRoom(""); }}>
-                    <SelectTrigger><SelectValue placeholder="Optional hotel" /></SelectTrigger>
+                  <Select value={selectedHotelId || undefined} onValueChange={(v) => { setSelectedHotelId(v); setSelectedRoom(""); }}>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Optional hotel" /></SelectTrigger>
                     <SelectContent>
-                      {hotels.map((h) => <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>)}
+                      {hotels.length === 0 ? (
+                        <div className="px-2 py-3 text-xs text-muted-foreground">
+                          {destinationId
+                            ? "No approved hotels for this destination. Add/approve under Products → Hotels."
+                            : "Select a destination first."}
+                        </div>
+                      ) : (
+                        hotels.map((h) => <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>)
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
                 {selectedHotelId && (
                   <div className="space-y-1">
                     <Label className="text-xs">Room category</Label>
-                    <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-                      <SelectTrigger><SelectValue placeholder="Select room" /></SelectTrigger>
+                    <Select value={selectedRoom || undefined} onValueChange={setSelectedRoom}>
+                      <SelectTrigger className="w-full"><SelectValue placeholder="Select room" /></SelectTrigger>
                       <SelectContent>
                         {hotelRooms.map((r) => (
                           <SelectItem key={r.name} value={r.name}>{r.name} — {formatProductPrice(r.price, hotels.find((h) => h.id === selectedHotelId)?.currency as string)}</SelectItem>

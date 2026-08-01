@@ -41,10 +41,11 @@ export function DestinationSelect({
       const params = new URLSearchParams({
         page: "1",
         pageSize: "50",
+        status: "Active",
         ...(q ? { q } : {}),
       });
       const data = await apiFetch<{ items: DestinationOption[] }>(`/api/destinations?${params}`);
-      setOptions(data.items);
+      setOptions(data.items || []);
     } catch {
       setOptions([]);
     } finally {
@@ -96,7 +97,9 @@ export function DestinationSelect({
           {loading ? (
             <p className="text-xs text-muted-foreground p-2">Loading...</p>
           ) : options.length === 0 ? (
-            <p className="text-xs text-muted-foreground p-2">No destinations found</p>
+            <p className="text-xs text-muted-foreground p-2">
+              No destinations found. Add them under Products → Destinations.
+            </p>
           ) : options.map((opt) => (
             <button
               key={opt.id}

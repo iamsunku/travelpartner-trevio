@@ -48,7 +48,11 @@ export async function apiFetch<T>(
     (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers }).catch(() => {
+  const res = await fetch(`${API_BASE}${path}`, {
+    cache: "no-store",
+    ...options,
+    headers,
+  }).catch(() => {
     throw new ApiError("Unable to reach the server. Check your connection and try again.", 0);
   });
 
