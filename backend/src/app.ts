@@ -37,7 +37,7 @@ import {
   paymentSchema, employeeSchema, employeeUpdateSchema, taskSchema, agencySchema,
   agencyUpdateSchema, branchSchema, branchUpdateSchema, walletSchema,
   attendanceCheckSchema, leaveSchema, leaveStatusSchema, forgotPasswordSchema,
-  agentRegistrationSchema,
+  resetPasswordSchema, agentRegistrationSchema,
 } from "./lib/validation.js";
 
 validateEnv();
@@ -75,6 +75,43 @@ function branchScope(req: AuthRequest, ownField?: string): Record<string, unknow
 // (super_admin/agency_admin) create unscoped records.
 function ownBranchId(req: AuthRequest): string | undefined {
   return req.auth?.branchId ?? undefined;
+}
+
+function routeParamId(req: { params: Record<string, string | string[] | undefined> }): string {
+  const id = req.params.id;
+  return Array.isArray(id) ? id[0] : String(id ?? "");
+}
+
+/** Settings tenant: never fall back to a hardcoded agency id. */
+function resolveSettingsAgencyId(req: AuthRequest, res: express.Response): string | null {
+  if (req.auth?.role === "super_admin") {
+    const fromQuery = typeof req.query.agencyId === "string" ? req.query.agencyId : undefined;
+    const fromBody = typeof req.body?.agencyId === "string" ? req.body.agencyId : undefined;
+    const id = fromQuery || fromBody || req.auth.agencyId;
+    if (!id) {
+      res.status(400).json({ error: "agencyId is required" });
+      return null;
+    }
+    return id;
+  }
+  const id = req.auth?.agencyId;
+  if (!id) {
+    res.status(400).json({ error: "Agency context required" });
+    return null;
+  }
+  return id;
+}
+
+function verifyRazorpaySignature(orderId: string, paymentId: string, signature: string, keySecret: string): boolean {
+  const expected = crypto.createHmac("sha256", keySecret).update(`${orderId}|${paymentId}`).digest("hex");
+  try {
+    return (
+      expected.length === signature.length &&
+      crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))
+    );
+  } catch {
+    return false;
+  }
 }
 
 // Opt-in pagination: ?page=2&pageSize=50. Omitting both preserves each route's
@@ -136,14 +173,22 @@ app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(pinoHttp({ logger }));
 app.use(analyticsMiddleware());
 
+const isProd = process.env.NODE_ENV === "production";
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  // Dev: allow rapid retry while testing roles/credentials. Prod: keep brute-force protection tight.
+  limit: isProd ? 10 : 200,
   standardHeaders: true,
   legacyHeaders: false,
+  message: { error: "Too many sign-in attempts. Please wait a few minutes and try again." },
   skip: () => process.env.NODE_ENV === "test",
 });
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: true, legacyHeaders: false });
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isProd ? 300 : 2000,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 app.use("/api", apiLimiter);
 
 let requestCount = 0;
@@ -278,48 +323,99 @@ app.get("/api/auth/me", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// Forgot password: always resets when the user exists.
-// Production never returns the temp password in JSON — email via SendGrid.
-// Dev/test may return tempPassword so local smoke tests and demos keep working.
+// Forgot password: issues a time-limited reset token (does not change password yet).
+// Production emails the token via SendGrid; never returns it in JSON unless insecure mode.
 app.post("/api/auth/forgot-password", authLimiter, validate(forgotPasswordSchema), async (req, res) => {
   try {
     const { email } = req.body;
     const user = await db.user.findUnique({ where: { email } });
     if (!user) {
-      // Same generic response whether or not the email exists, to avoid
-      // leaking which addresses have accounts.
       res.json({ ok: true, emailed: false });
       return;
     }
-    const tempPassword = generateTempPassword();
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
-    await db.user.update({ where: { id: user.id }, data: { password: passwordHash } });
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const tokenHash = await bcrypt.hash(resetToken, 10);
+    const resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000);
+    await db.user.update({
+      where: { id: user.id },
+      data: { resetToken: tokenHash, resetTokenExpires },
+    });
     await db.auditLog.create({
-      data: { userId: user.id, agencyId: user.agencyId, userName: user.name, action: "Password Reset", module: "Auth", ip: req.ip || "0.0.0.0" },
+      data: {
+        userId: user.id,
+        agencyId: user.agencyId,
+        userName: user.name,
+        action: "Password Reset Requested",
+        module: "Auth",
+        ip: req.ip || "0.0.0.0",
+      },
     });
 
     const emailed = await sendEmail({
       to: user.email,
-      subject: "Your Trevio password was reset",
+      subject: "Reset your Trevio password",
       template: "password_reset",
-      data: { agentName: user.name, tempPassword },
+      data: { agentName: user.name, resetToken },
     });
 
     if (allowInsecureTempPasswordResponse()) {
-      res.json({ ok: true, emailed, tempPassword });
+      res.json({ ok: true, emailed, resetToken });
       return;
     }
 
     if (!emailed) {
-      logger.warn({ email: user.email }, "Password reset without SendGrid — temp password not returned (production)");
+      logger.warn({ email: user.email }, "Password reset token issued without SendGrid delivery");
     }
     res.json({
       ok: true,
       emailed,
       message: emailed
-        ? "If an account exists, a temporary password has been emailed."
-        : "Password was reset. Configure SENDGRID_API_KEY to email temporary passwords.",
+        ? "If an account exists, a reset code has been emailed. It expires in 1 hour."
+        : "If an account exists, a reset was started. Configure SENDGRID_API_KEY to email the code.",
     });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/auth/reset-password", authLimiter, validate(resetPasswordSchema), async (req, res) => {
+  try {
+    const { email, token, newPassword } = req.body;
+    const user = await db.user.findUnique({ where: { email } });
+    if (!user?.resetToken || !user.resetTokenExpires) {
+      res.status(400).json({ error: "Invalid or expired reset token" });
+      return;
+    }
+    if (user.resetTokenExpires.getTime() < Date.now()) {
+      await db.user.update({
+        where: { id: user.id },
+        data: { resetToken: null, resetTokenExpires: null },
+      });
+      res.status(400).json({ error: "Reset token expired. Request a new one." });
+      return;
+    }
+    const valid = await bcrypt.compare(String(token), user.resetToken);
+    if (!valid) {
+      res.status(400).json({ error: "Invalid or expired reset token" });
+      return;
+    }
+    const passwordHash = await bcrypt.hash(String(newPassword), 10);
+    await db.user.update({
+      where: { id: user.id },
+      data: { password: passwordHash, resetToken: null, resetTokenExpires: null },
+    });
+    await db.auditLog.create({
+      data: {
+        userId: user.id,
+        agencyId: user.agencyId,
+        userName: user.name,
+        action: "Password Reset Completed",
+        module: "Auth",
+        ip: req.ip || "0.0.0.0",
+      },
+    });
+    res.json({ ok: true });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -466,13 +562,21 @@ app.post("/api/bookings", requireAuth, requireAnyPermission("flights", "hotels",
   }
 });
 
-app.patch("/api/bookings/:id", requireAuth, requirePermission("bookings"), async (req, res) => {
+app.patch("/api/bookings/:id", requireAuth, requirePermission("bookings"), async (req: AuthRequest, res) => {
   try {
+    const id = routeParamId(req);
+    const existing = await db.booking.findFirst({
+      where: { id, ...agencyScope(req), ...branchScope(req, "agentId") },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { status, paymentStatus } = req.body;
     const data: Record<string, string> = {};
     if (status) data.status = status;
     if (paymentStatus) data.paymentStatus = paymentStatus;
-    const booking = await db.booking.update({ where: { id: req.params.id as string }, data });
+    const booking = await db.booking.update({ where: { id: existing.id }, data });
     res.json({ booking });
   } catch (e) {
     logger.error(e);
@@ -555,11 +659,19 @@ app.post("/api/leads", requireAuth, requirePermission("crm"), validate(leadSchem
   }
 });
 
-app.patch("/api/leads/:id", requireAuth, requirePermission("crm"), async (req, res) => {
+app.patch("/api/leads/:id", requireAuth, requirePermission("crm"), async (req: AuthRequest, res) => {
   try {
+    const id = routeParamId(req);
+    const existing = await db.lead.findFirst({
+      where: { id, ...agencyScope(req), ...branchScope(req, "assignedToId") },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { stage } = req.body;
     const lead = await db.lead.update({
-      where: { id: req.params.id as string },
+      where: { id: existing.id },
       data: { stage },
     });
     res.json({ lead });
@@ -733,9 +845,7 @@ app.post("/api/payments/razorpay/verify", requireAuth, requireAnyPermission("pay
     if (!keySecret || !orderId || !paymentId || !signature) {
       return res.status(400).json({ verified: false });
     }
-    const expected = crypto.createHmac("sha256", keySecret).update(`${orderId}|${paymentId}`).digest("hex");
-    const verified = expected.length === signature.length && crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-    res.json({ verified });
+    res.json({ verified: verifyRazorpaySignature(String(orderId), String(paymentId), String(signature), keySecret) });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -905,13 +1015,21 @@ app.post("/api/tasks", requireAuth, requirePermission("tasks"), validate(taskSch
   }
 });
 
-app.patch("/api/tasks/:id", requireAuth, requirePermission("tasks"), async (req, res) => {
+app.patch("/api/tasks/:id", requireAuth, requirePermission("tasks"), async (req: AuthRequest, res) => {
   try {
+    const id = routeParamId(req);
+    const existing = await db.task.findFirst({
+      where: { id, ...agencyScope(req), ...branchScope(req, "assignedToId") },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { status, priority } = req.body;
     const data: Record<string, string> = {};
     if (status) data.status = status;
     if (priority) data.priority = priority;
-    const task = await db.task.update({ where: { id: req.params.id as string }, data });
+    const task = await db.task.update({ where: { id: existing.id }, data });
     res.json({ task });
   } catch (e) {
     logger.error(e);
@@ -1094,10 +1212,18 @@ app.patch("/api/notifications/read-all", requireAuth, async (req: AuthRequest, r
   }
 });
 
-app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
+app.patch("/api/notifications/:id/read", requireAuth, async (req: AuthRequest, res) => {
   try {
+    const id = routeParamId(req);
+    const existing = await db.notification.findFirst({
+      where: { id, ...agencyScope(req) },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const notification = await db.notification.update({
-      where: { id: req.params.id as string },
+      where: { id: existing.id },
       data: { read: true },
     });
     res.json({ notification });
@@ -1133,8 +1259,8 @@ app.get("/api/wallet", requireAuth, requirePermission("wallet"), async (req: Aut
 
 app.post("/api/wallet", requireAuth, requirePermission("wallet"), validate(walletSchema), async (req: AuthRequest, res) => {
   try {
-    const { agencyId, type, amount, source, description } = req.body;
-    const id = agencyId || req.auth?.agencyId;
+    const { agencyId, type, amount, source, description, orderId, paymentId, signature, demo } = req.body;
+    const id = req.auth?.role === "super_admin" ? (agencyId || req.auth?.agencyId) : req.auth?.agencyId;
     if (!id || !type || !amount) {
       res.status(400).json({ error: "agencyId, type, and amount required" });
       return;
@@ -1143,6 +1269,36 @@ app.post("/api/wallet", requireAuth, requirePermission("wallet"), validate(walle
       res.status(403).json({ error: "Forbidden" });
       return;
     }
+
+    let paymentRef: string | undefined;
+    if (type === "Credit") {
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      const hasRazorpay = Boolean(process.env.RAZORPAY_KEY_ID && keySecret);
+      if (hasRazorpay) {
+        if (!orderId || !paymentId || !signature) {
+          res.status(400).json({ error: "Verified Razorpay payment required for wallet credit" });
+          return;
+        }
+        if (!verifyRazorpaySignature(String(orderId), String(paymentId), String(signature), keySecret!)) {
+          res.status(400).json({ error: "Invalid payment signature" });
+          return;
+        }
+        const reused = await db.walletTransaction.findUnique({ where: { paymentRef: String(paymentId) } });
+        if (reused) {
+          res.status(409).json({ error: "Payment already credited" });
+          return;
+        }
+        paymentRef = String(paymentId);
+      } else if (allowDemoPayments() && demo === true) {
+        paymentRef = `demo_${id}_${Date.now()}_${Math.round(amount)}`;
+      } else {
+        res.status(403).json({
+          error: "Wallet credit requires a verified Razorpay payment (or demo mode with ALLOW_DEMO_PAYMENTS)",
+        });
+        return;
+      }
+    }
+
     const agency = await db.agency.findUnique({ where: { id } });
     if (!agency) {
       res.status(404).json({ error: "Agency not found" });
@@ -1163,6 +1319,7 @@ app.post("/api/wallet", requireAuth, requirePermission("wallet"), validate(walle
         amount,
         balance,
         description: description || `${type} transaction`,
+        paymentRef,
       },
     });
     res.status(201).json({ balance, transaction: txn });
@@ -1174,13 +1331,21 @@ app.post("/api/wallet", requireAuth, requirePermission("wallet"), validate(walle
 
 
 // ── PATCH /api/quotations/:id ────────────────────────────────────────────────
-app.patch("/api/quotations/:id", requireAuth, requirePermission("quotations"), async (req, res) => {
+app.patch("/api/quotations/:id", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res) => {
   try {
+    const id = routeParamId(req);
+    const existing = await db.quotation.findFirst({
+      where: { id, ...agencyScope(req), ...branchScope(req, "createdById") },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { status, validTill } = req.body;
     const data: Record<string, string> = {};
     if (status) data.status = status;
     if (validTill) data.validTill = validTill;
-    const quotation = await db.quotation.update({ where: { id: req.params.id as string }, data });
+    const quotation = await db.quotation.update({ where: { id: existing.id }, data });
     res.json({ quotation });
   } catch (e) {
     logger.error(e);
@@ -1189,8 +1354,14 @@ app.patch("/api/quotations/:id", requireAuth, requirePermission("quotations"), a
 });
 
 // ── PATCH /api/customers/:id ─────────────────────────────────────────────────
-app.patch("/api/customers/:id", requireAuth, requirePermission("customers"), async (req, res) => {
+app.patch("/api/customers/:id", requireAuth, requirePermission("customers"), async (req: AuthRequest, res) => {
   try {
+    const id = routeParamId(req);
+    const existing = await db.customer.findFirst({ where: { id, ...agencyScope(req) } });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { name, email, phone, type, tier, passportNo, visaStatus, city } = req.body;
     const data: Record<string, string | undefined> = {};
     if (name) data.name = name;
@@ -1201,7 +1372,7 @@ app.patch("/api/customers/:id", requireAuth, requirePermission("customers"), asy
     if (passportNo !== undefined) data.passportNo = passportNo;
     if (visaStatus !== undefined) data.visaStatus = visaStatus;
     if (city !== undefined) data.city = city;
-    const customer = await db.customer.update({ where: { id: req.params.id as string }, data });
+    const customer = await db.customer.update({ where: { id: existing.id }, data });
     res.json({ customer });
   } catch (e) {
     logger.error(e);
@@ -1210,9 +1381,15 @@ app.patch("/api/customers/:id", requireAuth, requirePermission("customers"), asy
 });
 
 // ── DELETE /api/customers/:id ─────────────────────────────────────────────────
-app.delete("/api/customers/:id", requireAuth, async (req, res) => {
+app.delete("/api/customers/:id", requireAuth, requirePermission("customers"), async (req: AuthRequest, res) => {
   try {
-    await db.customer.delete({ where: { id: req.params.id as string } });
+    const id = routeParamId(req);
+    const existing = await db.customer.findFirst({ where: { id, ...agencyScope(req) } });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    await db.customer.delete({ where: { id: existing.id } });
     res.json({ success: true });
   } catch (e) {
     logger.error(e);
@@ -1221,10 +1398,18 @@ app.delete("/api/customers/:id", requireAuth, async (req, res) => {
 });
 
 // ── DELETE /api/bookings/:id  (soft-cancel) ───────────────────────────────────
-app.delete("/api/bookings/:id", requireAuth, async (req, res) => {
+app.delete("/api/bookings/:id", requireAuth, requirePermission("bookings"), async (req: AuthRequest, res) => {
   try {
+    const id = routeParamId(req);
+    const existing = await db.booking.findFirst({
+      where: { id, ...agencyScope(req), ...branchScope(req, "agentId") },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const booking = await db.booking.update({
-      where: { id: req.params.id as string },
+      where: { id: existing.id },
       data: { status: "Cancelled" },
     });
     res.json({ booking });
@@ -1235,9 +1420,17 @@ app.delete("/api/bookings/:id", requireAuth, async (req, res) => {
 });
 
 // ── DELETE /api/tasks/:id ─────────────────────────────────────────────────────
-app.delete("/api/tasks/:id", requireAuth, async (req, res) => {
+app.delete("/api/tasks/:id", requireAuth, requirePermission("tasks"), async (req: AuthRequest, res) => {
   try {
-    await db.task.delete({ where: { id: req.params.id as string } });
+    const id = routeParamId(req);
+    const existing = await db.task.findFirst({
+      where: { id, ...agencyScope(req), ...branchScope(req, "assignedToId") },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    await db.task.delete({ where: { id: existing.id } });
     res.json({ success: true });
   } catch (e) {
     logger.error(e);
@@ -1248,6 +1441,14 @@ app.delete("/api/tasks/:id", requireAuth, async (req, res) => {
 // ── PATCH /api/employees/:id ──────────────────────────────────────────────────
 app.patch("/api/employees/:id", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager"), validate(employeeUpdateSchema), async (req: AuthRequest, res) => {
   try {
+    const id = routeParamId(req);
+    const existing = await db.employee.findFirst({
+      where: { id, ...agencyScope(req), ...branchScope(req) },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { name, email, phone, designation, department, branch, branchId, role, status, salary, target, permissions } = req.body;
     // branch managers may only manage employees within their own branch, and can't grant custom permissions
     const isBranchManager = req.auth?.role === "branch_manager";
@@ -1268,7 +1469,7 @@ app.patch("/api/employees/:id", requireAuth, requireRole("super_admin", "agency_
     } else if (branch !== undefined) {
       data.branch = branch;
     }
-    const employee = await db.employee.update({ where: { id: req.params.id as string }, data });
+    const employee = await db.employee.update({ where: { id: existing.id }, data });
     if (permissions !== undefined && !isBranchManager) {
       await db.employee.update({ where: { id: employee.id }, data: { permissions: permissions ?? null } }).catch(() => undefined);
       await db.user.updateMany({ where: { email: employee.email }, data: { permissions: permissions ?? null } }).catch(() => undefined);
@@ -1301,15 +1502,21 @@ app.post("/api/branches", requireAuth, requireRole("super_admin", "agency_admin"
 });
 
 // ── PATCH /api/branches/:id ───────────────────────────────────────────────────
-app.patch("/api/branches/:id", requireAuth, requireRole("super_admin", "agency_admin"), validate(branchUpdateSchema), async (req, res) => {
+app.patch("/api/branches/:id", requireAuth, requireRole("super_admin", "agency_admin"), validate(branchUpdateSchema), async (req: AuthRequest, res) => {
   try {
+    const id = routeParamId(req);
+    const existing = await db.branch.findFirst({ where: { id, ...agencyScope(req) } });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { name, manager, city, revenue } = req.body;
     const data: Record<string, string | number | undefined> = {};
     if (name) data.name = name;
     if (manager) data.manager = manager;
     if (city) data.city = city;
     if (revenue !== undefined) data.revenue = revenue;
-    const branch = await db.branch.update({ where: { id: req.params.id as string }, data });
+    const branch = await db.branch.update({ where: { id: existing.id }, data });
     res.json({ branch });
   } catch (e) {
     logger.error(e);
@@ -1656,9 +1863,12 @@ app.get("/api/analytics/employees", requireAuth, requireRole("super_admin", "age
 
 // --- Phase 2 Endpoints ---
 
-app.get("/api/marketing/campaigns", requireAuth, requirePermission("marketing"), async (req, res) => {
+app.get("/api/marketing/campaigns", requireAuth, requirePermission("marketing"), async (req: AuthRequest, res) => {
   try {
-    const campaigns = await db.marketingCampaign.findMany({ orderBy: { createdAt: "desc" } });
+    const campaigns = await db.marketingCampaign.findMany({
+      where: agencyScope(req),
+      orderBy: { createdAt: "desc" },
+    });
     res.json({ campaigns });
   } catch (e) {
     logger.error(e);
@@ -1666,20 +1876,40 @@ app.get("/api/marketing/campaigns", requireAuth, requirePermission("marketing"),
   }
 });
 
-app.post("/api/marketing/campaigns", requireAuth, requireRole("super_admin", "agency_admin"), async (req, res) => {
+app.post("/api/marketing/campaigns", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
-    const data = req.body;
-    const campaign = await db.marketingCampaign.create({ data });
-    res.json(campaign);
+    const agencyId = ownAgencyId(req, req.body?.agencyId);
+    if (!agencyId) {
+      res.status(400).json({ error: "Agency context required" });
+      return;
+    }
+    const { name, type, status, audience } = req.body ?? {};
+    if (!name || !type || !audience) {
+      res.status(400).json({ error: "name, type, and audience are required" });
+      return;
+    }
+    const campaign = await db.marketingCampaign.create({
+      data: {
+        agencyId,
+        name: String(name),
+        type: String(type),
+        status: status ? String(status) : "Draft",
+        audience: String(audience),
+      },
+    });
+    res.status(201).json(campaign);
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.get("/api/cms/pages", requireAuth, requirePermission("cms"), async (req, res) => {
+app.get("/api/cms/pages", requireAuth, requirePermission("cms"), async (req: AuthRequest, res) => {
   try {
-    const pages = await db.contentPage.findMany({ orderBy: { createdAt: "desc" } });
+    const pages = await db.contentPage.findMany({
+      where: agencyScope(req),
+      orderBy: { createdAt: "desc" },
+    });
     res.json({ pages });
   } catch (e) {
     logger.error(e);
@@ -1687,20 +1917,41 @@ app.get("/api/cms/pages", requireAuth, requirePermission("cms"), async (req, res
   }
 });
 
-app.post("/api/cms/pages", requireAuth, requireRole("super_admin", "agency_admin"), async (req, res) => {
+app.post("/api/cms/pages", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
-    const data = req.body;
-    const page = await db.contentPage.create({ data });
-    res.json(page);
+    const agencyId = ownAgencyId(req, req.body?.agencyId);
+    if (!agencyId) {
+      res.status(400).json({ error: "Agency context required" });
+      return;
+    }
+    const { title, slug, content, status, author } = req.body ?? {};
+    if (!title || !slug || !content) {
+      res.status(400).json({ error: "title, slug, and content are required" });
+      return;
+    }
+    const page = await db.contentPage.create({
+      data: {
+        agencyId,
+        title: String(title),
+        slug: String(slug),
+        content: String(content),
+        status: status ? String(status) : "Draft",
+        author: author ? String(author) : (req.auth?.email ?? "Unknown"),
+      },
+    });
+    res.status(201).json(page);
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.get("/api/management/keys", requireAuth, requirePermission("api-management"), async (req, res) => {
+app.get("/api/management/keys", requireAuth, requirePermission("api-management"), async (req: AuthRequest, res) => {
   try {
-    const keys = await db.apiKey.findMany({ orderBy: { createdAt: "desc" } });
+    const keys = await db.apiKey.findMany({
+      where: agencyScope(req),
+      orderBy: { createdAt: "desc" },
+    });
     res.json({ keys });
   } catch (e) {
     logger.error(e);
@@ -1708,24 +1959,42 @@ app.get("/api/management/keys", requireAuth, requirePermission("api-management")
   }
 });
 
-app.post("/api/management/keys", requireAuth, requireRole("super_admin", "agency_admin"), async (req, res) => {
+app.post("/api/management/keys", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
-    const data = req.body;
-    const key = await db.apiKey.create({ data });
-    res.json(key);
+    const agencyId = ownAgencyId(req, req.body?.agencyId);
+    if (!agencyId) {
+      res.status(400).json({ error: "Agency context required" });
+      return;
+    }
+    const { name, environment, limit } = req.body ?? {};
+    if (!name) {
+      res.status(400).json({ error: "name is required" });
+      return;
+    }
+    const keyValue = `tv_${crypto.randomBytes(24).toString("hex")}`;
+    const key = await db.apiKey.create({
+      data: {
+        agencyId,
+        name: String(name),
+        key: keyValue,
+        environment: environment ? String(environment) : "Test",
+        limit: typeof limit === "number" ? limit : 1000,
+      },
+    });
+    res.status(201).json(key);
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.get("/api/support/tickets", requireAuth, requirePermission("support"), async (req, res) => {
+app.get("/api/support/tickets", requireAuth, requirePermission("support"), async (req: AuthRequest, res) => {
   try {
     const operationsType = req.query.operationsType as string | undefined;
     const deliveryType = req.query.deliveryType as string | undefined;
     const department = req.query.department as string | undefined;
     const status = req.query.status as string | undefined;
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = { ...agencyScope(req) };
     if (operationsType && operationsType !== "All") where.operationsType = operationsType;
     if (deliveryType && deliveryType !== "All") where.deliveryType = deliveryType;
     if (department && department !== "All") where.department = department;
@@ -1742,8 +2011,13 @@ app.get("/api/support/tickets", requireAuth, requirePermission("support"), async
   }
 });
 
-app.post("/api/support/tickets", requireAuth, async (req: AuthRequest, res) => {
+app.post("/api/support/tickets", requireAuth, requirePermission("support"), async (req: AuthRequest, res) => {
   try {
+    const agencyId = ownAgencyId(req);
+    if (!agencyId && req.auth?.role !== "super_admin") {
+      res.status(400).json({ error: "Agency context required" });
+      return;
+    }
     const {
       subject,
       description,
@@ -1774,12 +2048,13 @@ app.post("/api/support/tickets", requireAuth, async (req: AuthRequest, res) => {
       return;
     }
 
-    const count = await db.supportTicket.count();
+    const count = await db.supportTicket.count({ where: agencyScope(req) });
     const ticketId = `TK-${String(count + 3401).padStart(4, "0")}`;
     const department = departmentForOperationsType(operationsType);
 
     const ticket = await db.supportTicket.create({
       data: {
+        agencyId: agencyId ?? ownAgencyId(req, req.body?.agencyId) ?? null,
         ticketId,
         subject: String(subject),
         description: String(description),
@@ -1802,9 +2077,14 @@ app.post("/api/support/tickets", requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-app.patch("/api/support/tickets/:id", requireAuth, async (req: AuthRequest, res) => {
+app.patch("/api/support/tickets/:id", requireAuth, requirePermission("support"), async (req: AuthRequest, res) => {
   try {
-    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const id = routeParamId(req);
+    const existing = await db.supportTicket.findFirst({ where: { id, ...agencyScope(req) } });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
     const { status, assignedTo, priority, deliveryType, scheduledAt } = req.body ?? {};
     const data: Record<string, unknown> = {};
     if (status) data.status = status;
@@ -1819,7 +2099,7 @@ app.patch("/api/support/tickets/:id", requireAuth, async (req: AuthRequest, res)
     }
     if (scheduledAt !== undefined) data.scheduledAt = scheduledAt ? new Date(scheduledAt) : null;
     const ticket = await db.supportTicket.update({
-      where: { id },
+      where: { id: existing.id },
       data,
       include: { messages: true },
     });
@@ -1832,7 +2112,8 @@ app.patch("/api/support/tickets/:id", requireAuth, async (req: AuthRequest, res)
 
 app.get("/api/settings", requireAuth, async (req: AuthRequest, res) => {
   try {
-    const agencyId = req.auth?.agencyId || "ag-1";
+    const agencyId = resolveSettingsAgencyId(req, res);
+    if (!agencyId) return;
     let settings = await db.settings.findUnique({ where: { agencyId } });
     if (!settings) {
       settings = await db.settings.create({ data: { agencyId } });
@@ -1846,12 +2127,13 @@ app.get("/api/settings", requireAuth, async (req: AuthRequest, res) => {
 
 app.put("/api/settings", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
-    const agencyId = req.auth?.agencyId || "ag-1";
-    const data = req.body;
+    const agencyId = resolveSettingsAgencyId(req, res);
+    if (!agencyId) return;
+    const { agencyId: _ignored, id: _id, createdAt: _c, updatedAt: _u, ...data } = req.body ?? {};
     const settings = await db.settings.upsert({
       where: { agencyId },
       update: data,
-      create: { ...data, agencyId }
+      create: { ...data, agencyId },
     });
     res.json(settings);
   } catch (e) {
@@ -1862,7 +2144,8 @@ app.put("/api/settings", requireAuth, requireRole("super_admin", "agency_admin")
 
 app.get("/api/settings/role-permissions", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
-    const agencyId = req.auth?.agencyId || "ag-1";
+    const agencyId = resolveSettingsAgencyId(req, res);
+    if (!agencyId) return;
     const settings = await db.settings.findUnique({ where: { agencyId } });
     const { ROLE_CRUD, MODULES, ROLE_DEFAULT_PERMISSIONS } = await import("./lib/permissions.js");
     res.json({
@@ -1879,7 +2162,8 @@ app.get("/api/settings/role-permissions", requireAuth, requireRole("super_admin"
 
 app.put("/api/settings/role-permissions", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
-    const agencyId = req.auth?.agencyId || "ag-1";
+    const agencyId = resolveSettingsAgencyId(req, res);
+    if (!agencyId) return;
     const rolePermissions = req.body.rolePermissions ?? req.body;
     const settings = await db.settings.upsert({
       where: { agencyId },
@@ -2022,22 +2306,16 @@ app.get("/api/leaves", requireAuth, requirePermission("leaves"), async (req: Aut
 
 app.patch("/api/leaves/:id", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager"), validate(leaveStatusSchema), async (req: AuthRequest, res) => {
   try {
-    const leave = await db.leave.findUnique({ where: { id: req.params.id as string } });
+    const id = routeParamId(req);
+    const leave = await db.leave.findFirst({
+      where: { id, ...agencyScope(req), ...branchScope(req) },
+    });
     if (!leave) {
       res.status(404).json({ error: "Leave not found" });
       return;
     }
-    const scope = { ...agencyScope(req), ...branchScope(req) };
-    if (scope.agencyId && leave.agencyId !== scope.agencyId) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-    if (scope.branchId && leave.branchId !== scope.branchId) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
     const updated = await db.leave.update({
-      where: { id: req.params.id as string },
+      where: { id: leave.id },
       data: { status: req.body.status, approvedById: req.auth!.userId, approvedByName: req.auth!.email },
     });
     res.json({ leave: updated });

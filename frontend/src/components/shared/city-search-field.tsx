@@ -73,16 +73,16 @@ export function CitySearchField({
         <button
           type="button"
           className={cn(
-            "w-full text-left rounded-xl bg-white/95 backdrop-blur p-3 text-foreground hover:bg-white transition",
+            "w-full h-full text-left rounded-lg border border-border bg-background p-3 hover:border-primary/40 transition-colors",
             triggerClassName
           )}
         >
-          <Label className="text-xs text-muted-foreground flex items-center gap-1 pointer-events-none">
-            <Icon className="w-3 h-3" /> {label}
+          <Label className="text-xs text-muted-foreground flex items-center gap-1.5 pointer-events-none mb-1">
+            <Icon className="w-3.5 h-3.5" /> {label}
           </Label>
           <p className={cn(
-            "text-base font-bold leading-tight truncate",
-            !selected && !value && "text-muted-foreground/60 font-normal",
+            "text-sm font-semibold leading-tight truncate",
+            !selected && !value && "text-muted-foreground font-normal",
             valueClassName
           )}>
             {selected?.label ?? (value || placeholder?.replace("Search ", "Select ").replace("...", "") || "Select")}

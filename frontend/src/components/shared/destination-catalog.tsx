@@ -129,8 +129,10 @@ export function DestinationCatalog({ onSelect }: DestinationCatalogProps) {
       const data = await apiFetch<{ countries: string[]; regions: string[] }>("/api/destinations/filters");
       setCountries(data.countries);
       setRegions(data.regions);
-    } catch { /* ignore */ }
-  }, []);
+    } catch {
+      toast({ title: "Could not load destination filters", variant: "destructive" });
+    }
+  }, [toast]);
 
   const load = useCallback(async () => {
     setLoading(true);

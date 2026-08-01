@@ -139,17 +139,6 @@ export function Sidebar() {
               </>
             )}
           </Button>
-
-          {!collapsed && user.role !== "super_admin" && (
-            <div className="mt-2 rounded-xl bg-brand-gradient p-4 text-white relative overflow-hidden">
-              <div className="absolute -right-4 -top-4 w-16 h-16 rounded-full bg-white/10" aria-hidden />
-              <p className="text-label font-semibold relative tracking-tight">Enterprise Plan</p>
-              <p className="text-helper text-white/80 mt-1 relative leading-relaxed">Unlock unlimited API calls</p>
-              <Button size="sm" variant="secondary" className="w-full mt-3 h-8 text-xs bg-white text-primary hover:bg-white/90">
-                Upgrade Plan
-              </Button>
-            </div>
-          )}
         </div>
       </aside>
     </TooltipProvider>

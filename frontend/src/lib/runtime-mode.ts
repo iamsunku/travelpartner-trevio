@@ -4,6 +4,7 @@
  * Frontend:
  *   NEXT_PUBLIC_APP_MODE=demo|live   (default: demo in non-production builds, live when NODE_ENV=production)
  *   NEXT_PUBLIC_ENABLE_MOCK_INVENTORY=true|false  (mock flights/hotels; default true only in demo)
+ *   NEXT_PUBLIC_ENABLE_STUB_MODULES=true|false    (marketing/cms/holiday shells; default true only in demo)
  *   NEXT_PUBLIC_SHOW_DEMO_LOGIN=true|false        (seed credential helpers on login)
  *
  * Backend (already enforced):
@@ -40,6 +41,14 @@ export function isMockInventoryEnabled(): boolean {
 /** Seed login helper chips / prefilled demo password. */
 export function isDemoLoginEnabled(): boolean {
   const flag = envFlag("NEXT_PUBLIC_SHOW_DEMO_LOGIN");
+  if (flag === "true") return true;
+  if (flag === "false") return false;
+  return isDemoMode();
+}
+
+/** UI shells (marketing, CMS, holiday catalog, API marketplace, etc.) — demo only by default. */
+export function isStubModulesEnabled(): boolean {
+  const flag = envFlag("NEXT_PUBLIC_ENABLE_STUB_MODULES");
   if (flag === "true") return true;
   if (flag === "false") return false;
   return isDemoMode();

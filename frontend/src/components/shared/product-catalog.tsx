@@ -172,8 +172,10 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
   useEffect(() => {
     apiFetch<{ items: DestinationOption[] }>("/api/destinations?pageSize=100&status=Active")
       .then((data) => setDestinations(data.items))
-      .catch(() => undefined);
-  }, []);
+      .catch(() => {
+        toast({ title: "Could not load destinations for filter", variant: "destructive" });
+      });
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 

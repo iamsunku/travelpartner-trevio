@@ -68,7 +68,10 @@ function EditRuleDialog({ rule, open, onOpenChange }: { rule: typeof RULE_CARDS[
   if (!rule) return null;
   const r = rule;
   function save() {
-    toast({ title: "Rule updated", description: `${r.title} rate updated successfully` });
+    toast({
+      title: "Demo — not persisted",
+      description: `${r.title} preview only. Commission rules are not saved to the server yet.`,
+    });
     onOpenChange(false);
   }
   return (
@@ -366,6 +369,11 @@ export function CommissionView() {
       <PageHeader
         title="Commission"
         subtitle="Configure commission rules, track monthly settlements and monitor your earnings."
+        action={
+          <Badge variant="outline" className="border-amber-300 text-amber-800 dark:text-amber-300">
+            Partial demo data
+          </Badge>
+        }
       />
       <Tabs defaultValue="rules">
         <TabsList className="bg-muted/60">

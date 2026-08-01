@@ -20,7 +20,6 @@ import type { Agency } from "@/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { TOP_DESTINATIONS } from "@/lib/mock-data";
 import { formatINR, formatFullINR, StatusBadge, avatarGradient, initials, MetricCard, BrandHero, SectionHeader, PageShell } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
@@ -131,30 +130,42 @@ function AgencyDashboard() {
       .catch(() => undefined);
   }, []);
 
+  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todaysBookings = useMemo(
+    () => bookings.filter((b) => (b.createdAt || "").slice(0, 10) === todayKey).length,
+    [bookings, todayKey]
+  );
+  const todaysRevenue = useMemo(
+    () =>
+      bookings
+        .filter((b) => (b.createdAt || "").slice(0, 10) === todayKey)
+        .reduce((sum, b) => sum + (b.amount || 0), 0),
+    [bookings, todayKey]
+  );
+
   const topDestinationsDisplay = destinationInsights?.topDestinations?.length
     ? destinationInsights.topDestinations.map((d) => ({
         destination: d.name,
         bookings: d.productCount,
-        revenue: d.productCount * 10000,
-        growth: 0,
         id: d.id,
       }))
-    : TOP_DESTINATIONS.map((d) => ({ ...d, id: undefined as string | undefined }));
+    : [];
 
   const pieData = financeStats?.byService?.map((s: { service: string; revenue: number }) => ({
     name: s.service,
     value: s.revenue,
   })) || [];
 
+  const leadCount = dashboardStats?.leads ?? 0;
   const stats = [
-    { icon: Plane, label: "Total Bookings", value: dashboardStats?.bookings?.toLocaleString() || "0", change: 12.5, trend: "up" as const, color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", subtitle: "All time" },
-    { icon: Calendar, label: "Today's Bookings", value: String(Math.floor((dashboardStats?.bookings || 0) / 10)), change: 8.2, trend: "up" as const, color: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400", subtitle: "vs yesterday" },
-    { icon: DollarSign, label: "Today's Revenue", value: formatINR((financeStats?.summary?.totalRevenue || 0) / 10), change: 15.3, trend: "up" as const, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "Estimated" },
-    { icon: Receipt, label: "Pending Payments", value: formatINR(pendingPaymentsTotal), change: 5.1, trend: "down" as const, color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400", subtitle: `${pendingPayments.length} invoices` },
-    { icon: Wallet, label: "Wallet Balance", value: formatINR(walletBalance), change: 22.4, trend: "up" as const, color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400", subtitle: "Available" },
-    { icon: TrendingUp, label: "Commission Earned", value: formatINR(financeStats?.summary?.totalCommission || 0), change: 18.7, trend: "up" as const, color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400", subtitle: "This month" },
-    { icon: Users, label: "Total Customers", value: dashboardStats?.customers?.toLocaleString() || "0", change: 6.4, trend: "up" as const, color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400", subtitle: "Active" },
-    { icon: Target, label: "New Enquiries", value: dashboardStats?.leads?.toLocaleString() || "0", change: 11.2, trend: "up" as const, color: "bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400", subtitle: "This week" },
+    { icon: Plane, label: "Total Bookings", value: dashboardStats?.bookings?.toLocaleString() || "0", color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", subtitle: "All time" },
+    { icon: Calendar, label: "Today's Bookings", value: String(todaysBookings), color: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400", subtitle: "Created today" },
+    { icon: DollarSign, label: "Today's Revenue", value: formatINR(todaysRevenue), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "From today's bookings" },
+    { icon: Receipt, label: "Pending Payments", value: formatINR(pendingPaymentsTotal), color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400", subtitle: `${pendingPayments.length} invoices` },
+    { icon: Wallet, label: "Wallet Balance", value: formatINR(walletBalance), color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400", subtitle: "Available" },
+    { icon: TrendingUp, label: "Commission Earned", value: formatINR(financeStats?.summary?.totalCommission || 0), color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400", subtitle: "Recorded" },
+    { icon: Users, label: "Total Customers", value: dashboardStats?.customers?.toLocaleString() || "0", color: "bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400", subtitle: "Active" },
+    { icon: Target, label: "Open Enquiries", value: String(leadCount), color: "bg-orange-100 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400", subtitle: "Leads in CRM" },
   ];
 
   return (
@@ -164,9 +175,10 @@ function AgencyDashboard() {
         title={userName || "Welcome"}
         subtitle={
           <>
-            You have <span className="font-semibold text-white">3 pending approvals</span> and{" "}
-            <span className="font-semibold text-white">5 new enquiries</span> today. Review priorities
-            before starting new bookings.
+            You have{" "}
+            <span className="font-semibold text-white">{pendingPayments.length} pending payments</span>{" "}
+            and <span className="font-semibold text-white">{leadCount} open enquiries</span>. Review
+            priorities before starting new bookings.
           </>
         }
         actions={
@@ -454,31 +466,29 @@ function AgencyDashboard() {
           <SectionHeader title="Top destinations" description="Destinations with the most linked products" />
         </CardHeader>
         <CardContent className="px-6 pb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {topDestinationsDisplay.map((d, i) => (
-              <div
-                key={d.destination}
-                className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/[0.02] transition-enterprise cursor-pointer"
-                onClick={() => d.id && setView("destinations")}
-              >
-                <div className="w-9 h-9 rounded-lg bg-brand-gradient flex items-center justify-center text-white text-helper font-semibold shrink-0 tabular-nums">
-                  {String(i + 1).padStart(2, "0")}
+          {topDestinationsDisplay.length === 0 ? (
+            <p className="text-body text-muted-foreground">
+              No destination insights yet. Link products to destinations to populate this list.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {topDestinationsDisplay.map((d, i) => (
+                <div
+                  key={d.destination}
+                  className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/[0.02] transition-enterprise cursor-pointer"
+                  onClick={() => d.id && setView("destinations")}
+                >
+                  <div className="w-9 h-9 rounded-lg bg-brand-gradient flex items-center justify-center text-white text-helper font-semibold shrink-0 tabular-nums">
+                    {String(i + 1).padStart(2, "0")}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{d.destination}</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{d.bookings} products</p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">{d.destination}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {destinationInsights ? `${d.bookings} products` : `${d.bookings} bookings · ${formatINR(d.revenue)}`}
-                  </p>
-                </div>
-                {!destinationInsights && (
-                  <span className="text-xs font-semibold text-emerald-600 flex items-center gap-0.5 tabular-nums">
-                    <TrendingUp className="w-3 h-3" />
-                    {d.growth}%
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
       </div>
@@ -527,6 +537,7 @@ function SuperAdminDashboard() {
   const setView = useAppStore((s) => s.setView);
   const monthlyRevenue = useDemoDataStore((s) => s.financeStats?.monthly) || [];
   const platformNotifications = useDemoDataStore((s) => s.notifications);
+  const dashboardStats = useDemoDataStore((s) => s.dashboardStats);
   const [agencies, setAgencies] = useState<Agency[]>([]);
 
   useEffect(() => {
@@ -574,14 +585,14 @@ function SuperAdminDashboard() {
       <section className="space-y-4">
         <SectionHeader title="Platform metrics" description="Agency network health and commercial performance" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <MetricCard icon={Building2} label="Active Agencies" value={String(agencies.filter((a) => a.status === "Active").length)} change={9.1} trend="up" color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle={`${agencies.length} total onboarded`} index={0} />
-          <MetricCard icon={DollarSign} label="Platform Revenue" value={formatINR(totalRevenue)} change={14.2} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="This month" index={1} />
-          <MetricCard icon={Wallet} label="Agency Wallets" value={formatINR(totalWallet)} change={7.8} trend="up" color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" subtitle="Total balance" index={2} />
-          <MetricCard icon={TrendingUp} label="Commission Earned" value={formatINR(totalCommission)} change={19.4} trend="up" color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All agencies" index={3} />
-          <MetricCard icon={Plane} label="Total Bookings" value={totalBookings.toLocaleString()} change={11.6} trend="up" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="All time" index={4} />
-          <MetricCard icon={Users} label="Total Customers" value="12,847" change={8.9} trend="up" color="bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400" subtitle="Across agencies" index={5} />
-          <MetricCard icon={Server} label="API Health" value="99.9%" change={0.1} trend="up" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="All vendors" index={6} />
-          <MetricCard icon={AlertTriangle} label="Active Alerts" value="2" change={50} trend="down" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="1 critical" index={7} />
+          <MetricCard icon={Building2} label="Active Agencies" value={String(agencies.filter((a) => a.status === "Active").length)} color="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400" subtitle={`${agencies.length} total onboarded`} index={0} />
+          <MetricCard icon={DollarSign} label="Platform Revenue" value={formatINR(totalRevenue)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="From agency records" index={1} />
+          <MetricCard icon={Wallet} label="Agency Wallets" value={formatINR(totalWallet)} color="bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400" subtitle="Total balance" index={2} />
+          <MetricCard icon={TrendingUp} label="Commission Earned" value={formatINR(totalCommission)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" subtitle="All agencies" index={3} />
+          <MetricCard icon={Plane} label="Total Bookings" value={totalBookings.toLocaleString()} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="All time" index={4} />
+          <MetricCard icon={Users} label="Total Customers" value={String(dashboardStats?.customers ?? "—")} color="bg-cyan-100 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400" subtitle="Across agencies" index={5} />
+          <MetricCard icon={Server} label="API Health" value="—" color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" subtitle="Live monitoring not wired" index={6} />
+          <MetricCard icon={AlertTriangle} label="Active Alerts" value="—" color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="No alert feed yet" index={7} />
         </div>
       </section>
 

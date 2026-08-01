@@ -30,7 +30,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { PageShell, PageHeader, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, MetricCard, StatusBadge, DemoModuleBanner } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 interface ApiKey {
@@ -202,6 +202,7 @@ export function ApiManagementView() {
           </Button>
         }
       />
+      <DemoModuleBanner />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard icon={KeyRound} label="Active Keys" value={String(activeKeys)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" subtitle={env} index={0} />

@@ -60,15 +60,28 @@ function AddMoneyDialog() {
         });
         return;
       }
-      walletTopUp(value, "Razorpay");
-      toast({
-        title: result.demo ? "Demo top-up" : "Top-up successful",
-        description: result.demo
-          ? `${formatFullINR(value)} added in demo mode (no real charge). Configure Razorpay for live payments.`
-          : `${formatFullINR(value)} added to wallet via Razorpay.`,
-      });
-      setOpen(false);
-      setAmount("");
+      try {
+        await walletTopUp(value, "Razorpay", {
+          orderId: result.orderId,
+          paymentId: result.paymentId,
+          signature: result.signature,
+          demo: result.demo,
+        });
+        toast({
+          title: result.demo ? "Demo top-up" : "Top-up successful",
+          description: result.demo
+            ? `${formatFullINR(value)} added in demo mode (no real charge). Configure Razorpay for live payments.`
+            : `${formatFullINR(value)} added to wallet via Razorpay.`,
+        });
+        setOpen(false);
+        setAmount("");
+      } catch (e) {
+        toast({
+          title: "Wallet credit failed",
+          description: e instanceof Error ? e.message : "Payment succeeded but wallet was not credited.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setPaying(false);
     }

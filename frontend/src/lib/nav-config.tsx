@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import type { Module, Role, User, ViewKey } from "@/types";
 import { hasPermission } from "@/lib/permissions";
-import { isMockInventoryEnabled } from "@/lib/runtime-mode";
+import { isMockInventoryEnabled, isStubModulesEnabled } from "@/lib/runtime-mode";
 
 export interface NavItem {
   key: ViewKey;
@@ -20,6 +20,8 @@ export interface NavItem {
   badge?: string;
   /** When true, item is only shown if mock inventory is enabled (demo flights/hotels). */
   mockInventoryOnly?: boolean;
+  /** When true, item is only shown when stub/demo modules are enabled. */
+  stubOnly?: boolean;
 }
 
 export interface NavSection {
@@ -39,7 +41,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "flights", label: "Flights", icon: Plane, module: "flights", mockInventoryOnly: true, badge: "Demo" },
       { key: "hotels", label: "Hotels", icon: Hotel, module: "hotels", mockInventoryOnly: true, badge: "Demo" },
-      { key: "holiday", label: "Holiday Packages", icon: Palmtree, module: "holiday" },
+      { key: "holiday", label: "Holiday Packages", icon: Palmtree, module: "holiday", stubOnly: true, badge: "Demo" },
       { key: "bookings", label: "Booking Management", icon: Ticket, module: "bookings" },
     ],
   },
@@ -101,11 +103,11 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { key: "agencies", label: "Agency Management", icon: Building2, module: "agencies" },
       { key: "branches", label: "Branches", icon: GitBranch, module: "branches" },
-      { key: "api-marketplace", label: "API Marketplace", icon: Store, module: "api-marketplace" },
-      { key: "api-management", label: "API Management", icon: KeyRound, module: "api-management" },
-      { key: "monitoring", label: "Monitoring", icon: Activity, module: "monitoring" },
-      { key: "marketing", label: "Marketing", icon: Megaphone, module: "marketing" },
-      { key: "cms", label: "CMS", icon: LayoutGrid, module: "cms" },
+      { key: "api-marketplace", label: "API Marketplace", icon: Store, module: "api-marketplace", stubOnly: true, badge: "Demo" },
+      { key: "api-management", label: "API Management", icon: KeyRound, module: "api-management", stubOnly: true, badge: "Demo" },
+      { key: "monitoring", label: "Monitoring", icon: Activity, module: "monitoring", stubOnly: true, badge: "Demo" },
+      { key: "marketing", label: "Marketing", icon: Megaphone, module: "marketing", stubOnly: true, badge: "Demo" },
+      { key: "cms", label: "CMS", icon: LayoutGrid, module: "cms", stubOnly: true, badge: "Demo" },
       { key: "audit-logs", label: "Audit Logs", icon: History, module: "audit-logs" },
       { key: "settings", label: "Settings", icon: Settings, module: "settings" },
     ],
@@ -114,10 +116,12 @@ export const NAV_SECTIONS: NavSection[] = [
 
 export function getNavForUser(user: Pick<User, "role" | "permissions">): NavSection[] {
   const mockOk = isMockInventoryEnabled();
+  const stubsOk = isStubModulesEnabled();
   return NAV_SECTIONS.map((section) => ({
     ...section,
     items: section.items.filter((item) => {
       if (item.mockInventoryOnly && !mockOk) return false;
+      if (item.stubOnly && !stubsOk) return false;
       if (item.roles && !item.roles.includes(user.role)) return false;
       return !item.module || hasPermission(user, item.module);
     }),
@@ -126,10 +130,12 @@ export function getNavForUser(user: Pick<User, "role" | "permissions">): NavSect
 
 export function canAccessView(user: Pick<User, "role" | "permissions">, view: ViewKey): boolean {
   const mockOk = isMockInventoryEnabled();
+  const stubsOk = isStubModulesEnabled();
   return NAV_SECTIONS.some((section) =>
     section.items.some((item) => {
       if (item.key !== view) return false;
       if (item.mockInventoryOnly && !mockOk) return false;
+      if (item.stubOnly && !stubsOk) return false;
       if (item.roles && !item.roles.includes(user.role)) return false;
       return !item.module || hasPermission(user, item.module);
     })

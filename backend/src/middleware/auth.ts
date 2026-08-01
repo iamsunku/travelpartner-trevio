@@ -75,7 +75,30 @@ export function requirePermission(module: Module) {
     }
     try {
       const user = await currentPermissionSubject(req.auth.userId);
-      if (!user || user.status !== "Active" || !hasPermission(user, module)) {
+      if (!user || user.status !== "Active") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+
+      // Honor Settings → rolePermissions overrides (view gate for module access)
+      if (req.auth.agencyId) {
+        const settings = await db.settings.findUnique({
+          where: { agencyId: req.auth.agencyId },
+          select: { rolePermissions: true },
+        });
+        const overrides = settings?.rolePermissions as Record<string, Record<string, CrudAction[]>> | null;
+        if (overrides?.[user.role]?.[module]) {
+          const allowed = overrides[user.role][module];
+          if (!hasPermission(user, module) || !allowed.includes("view")) {
+            res.status(403).json({ error: "Forbidden" });
+            return;
+          }
+          next();
+          return;
+        }
+      }
+
+      if (!hasPermission(user, module)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }

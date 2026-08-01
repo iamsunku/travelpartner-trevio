@@ -27,6 +27,8 @@ export interface RazorpayCheckoutResult {
   success: boolean;
   demo: boolean;
   paymentId?: string;
+  orderId?: string;
+  signature?: string;
   error?: string;
 }
 
@@ -58,7 +60,7 @@ export async function payWithRazorpay(opts: RazorpayCheckoutOptions): Promise<Ra
   if (!order.configured || !order.orderId || !order.keyId) {
     if (order.demoAllowed) {
       await new Promise((r) => setTimeout(r, 800));
-      return { success: true, demo: true };
+      return { success: true, demo: true, paymentId: `demo_pay_${Date.now()}` };
     }
     return {
       success: false,
@@ -71,7 +73,7 @@ export async function payWithRazorpay(opts: RazorpayCheckoutOptions): Promise<Ra
   if (!scriptReady || !window.Razorpay) {
     if (order.demoAllowed) {
       await new Promise((r) => setTimeout(r, 800));
-      return { success: true, demo: true };
+      return { success: true, demo: true, paymentId: `demo_pay_${Date.now()}` };
     }
     return {
       success: false,
@@ -96,7 +98,13 @@ export async function payWithRazorpay(opts: RazorpayCheckoutOptions): Promise<Ra
             response.razorpay_payment_id,
             response.razorpay_signature
           );
-          resolve({ success: verify.verified, demo: false, paymentId: response.razorpay_payment_id });
+          resolve({
+            success: verify.verified,
+            demo: false,
+            paymentId: response.razorpay_payment_id,
+            orderId: response.razorpay_order_id,
+            signature: response.razorpay_signature,
+          });
         } catch {
           resolve({ success: false, demo: false, error: "Payment verification failed" });
         }

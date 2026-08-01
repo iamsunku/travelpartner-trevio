@@ -628,6 +628,11 @@ export function FinanceView() {
       <PageHeader
         title="Finance"
         subtitle="Track revenue, GST, TDS, invoices and expenses — your complete financial cockpit."
+        action={
+          <Badge variant="outline" className="border-amber-300 text-amber-800 dark:text-amber-300">
+            Partial demo data
+          </Badge>
+        }
       />
       <Tabs defaultValue="overview">
         <TabsList className="bg-muted/60 flex-wrap h-auto">

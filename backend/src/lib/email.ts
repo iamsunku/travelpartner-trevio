@@ -11,6 +11,7 @@ export interface EmailPayload {
     reason?: string;
     approverName?: string;
     tempPassword?: string;
+    resetToken?: string;
     loginEmail?: string;
   };
 }
@@ -110,7 +111,17 @@ export function generateRejectionEmail(payload: EmailPayload): string {
 }
 
 export function generatePasswordResetEmail(payload: EmailPayload): string {
-  const { agentName, tempPassword } = payload.data;
+  const { agentName, resetToken, tempPassword } = payload.data;
+  if (resetToken) {
+    return `
+    <h2>Password Reset</h2>
+    <p>Hi ${agentName},</p>
+    <p>Use this one-time reset code within 1 hour to set a new password (it does not change your password until you complete the reset):</p>
+    <p style="background:#f3f4f6;padding:12px;font-size:16px;font-weight:bold;letter-spacing:1px;word-break:break-all;">${resetToken}</p>
+    <p>If you did not request this, ignore this email — your password stays unchanged.</p>
+    <p>Best regards,<br/>Trevio Global Team</p>
+  `;
+  }
   return `
     <h2>Password Reset</h2>
     <p>Hi ${agentName},</p>

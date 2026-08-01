@@ -24,6 +24,8 @@ model User {
   status       String   @default("Active")
   permissions  Json?    // null = use role default; array of module keys = explicit override
   lastLogin    DateTime?
+  resetToken       String?
+  resetTokenExpires DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -278,6 +280,7 @@ model WalletTransaction {
   amount      Int
   balance     Int
   description String
+  paymentRef  String?  @unique // Razorpay payment id — prevents replay credits
   date        DateTime @default(now())
 
   @@index([agencyId])
@@ -384,6 +387,7 @@ model Notification {
 
 model MarketingCampaign {
   id          String   @id @default(cuid())
+  agencyId    String?
   name        String
   type        String   // Email|SMS|Push
   status      String   @default("Draft") // Draft|Active|Completed|Paused
@@ -393,17 +397,23 @@ model MarketingCampaign {
   clickRate   Float    @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([agencyId])
 }
 
 model ContentPage {
   id          String   @id @default(cuid())
+  agencyId    String?
   title       String
-  slug        String   @unique
+  slug        String
   content     String
   status      String   @default("Draft") // Published|Draft|Archived
   author      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@unique([agencyId, slug])
+  @@index([agencyId])
 }
 
 model ContentPost {
@@ -422,6 +432,7 @@ model ContentPost {
 
 model ApiKey {
   id          String   @id @default(cuid())
+  agencyId    String?
   name        String
   key         String   @unique
   environment String   @default("Test") // Test|Production
@@ -430,10 +441,13 @@ model ApiKey {
   limit       Int      @default(1000)
   createdAt   DateTime @default(now())
   expiresAt   DateTime?
+
+  @@index([agencyId])
 }
 
 model SupportTicket {
   id          String   @id @default(cuid())
+  agencyId    String?
   ticketId    String   @unique
   subject     String
   description String
@@ -451,6 +465,7 @@ model SupportTicket {
 
   messages    TicketMessage[]
 
+  @@index([agencyId])
   @@index([operationsType])
   @@index([deliveryType])
   @@index([department])

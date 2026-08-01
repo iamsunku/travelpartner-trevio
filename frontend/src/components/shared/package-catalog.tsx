@@ -83,8 +83,11 @@ export function PackageCatalog({ onSelect }: PackageCatalogProps) {
 
   useEffect(() => {
     apiFetch<{ items: DestinationOption[] }>("/api/destinations?pageSize=100")
-      .then((d) => setDestinations(d.items)).catch(() => undefined);
-  }, []);
+      .then((d) => setDestinations(d.items))
+      .catch(() => {
+        toast({ title: "Could not load destinations for filter", variant: "destructive" });
+      });
+  }, [toast]);
 
   useEffect(() => { load(); }, [load]);
 

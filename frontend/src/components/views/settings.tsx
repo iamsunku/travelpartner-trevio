@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
-import { PageShell, PageHeader } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, DemoModuleBanner, DemoDataBadge } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/api";
 import {
@@ -453,15 +453,21 @@ function UsersTab() {
 function SystemTab() {
   const { toast } = useToast();
   const testConnection = (channel: string) => {
-    toast({ title: `Testing ${channel}...`, description: "Connection test initiated. This may take a few seconds." });
-    setTimeout(() => toast({ title: `${channel} connected`, description: "Connection test successful." }), 1500);
+    toast({
+      title: "Demo — not persisted",
+      description: `${channel} connection test is UI-only. Gateways are not wired yet.`,
+    });
   };
   return (
+    <div className="space-y-4">
+      <DemoModuleBanner>
+        Localization, communication channels, and system info below are demo UI — changes are not saved.
+      </DemoModuleBanner>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2"><Globe className="w-4 h-4 text-teal-600" /> Localization</CardTitle>
-          <CardDescription>Regional & language settings</CardDescription>
+          <CardDescription className="flex items-center gap-2">Regional & language settings <DemoDataBadge label="Demo" /></CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">
@@ -510,7 +516,7 @@ function SystemTab() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2"><Server className="w-4 h-4 text-teal-600" /> Communication Channels</CardTitle>
-          <CardDescription>Configure notification gateways</CardDescription>
+          <CardDescription className="flex items-center gap-2">Configure notification gateways <DemoDataBadge label="Demo" /></CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {[
@@ -541,7 +547,7 @@ function SystemTab() {
 
       <Card className="lg:col-span-2">
         <CardHeader className="pb-3">
-          <CardTitle>System Information</CardTitle>
+          <CardTitle className="flex items-center gap-2">System Information <DemoDataBadge label="Demo" /></CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -560,17 +566,22 @@ function SystemTab() {
         </CardContent>
       </Card>
     </div>
+    </div>
   );
 }
 
 function SecurityTab() {
   const { toast } = useToast();
   return (
+    <div className="space-y-4">
+      <DemoModuleBanner>
+        2FA, IP whitelist, and API rate limits are demo UI — toggles and saves are not persisted.
+      </DemoModuleBanner>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2"><Lock className="w-4 h-4 text-teal-600" /> Two-Factor Authentication</CardTitle>
-          <CardDescription>Extra layer of security for your account</CardDescription>
+          <CardDescription className="flex items-center gap-2">Extra layer of security for your account <DemoDataBadge label="Demo" /></CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between p-3 rounded-lg border border-border">
@@ -597,7 +608,7 @@ function SecurityTab() {
             </div>
             <Switch defaultChecked />
           </div>
-          <Button variant="outline" className="w-full" onClick={() => toast({ title: "Backup codes", description: "New backup codes generated. Save them securely." })}>
+          <Button variant="outline" className="w-full" onClick={() => toast({ title: "Demo — not persisted", description: "Backup codes are not generated yet." })}>
             <KeyRound className="w-4 h-4 mr-1.5" /> Regenerate Backup Codes
           </Button>
         </CardContent>
@@ -640,7 +651,7 @@ function SecurityTab() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2"><Globe className="w-4 h-4 text-teal-600" /> IP Whitelist</CardTitle>
-          <CardDescription>Restrict admin access to known IPs</CardDescription>
+          <CardDescription className="flex items-center gap-2">Restrict admin access to known IPs <DemoDataBadge label="Demo" /></CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           {["103.21.58.14 (Mumbai Office)", "49.205.122.88 (Branch - Delhi)", "106.51.74.22 (Branch - Bangalore)"].map((ip) => (
@@ -649,12 +660,12 @@ function SecurityTab() {
                 <Check className="w-3.5 h-3.5 text-emerald-500" />
                 <span className="text-xs font-mono">{ip}</span>
               </div>
-              <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-500"><X className="w-3.5 h-3.5" /></Button>
+              <Button size="icon" variant="ghost" className="h-7 w-7 text-rose-500" onClick={() => toast({ title: "Demo — not persisted", description: "IP whitelist is UI-only." })}><X className="w-3.5 h-3.5" /></Button>
             </div>
           ))}
           <div className="flex gap-2 pt-1">
             <Input placeholder="Add new IP address" className="font-mono text-xs" />
-            <Button variant="outline"><Plus className="w-3.5 h-3.5 mr-1" /> Add</Button>
+            <Button variant="outline" onClick={() => toast({ title: "Demo — not persisted", description: "IP whitelist is UI-only." })}><Plus className="w-3.5 h-3.5 mr-1" /> Add</Button>
           </div>
           <div className="flex items-center justify-between p-2.5 rounded-lg border border-dashed border-amber-300 bg-amber-50/50 dark:bg-amber-500/5 mt-2">
             <div className="flex items-center gap-2">
@@ -669,7 +680,7 @@ function SecurityTab() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2"><Server className="w-4 h-4 text-teal-600" /> API Rate Limits</CardTitle>
-          <CardDescription>Throttle external API consumption</CardDescription>
+          <CardDescription className="flex items-center gap-2">Throttle external API consumption <DemoDataBadge label="Demo" /></CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {[
@@ -699,11 +710,12 @@ function SecurityTab() {
               <Input type="number" defaultValue={1500} />
             </div>
           </div>
-          <Button variant="outline" className="w-full" onClick={() => toast({ title: "Settings saved", description: "API rate limits updated." })}>
+          <Button variant="outline" className="w-full" onClick={() => toast({ title: "Demo — not persisted", description: "API rate limits are UI-only." })}>
             <Save className="w-4 h-4 mr-1.5" /> Save Rate Limits
           </Button>
         </CardContent>
       </Card>
+    </div>
     </div>
   );
 }

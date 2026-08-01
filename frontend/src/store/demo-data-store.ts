@@ -75,7 +75,11 @@ interface DemoDataState {
   addTask: (t: Omit<Task, "id" | "createdAt" | "status">) => Task;
   updateTaskStatus: (id: string, status: Task["status"]) => void;
   addPayment: (p: Omit<Payment, "id" | "txnId" | "date" | "status">) => Payment;
-  walletTopUp: (amount: number, method: string) => void;
+  walletTopUp: (
+    amount: number,
+    method: string,
+    payment?: { orderId?: string; paymentId?: string; signature?: string; demo?: boolean }
+  ) => Promise<void>;
   walletTransfer: (amount: number, description: string) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
@@ -178,6 +182,8 @@ export const useDemoDataStore = create<DemoDataState>()(
           paymentSeq: payment ? s.paymentSeq + 1 : s.paymentSeq,
         }));
 
+        const localBookingId = booking.id;
+        const localPaymentId = payment?.id;
         api
           .createBooking({
             customerName: input.customerName,
@@ -191,6 +197,17 @@ export const useDemoDataStore = create<DemoDataState>()(
             paymentMethod: input.paymentMethod,
             agentName: input.agent ?? "Sneha Reddy",
             agencyName: input.agency ?? "Wanderlust Travels",
+          })
+          .then((res) => {
+            const server = mapApiBooking(res.booking);
+            set((s) => ({
+              bookings: s.bookings.map((b) => (b.id === localBookingId ? server : b)),
+              payments: localPaymentId
+                ? s.payments.map((p) =>
+                    p.id === localPaymentId ? { ...p, bookingRef: server.bookingRef } : p
+                  )
+                : s.payments,
+            }));
           })
           .catch(() => reportSyncFailure("Booking"));
 
@@ -217,9 +234,10 @@ export const useDemoDataStore = create<DemoDataState>()(
       },
 
       addCustomer: (input) => {
+        const localId = `cu-${Date.now()}`;
         const customer: Customer = {
           ...input,
-          id: `cu-${Date.now()}`,
+          id: localId,
           totalBookings: 0,
           totalSpent: 0,
           loyaltyPoints: 0,
@@ -237,14 +255,21 @@ export const useDemoDataStore = create<DemoDataState>()(
             visaStatus: input.visaStatus,
             city: input.city,
           })
+          .then((res) => {
+            const server = mapApiCustomer(res.customer);
+            set((s) => ({
+              customers: s.customers.map((c) => (c.id === localId ? server : c)),
+            }));
+          })
           .catch(() => reportSyncFailure("Customer"));
         return customer;
       },
 
       addLead: (input) => {
+        const localId = `ld-${Date.now()}`;
         const lead: Lead = {
           ...input,
-          id: `ld-${Date.now()}`,
+          id: localId,
           stage: "New",
           createdAt: todayISO(),
         };
@@ -261,6 +286,12 @@ export const useDemoDataStore = create<DemoDataState>()(
             expectedClose: input.expectedClose,
             notes: input.notes,
           })
+          .then((res) => {
+            const server = mapApiLead(res.lead);
+            set((s) => ({
+              leads: s.leads.map((l) => (l.id === localId ? server : l)),
+            }));
+          })
           .catch(() => reportSyncFailure("Lead"));
         return lead;
       },
@@ -273,11 +304,12 @@ export const useDemoDataStore = create<DemoDataState>()(
       },
 
       addQuotation: (input: NewQuotationInput) => {
+        const localId = `qt-${Date.now()}`;
         const quoteNo = `QT-2025-${String(get().quotations.length + 19).padStart(3, "0")}`;
         const quotation: Quotation = {
           ...input,
           service: input.service as Quotation["service"],
-          id: `qt-${Date.now()}`,
+          id: localId,
           quoteNo,
           status: (input.status as Quotation["status"] | undefined) ?? "Draft",
           approvalStatus: input.approvalStatus as Quotation["approvalStatus"] | undefined,
@@ -315,6 +347,12 @@ export const useDemoDataStore = create<DemoDataState>()(
             approvalStatus: input.approvalStatus,
             lineItems: input.lineItems,
           })
+          .then((res) => {
+            const server = mapApiQuotation(res.quotation);
+            set((s) => ({
+              quotations: s.quotations.map((q) => (q.id === localId ? server : q)),
+            }));
+          })
           .catch(() => reportSyncFailure("Quotation"));
         return quotation;
       },
@@ -328,9 +366,10 @@ export const useDemoDataStore = create<DemoDataState>()(
 
       addEmployee: async (input) => {
         const { branchId, permissions, ...employeeFields } = input;
+        const localId = `em-${Date.now()}`;
         const employee: Employee = {
           ...employeeFields,
-          id: `em-${Date.now()}`,
+          id: localId,
           status: "Active",
           incentives: 0,
           achieved: 0,
@@ -352,7 +391,11 @@ export const useDemoDataStore = create<DemoDataState>()(
             target: input.target,
             permissions,
           });
-          return { ...employee, tempPassword: res.tempPassword };
+          const server = mapApiEmployee(res.employee);
+          set((s) => ({
+            employees: s.employees.map((e) => (e.id === localId ? server : e)),
+          }));
+          return { ...server, tempPassword: res.tempPassword };
         } catch {
           reportSyncFailure("Employee");
           return employee;
@@ -369,9 +412,10 @@ export const useDemoDataStore = create<DemoDataState>()(
       },
 
       addTask: (input) => {
+        const localId = `tk-${Date.now()}`;
         const task: Task = {
           ...input,
-          id: `tk-${Date.now()}`,
+          id: localId,
           status: "To Do",
           createdAt: todayISO(),
         };
@@ -387,6 +431,12 @@ export const useDemoDataStore = create<DemoDataState>()(
             relatedTo: input.relatedTo,
             status: "To Do",
           })
+          .then((res) => {
+            const server = mapApiTask(res.task);
+            set((s) => ({
+              tasks: s.tasks.map((t) => (t.id === localId ? server : t)),
+            }));
+          })
           .catch(() => reportSyncFailure("Task"));
         return task;
       },
@@ -399,9 +449,10 @@ export const useDemoDataStore = create<DemoDataState>()(
       },
 
       addPayment: (input) => {
+        const localId = `py-${Date.now()}`;
         const payment: Payment = {
           ...input,
-          id: `py-${Date.now()}`,
+          id: localId,
           txnId: nextTxnId(get().paymentSeq),
           status: "Success",
           date: todayISO(),
@@ -419,15 +470,31 @@ export const useDemoDataStore = create<DemoDataState>()(
             type: input.type,
             gateway: input.gateway,
           })
+          .then((res) => {
+            const server = mapApiPayment(res.payment);
+            set((s) => ({
+              payments: s.payments.map((p) => (p.id === localId ? server : p)),
+            }));
+          })
           .catch(() => reportSyncFailure("Payment"));
         return payment;
       },
 
-      walletTopUp: (amount, method) => {
+      walletTopUp: async (amount, method, payment) => {
+        const res = await api.walletTransaction({
+          type: "Credit",
+          amount,
+          source: "Top-up",
+          description: `Wallet top-up via ${method}`,
+          orderId: payment?.orderId,
+          paymentId: payment?.paymentId,
+          signature: payment?.signature,
+          demo: payment?.demo === true,
+        });
         set((s) => {
-          const balance = s.walletBalance + amount;
+          const balance = res.balance;
           const txn: WalletTransaction = {
-            id: `wt-${Date.now()}`,
+            id: res.transaction.id,
             type: "Credit",
             source: "Top-up",
             amount,
@@ -435,16 +502,8 @@ export const useDemoDataStore = create<DemoDataState>()(
             description: `Wallet top-up via ${method}`,
             date: todayISO(),
           };
-          return { walletBalance: balance, walletTxns: [txn, ...s.walletTxns] };
+          return { walletBalance: balance, walletTxns: [txn, ...s.walletTxns.filter((t) => t.id !== txn.id)] };
         });
-        api
-          .walletTransaction({
-            type: "Credit",
-            amount,
-            source: "Top-up",
-            description: `Wallet top-up via ${method}`,
-          })
-          .catch(() => reportSyncFailure("Wallet top-up"));
       },
 
       walletTransfer: (amount, description) => {
@@ -533,10 +592,14 @@ export const useDemoDataStore = create<DemoDataState>()(
 
           set(patch);
         } catch {
-          /* offline — keep local demo data */
+          toast({
+            title: "Could not refresh live data",
+            description: "Showing last saved data. Check your connection and try again.",
+            variant: "destructive",
+          });
         }
       },
     }),
-    { name: "tpp-demo-data" }
+    { name: "tpp-app-data-v2" }
   )
 );

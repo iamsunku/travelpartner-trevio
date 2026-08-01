@@ -889,56 +889,54 @@ function HotelSearchPanel(props: {
   const guestLabel = `${props.rooms} Room${props.rooms > 1 ? "s" : ""} · ${props.adults + props.childrenCount} Guest${props.adults + props.childrenCount > 1 ? "s" : ""}`;
 
   return (
-    <Card className="relative overflow-hidden border-0 shadow-sm">
-      <div className="absolute inset-0 bg-gradient-to-br from-brand-blue via-primary to-brand-teal" />
-      <div className="absolute inset-0 opacity-30 hero-pattern" />
-      <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
-      <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-brand-teal/25 rounded-full blur-3xl" />
-
-      <CardContent className="relative p-5 sm:p-6 text-white">
-        <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_1fr_auto] gap-3 items-end">
+    <Card className="border border-border bg-card shadow-none">
+      <CardContent className="p-4 sm:p-5 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-[1.3fr_1fr_1fr_1.1fr] gap-3">
           <CitySearchField
             icon={MapPin}
-            label="City / Hotel / Area"
+            label="City / hotel / area"
             placeholder="Search destination..."
             value={props.city}
             options={HOTEL_DESTINATIONS}
             onSelect={props.setCity}
           />
 
-          <div className="rounded-xl bg-white/95 backdrop-blur p-3 text-foreground">
-            <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> Check-in
+          <div className="rounded-lg border border-border bg-background p-3">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1.5 mb-1">
+              <Calendar className="w-3.5 h-3.5" /> Check-in
             </Label>
             <Input
               type="date"
               value={props.checkIn}
               min={today}
               onChange={(e) => props.setCheckIn(e.target.value)}
-              className="border-0 p-0 h-auto text-sm font-semibold focus:ring-0"
+              className="border-0 p-0 h-auto text-sm font-medium shadow-none focus-visible:ring-0"
             />
           </div>
 
-          <div className="rounded-xl bg-white/95 backdrop-blur p-3 text-foreground">
-            <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> Check-out
+          <div className="rounded-lg border border-border bg-background p-3">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1.5 mb-1">
+              <Calendar className="w-3.5 h-3.5" /> Check-out
             </Label>
             <Input
               type="date"
               value={props.checkOut}
               min={props.checkIn || today}
               onChange={(e) => props.setCheckOut(e.target.value)}
-              className="border-0 p-0 h-auto text-sm font-semibold focus:ring-0"
+              className="border-0 p-0 h-auto text-sm font-medium shadow-none focus-visible:ring-0"
             />
           </div>
 
           <Popover>
             <PopoverTrigger asChild>
-              <button className="rounded-xl bg-white/95 backdrop-blur p-3 text-left text-foreground hover:bg-white transition">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Users className="w-3 h-3" /> Guests & Rooms
+              <button
+                type="button"
+                className="rounded-lg border border-border bg-background p-3 text-left hover:border-primary/40 transition-colors w-full"
+              >
+                <Label className="text-xs text-muted-foreground flex items-center gap-1.5 pointer-events-none mb-1">
+                  <Users className="w-3.5 h-3.5" /> Guests & rooms
                 </Label>
-                <p className="text-sm font-semibold mt-0.5">{guestLabel}</p>
+                <p className="text-sm font-medium">{guestLabel}</p>
               </button>
             </PopoverTrigger>
             <PopoverContent className="w-80" align="start">
@@ -963,14 +961,14 @@ function HotelSearchPanel(props: {
         <Button
           onClick={props.onSearch}
           disabled={props.loading}
-          className="w-full mt-3 h-12 bg-white text-orange-700 hover:bg-white/90 font-semibold text-base shadow-md gap-2"
+          className="w-full h-11 font-medium gap-2"
         >
           {props.loading ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
-            <Search className="w-5 h-5" />
+            <Search className="w-4 h-4" />
           )}
-          {props.loading ? "Searching…" : "Search Hotels"}
+          {props.loading ? "Searching…" : "Search hotels"}
         </Button>
       </CardContent>
     </Card>

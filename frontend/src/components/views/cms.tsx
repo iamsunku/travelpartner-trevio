@@ -35,7 +35,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { PageShell, PageHeader, MetricCard, StatusBadge, initials, avatarGradient } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, MetricCard, StatusBadge, initials, avatarGradient, DemoModuleBanner } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 interface Banner {
@@ -253,6 +253,7 @@ export function CmsView() {
   return (
     <PageShell>
       <PageHeader title="Content Management" subtitle="Banners, offers, blogs, testimonials, FAQ and SEO" />
+      <DemoModuleBanner />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard icon={ImageIcon} label="Live Banners" value={String(activeBanners)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" subtitle={`${banners.length} total`} index={0} />

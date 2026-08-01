@@ -8,7 +8,7 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Plus, Calendar, Link2, MessageCircle, Paperclip, AlertTriangle,
+  Plus, Calendar, Link2, AlertTriangle,
   CheckCircle2, ListTodo, Loader, Eye, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,6 @@ import {
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore } from "@/store/app-store";
@@ -320,26 +319,9 @@ function AssignTaskDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
   );
 }
 
-const MOCK_COMMENTS = [
-  { user: "Arjun Nair", text: "Please prioritize this — customer is following up daily.", time: "2h ago" },
-  { user: "Sneha Reddy", text: "Working on revised quote, will share by EOD.", time: "1h ago" },
-];
-const MOCK_ATTACHMENTS = [
-  { name: "Bali_Quotation_v2.pdf", size: "245 KB" },
-  { name: "Villa_Options.xlsx", size: "88 KB" },
-];
-
 function TaskDetailDialog({ task, onClose }: { task: Task | null; onClose: () => void }) {
-  const { toast } = useToast();
-  const [comment, setComment] = useState("");
   if (!task) return null;
   const overdue = task.status !== "Completed" && isOverdue(task.dueDate);
-
-  const sendComment = () => {
-    if (!comment.trim()) return;
-    toast({ title: "Comment posted", description: "Your comment has been added." });
-    setComment("");
-  };
 
   return (
     <Dialog open={!!task} onOpenChange={(v) => !v && onClose()}>
@@ -392,71 +374,9 @@ function TaskDetailDialog({ task, onClose }: { task: Task | null; onClose: () =>
           </div>
         </div>
 
-        <Separator />
-
-        {/* Attachments */}
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <Paperclip className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium">Attachments</span>
-          </div>
-          <div className="space-y-1.5">
-            {MOCK_ATTACHMENTS.map((a) => (
-              <div key={a.name} className="flex items-center justify-between rounded-lg border border-border p-2 hover:bg-muted/40 transition-colors cursor-pointer">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-md bg-primary/10 dark:bg-primary/15 text-primary dark:text-brand-teal flex items-center justify-center shrink-0">
-                    <Paperclip className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium truncate">{a.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{a.size}</p>
-                  </div>
-                </div>
-                <Button size="sm" variant="ghost" className="h-7 text-xs">Download</Button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <Separator />
-
-        {/* Comments */}
-        <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <MessageCircle className="w-3.5 h-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium">Comments ({MOCK_COMMENTS.length})</span>
-          </div>
-          <div className="space-y-2 max-h-40 overflow-y-auto scroll-thin">
-            {MOCK_COMMENTS.map((c, i) => (
-              <div key={i} className="flex gap-2">
-                <Avatar className="w-6 h-6 shrink-0">
-                  <AvatarFallback className={cn("bg-gradient-to-br text-white text-[9px] font-semibold", avatarGradient(c.user))}>
-                    {initials(c.user)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="rounded-lg bg-muted px-2.5 py-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium">{c.user}</span>
-                      <span className="text-[10px] text-muted-foreground">{c.time}</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{c.text}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2 mt-2">
-            <Input
-              placeholder="Add a comment..."
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") sendComment(); }}
-              className="h-8 text-xs"
-            />
-            <Button size="sm" onClick={sendComment} className="h-8 bg-primary hover:bg-primary/90">Send</Button>
-          </div>
-        </div>
+        <p className="text-xs text-muted-foreground rounded-lg border border-dashed border-border px-3 py-2">
+          Comments and attachments are not available yet — coming in a later release.
+        </p>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Close</Button>

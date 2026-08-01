@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { PageShell, PageHeader, BrandHero, SectionHeader, MetricCard } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, BrandHero, SectionHeader, MetricCard, DemoModuleBanner } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 interface HealthMetric { name: string; value: number; fill: string; icon: React.ElementType; }
@@ -126,11 +126,12 @@ export function MonitoringView() {
         title="System Monitoring"
         subtitle="Real-time platform health, API status, and incident tracking"
         action={
-          <Button variant="outline" onClick={() => toast({ title: "Refreshed", description: "All metrics re-fetched." })}>
+          <Button variant="outline" onClick={() => toast({ title: "Demo — not persisted", description: "Monitoring metrics are sample data." })}>
             <RefreshCw className="w-4 h-4 mr-1.5" /> Refresh
           </Button>
         }
       />
+      <DemoModuleBanner />
 
       <BrandHero
         eyebrow="Platform Status"

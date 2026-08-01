@@ -96,6 +96,39 @@ export function PageShell({
   return <div className={cn("page-shell animate-slide-up", className)}>{children}</div>;
 }
 
+/** Amber badge for UI shells / partial mock data (not live APIs). */
+export function DemoDataBadge({
+  label = "Demo data",
+  className,
+}: {
+  label?: string;
+  className?: string;
+}) {
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "border-amber-300 text-amber-800 dark:border-amber-500/40 dark:text-amber-300",
+        className
+      )}
+    >
+      {label}
+    </Badge>
+  );
+}
+
+export function DemoModuleBanner({
+  children = "Demo module — sample UI only. Not connected to live APIs.",
+}: {
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+      {children}
+    </div>
+  );
+}
+
 export function PageHeader({
   title,
   subtitle,

@@ -1168,32 +1168,34 @@ function SearchPanel(props: {
   loading: boolean;
 }) {
   const today = new Date().toISOString().slice(0, 10);
-  const paxLabel = `${props.adults + props.childrenCount} Traveler${props.adults + props.childrenCount > 1 ? "s" : ""}${props.infants ? `, ${props.infants} Infant` : ""}`;
+  const travelerCount = props.adults + props.childrenCount;
+  const paxLabel = `${travelerCount} traveler${travelerCount === 1 ? "" : "s"}`;
+  const isRound = props.tripType === "round";
 
   return (
-    <Card className="relative overflow-hidden border-0 shadow-sm">
-      {/* Gradient backdrop */}
-      <div className="absolute inset-0 bg-gradient-to-br from-brand-blue via-primary to-brand-teal" />
-      <div className="absolute inset-0 opacity-30 hero-pattern" />
-      <div className="absolute -top-12 -right-12 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
-      <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-brand-teal/25 rounded-full blur-3xl" />
-
-      <CardContent className="relative p-5 sm:p-6 text-white">
-        {/* Trip type toggle */}
-        <div className="flex flex-wrap items-center gap-2 mb-4">
+    <Card className="border border-border bg-card shadow-none">
+      <CardContent className="p-4 sm:p-5 space-y-4">
+        <div
+          className="inline-flex p-1 rounded-lg bg-muted"
+          role="tablist"
+          aria-label="Trip type"
+        >
           {[
-            { id: "oneway", label: "One Way" },
-            { id: "round", label: "Round Trip" },
-            { id: "multi", label: "Multi City" },
+            { id: "oneway", label: "One way" },
+            { id: "round", label: "Round trip" },
+            { id: "multi", label: "Multi city" },
           ].map((t) => (
             <button
               key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={props.tripType === t.id}
               onClick={() => props.setTripType(t.id as "oneway" | "round" | "multi")}
               className={cn(
-                "px-4 py-1.5 rounded-full text-sm font-medium transition-all",
+                "px-3.5 py-1.5 rounded-md text-sm font-medium transition-colors",
                 props.tripType === t.id
-                  ? "bg-white text-teal-700 shadow-sm"
-                  : "bg-white/15 text-white hover:bg-white/25"
+                  ? "bg-background text-foreground shadow-xs"
+                  : "text-muted-foreground hover:text-foreground"
               )}
             >
               {t.label}
@@ -1201,8 +1203,7 @@ function SearchPanel(props: {
           ))}
         </div>
 
-        {/* Main inputs */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-3 items-stretch">
           <AirportField
             icon={PlaneTakeoff}
             label="From"
@@ -1211,13 +1212,17 @@ function SearchPanel(props: {
             excludeCode={props.to}
           />
 
-          <button
-            onClick={props.swapCities}
-            className="hidden md:flex size-10 -mb-2 items-center justify-center rounded-full bg-white text-teal-700 shadow-md hover:scale-110 hover:rotate-180 transition-transform"
-            title="Swap cities"
-          >
-            <ArrowLeftRight className="w-4 h-4" />
-          </button>
+          <div className="flex items-center justify-center lg:px-0">
+            <button
+              type="button"
+              onClick={props.swapCities}
+              className="size-9 rounded-full border border-border bg-background text-muted-foreground hover:text-primary hover:border-primary/40 transition-colors flex items-center justify-center"
+              title="Swap cities"
+              aria-label="Swap origin and destination"
+            >
+              <ArrowLeftRight className="w-4 h-4" />
+            </button>
+          </div>
 
           <AirportField
             icon={PlaneLanding}
@@ -1228,46 +1233,52 @@ function SearchPanel(props: {
           />
         </div>
 
-        {/* Date + pax row */}
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-3 mt-3">
-          <div className="rounded-xl bg-white/95 backdrop-blur p-3 text-foreground">
-            <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> Departure
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.2fr_auto] gap-3">
+          <div className="rounded-lg border border-border bg-background p-3">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1.5 mb-1">
+              <Calendar className="w-3.5 h-3.5" /> Departure
             </Label>
             <Input
               type="date"
               value={props.departDate}
               min={today}
               onChange={(e) => props.setDepartDate(e.target.value)}
-              className="border-0 p-0 h-auto text-sm font-semibold focus:ring-0"
+              className="border-0 p-0 h-auto text-sm font-medium shadow-none focus-visible:ring-0"
             />
           </div>
 
-          <div className={cn(
-            "rounded-xl bg-white/95 backdrop-blur p-3 text-foreground transition-opacity",
-            props.tripType !== "round" && "opacity-40 pointer-events-none"
-          )}>
-            <Label className="text-xs text-muted-foreground flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> Return
+          <div
+            className={cn(
+              "rounded-lg border border-border bg-background p-3 transition-opacity",
+              !isRound && "opacity-50"
+            )}
+          >
+            <Label className="text-xs text-muted-foreground flex items-center gap-1.5 mb-1">
+              <Calendar className="w-3.5 h-3.5" /> Return
             </Label>
             <Input
               type="date"
               value={props.returnDate}
               min={props.departDate || today}
-              disabled={props.tripType !== "round"}
+              disabled={!isRound}
               onChange={(e) => props.setReturnDate(e.target.value)}
-              className="border-0 p-0 h-auto text-sm font-semibold focus:ring-0"
+              className="border-0 p-0 h-auto text-sm font-medium shadow-none focus-visible:ring-0 disabled:cursor-not-allowed"
             />
+            {!isRound && (
+              <p className="text-[11px] text-muted-foreground mt-1">Select round trip to enable</p>
+            )}
           </div>
 
-          {/* Passengers & class popover */}
           <Popover>
             <PopoverTrigger asChild>
-              <button className="rounded-xl bg-white/95 backdrop-blur p-3 text-left text-foreground hover:bg-white transition">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Users className="w-3 h-3" /> Travelers & Class
+              <button
+                type="button"
+                className="rounded-lg border border-border bg-background p-3 text-left hover:border-primary/40 transition-colors w-full"
+              >
+                <Label className="text-xs text-muted-foreground flex items-center gap-1.5 pointer-events-none mb-1">
+                  <Users className="w-3.5 h-3.5" /> Travelers & class
                 </Label>
-                <p className="text-sm font-semibold mt-0.5">{paxLabel}</p>
+                <p className="text-sm font-medium">{paxLabel}</p>
                 <p className="text-xs text-muted-foreground">{props.cabin}</p>
               </button>
             </PopoverTrigger>
@@ -1308,14 +1319,14 @@ function SearchPanel(props: {
           <Button
             onClick={props.onSearch}
             disabled={props.loading}
-            className="h-full min-h-[68px] bg-amber-500 hover:bg-amber-600 text-white font-semibold text-base shadow-md gap-2"
+            className="h-12 lg:h-auto lg:min-h-[72px] px-6 font-medium gap-2"
           >
             {props.loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <Search className="w-5 h-5" />
+              <Search className="w-4 h-4" />
             )}
-            {props.loading ? "Searching…" : "Search Flights"}
+            {props.loading ? "Searching…" : "Search flights"}
           </Button>
         </div>
       </CardContent>
@@ -1356,14 +1367,17 @@ function AirportField({ icon: Icon, label, value, onSelect, excludeCode }: {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="w-full text-left rounded-xl bg-white/95 backdrop-blur p-3 text-foreground hover:bg-white transition"
+          className="w-full h-full text-left rounded-lg border border-border bg-background p-3 hover:border-primary/40 transition-colors"
         >
-          <Label className="text-xs text-muted-foreground flex items-center gap-1 pointer-events-none">
-            <Icon className="w-3 h-3" /> {label}
+          <Label className="text-xs text-muted-foreground flex items-center gap-1.5 pointer-events-none mb-1">
+            <Icon className="w-3.5 h-3.5" /> {label}
           </Label>
-          <p className="text-lg font-bold leading-tight">{value}</p>
+          <p className="text-sm font-semibold leading-tight">
+            {selected?.city ?? value}
+            <span className="ml-1.5 text-xs font-medium text-muted-foreground">{value}</span>
+          </p>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">
-            {selected ? `${selected.city} · ${selected.name}` : value}
+            {selected?.name ?? "Select airport"}
           </p>
         </button>
       </PopoverTrigger>

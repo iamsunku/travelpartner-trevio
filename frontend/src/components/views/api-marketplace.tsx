@@ -16,7 +16,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { PageShell, PageHeader, BrandHero, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, BrandHero, MetricCard, StatusBadge, DemoModuleBanner } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 interface Vendor {
@@ -170,6 +170,7 @@ export function ApiMarketplaceView() {
         title="API Marketplace"
         subtitle="Connect third-party travel APIs across flights, hotels, activities and transfers"
       />
+      <DemoModuleBanner />
 
       <BrandHero
         eyebrow="Integrations"

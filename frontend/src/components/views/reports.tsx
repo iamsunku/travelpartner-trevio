@@ -159,6 +159,9 @@ export function ReportsView() {
         subtitle="Track performance across sales, bookings, finance & employees"
         action={
           <>
+            <Badge variant="outline" className="border-amber-300 text-amber-800 dark:text-amber-300">
+              Partial demo charts
+            </Badge>
             <Select value={dateRange} onValueChange={setDateRange}>
               <SelectTrigger className="w-[150px]">
                 <Calendar className="w-3.5 h-3.5 mr-1.5" />

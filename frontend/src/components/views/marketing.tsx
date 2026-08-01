@@ -34,7 +34,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { PageShell, PageHeader, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, MetricCard, StatusBadge, DemoModuleBanner } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
 type CampaignType = "Email" | "WhatsApp" | "SMS";
@@ -295,6 +295,7 @@ export function MarketingView() {
   return (
     <PageShell>
       <PageHeader title="Marketing" subtitle="Campaigns, coupons, and promotions" />
+      <DemoModuleBanner />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard icon={Mail} label="Campaigns" value={String(campaigns.length)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" index={0} />

@@ -10,9 +10,6 @@ import { useAuthStore } from "@/store/app-store";
 import { api } from "@/lib/api";
 import { MODULES, MODULE_LABELS, ROLE_DEFAULT_PERMISSIONS } from "@/lib/permissions";
 import type { Module, Role } from "@/types";
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from "recharts";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import type { Employee } from "@/types";
 import {
-  formatINR, formatFullINR, PageShell, PageHeader, MetricCard, StatusBadge, initials, avatarGradient,
+  formatINR, PageShell, PageHeader, MetricCard, StatusBadge, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 
@@ -42,15 +39,6 @@ const DEPARTMENTS = ["All", "Sales", "Management", "Accounts", "Operations", "Su
 const BRANCHES = ["All", "Mumbai - Andheri", "Delhi - CP", "Bangalore - Indiranagar", "Chennai - T. Nagar"];
 const STATUSES = ["All", "Active", "On Leave", "Inactive"];
 const ROLES = ["employee", "branch_manager", "accountant"];
-
-const PERFORMANCE_TREND = [
-  { month: "Aug", value: 320000 },
-  { month: "Sep", value: 410000 },
-  { month: "Oct", value: 380000 },
-  { month: "Nov", value: 540000 },
-  { month: "Dec", value: 670000 },
-  { month: "Jan", value: 612000 },
-];
 
 export function EmployeesView() {
   const employees = useDemoDataStore((s) => s.employees);
@@ -606,13 +594,6 @@ function EditEmployeeDialog({ employee, onClose }: { employee: Employee | null; 
 function EmployeeDetailDialog({ employee, onClose }: { employee: Employee | null; onClose: () => void }) {
   if (!employee) return null;
   const pct = employee.target > 0 ? Math.min(100, Math.round((employee.achieved / employee.target) * 100)) : 0;
-  // Mock attendance calendar — 30 days, present/absent based on attendance %
-  const days = Array.from({ length: 30 }, (_, i) => {
-    const seed = (employee.name.charCodeAt(0) + i) % 100;
-    const present = seed < employee.attendance;
-    const isWeekend = i % 7 === 5 || i % 7 === 6;
-    return { day: i + 1, present: isWeekend ? null : present, weekend: isWeekend };
-  });
 
   return (
     <Dialog open={!!employee} onOpenChange={(v) => !v && onClose()}>
@@ -694,51 +675,14 @@ function EmployeeDetailDialog({ employee, onClose }: { employee: Employee | null
           </div>
         )}
 
-        <div className="rounded-lg border border-border p-3">
-          <p className="text-xs font-medium mb-2">Performance Trend (6 months)</p>
-          <ResponsiveContainer width="100%" height={140}>
-            <AreaChart data={PERFORMANCE_TREND} margin={{ left: -28, right: 4, top: 4 }}>
-              <defs>
-                <linearGradient id="perfGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--brand-blue)" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="var(--brand-blue)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v / 100000}L`} />
-              <Tooltip
-                contentStyle={{ borderRadius: 10, border: "1px solid var(--border)", fontSize: 11 }}
-                formatter={(v: number) => formatFullINR(v)}
-              />
-              <Area type="monotone" dataKey="value" stroke="var(--brand-blue)" strokeWidth={2} fill="url(#perfGrad)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="rounded-lg border border-border p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-medium">Attendance — Last 30 Days</p>
-            <span className="text-xs text-muted-foreground">{employee.attendance}% present</span>
-          </div>
-          <div className="grid grid-cols-10 gap-1">
-            {days.map((d) => (
-              <div
-                key={d.day}
-                title={`Day ${d.day}`}
-                className={cn(
-                  "aspect-square rounded-sm text-[8px] flex items-center justify-center",
-                  d.weekend && "bg-muted/50",
-                  !d.weekend && d.present && "bg-emerald-400 dark:bg-emerald-500/70",
-                  !d.weekend && !d.present && "bg-rose-300 dark:bg-rose-500/60",
-                )}
-              />
-            ))}
-          </div>
-          <div className="flex items-center gap-3 mt-2 text-[10px] text-muted-foreground">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-400" /> Present</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-rose-300" /> Absent</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-muted" /> Weekend</span>
-          </div>
+        <div className="rounded-lg border border-dashed border-border p-3 space-y-1">
+          <p className="text-xs font-medium">Attendance</p>
+          <p className="text-sm text-muted-foreground">
+            Recorded rate: <span className="font-semibold text-foreground">{employee.attendance}%</span>
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            Day-by-day calendar and performance charts come from Attendance &amp; Leave once linked to this profile.
+          </p>
         </div>
 
         <DialogFooter>

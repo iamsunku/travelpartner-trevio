@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plane, Hotel, Zap, Palmtree, Shield, ArrowRight, Mail, Lock, Phone,
+  Plane, Hotel, Zap, Palmtree, Shield, ArrowRight, Mail, Lock,
   Building2, UserCog, User, Eye, EyeOff, CheckCircle2, Sparkles,
   Globe, TrendingUp,
 } from "lucide-react";
@@ -16,13 +16,12 @@ import type { Role } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { AgentRegistrationForm } from "@/components/auth/agent-registration-form";
 import { isDemoLoginEnabled } from "@/lib/runtime-mode";
 
-type Mode = "login" | "otp" | "forgot" | "register";
+type Mode = "login" | "forgot" | "reset" | "register";
 
 const ROLE_CARDS: { role: Role; icon: React.ElementType; gradient: string }[] = [
   { role: "super_admin", icon: Shield, gradient: "from-blue-600 to-indigo-700" },
@@ -51,10 +50,12 @@ export function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState(showDemoLogin ? ROLE_USERS.agency_admin.email : "");
   const [password, setPassword] = useState(showDemoLogin ? DEMO_LOGIN_PASSWORD : "");
-  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotLoading, setForgotLoading] = useState(false);
+  const [resetToken, setResetToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
   const [showCreds, setShowCreds] = useState(false);
 
   const selectRole = (role: Role) => {
@@ -69,21 +70,20 @@ export function LoginScreen() {
     const result = await loginWithApi(email, password);
     setLoading(false);
     if (!result.ok) {
-      toast({ title: "Sign in failed", description: result.error || "Invalid email or password", variant: "destructive" });
+      const err = result.error || "Invalid email or password";
+      const rateLimited = /too many/i.test(err);
+      toast({
+        title: rateLimited ? "Too many attempts" : "Sign in failed",
+        description: rateLimited
+          ? "Login is temporarily rate-limited. Wait a minute, or restart the API to clear the counter."
+          : err,
+        variant: "destructive",
+      });
       return;
     }
     const user = useAuthStore.getState().user;
     await hydrateFromApi(user?.agencyId);
     toast({ title: "Welcome back!", description: `Signed in as ${user ? ROLE_LABELS[user.role] : ""}` });
-  };
-
-  const handleOtpVerify = () => {
-    toast({
-      title: "OTP login not available",
-      description: "Use email and password. OTP sign-in will be enabled after SMS provider setup.",
-      variant: "destructive",
-    });
-    setMode("login");
   };
 
   const handleForgotPassword = async () => {
@@ -94,28 +94,61 @@ export function LoginScreen() {
     setForgotLoading(true);
     try {
       const res = await api.forgotPassword(forgotEmail.trim());
-      if (res.tempPassword) {
+      if (res.resetToken) {
+        setResetToken(res.resetToken);
+        setMode("reset");
         toast({
-          title: "Password reset (dev)",
-          description: `Temporary password: ${res.tempPassword} (shown only in development — configure SendGrid for production).`,
+          title: "Reset code ready (dev)",
+          description: "Enter a new password below. The code was also returned for local testing.",
         });
-      } else if (res.emailed) {
+        return;
+      }
+      if (res.emailed) {
         toast({
           title: "Check your email",
-          description: "If an account exists for that address, a temporary password has been sent.",
+          description: "If an account exists, a reset code was sent. It expires in 1 hour.",
         });
+        setMode("reset");
       } else {
         toast({
           title: "Request received",
-          description: res.message || "If an account exists for that address, password reset instructions will follow.",
+          description: res.message || "If an account exists, follow the reset instructions when they arrive.",
         });
+        setMode("login");
+        setForgotEmail("");
       }
-      setMode("login");
-      setForgotEmail("");
     } catch {
-      toast({ title: "Couldn't reset password", description: "Please try again.", variant: "destructive" });
+      toast({ title: "Couldn't start reset", description: "Please try again.", variant: "destructive" });
     } finally {
       setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!forgotEmail.trim() || !resetToken.trim() || newPassword.length < 8) {
+      toast({
+        title: "Missing fields",
+        description: "Email, reset code, and a new password (8+ chars) are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await api.resetPassword(forgotEmail.trim(), resetToken.trim(), newPassword);
+      toast({ title: "Password updated", description: "You can sign in with your new password." });
+      setMode("login");
+      setForgotEmail("");
+      setResetToken("");
+      setNewPassword("");
+    } catch (e) {
+      toast({
+        title: "Reset failed",
+        description: e instanceof Error ? e.message : "Invalid or expired reset code.",
+        variant: "destructive",
+      });
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -321,25 +354,6 @@ export function LoginScreen() {
                   </Button>
 
                   {showDemoLogin && (
-                  <>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-px bg-border" />
-                    <span className="text-xs text-muted-foreground">or</span>
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    onClick={() => setMode("otp")}
-                    className="w-full h-11"
-                  >
-                    <Phone className="w-4 h-4 mr-2" />
-                    Login with OTP (demo stub)
-                  </Button>
-                  </>
-                  )}
-
-                  {showDemoLogin && (
                     <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2">
                       <button
                         type="button"
@@ -381,46 +395,6 @@ export function LoginScreen() {
                 </div>
               )}
 
-              {mode === "otp" && (
-                <div className="space-y-6">
-                  <button onClick={() => setMode("login")} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
-                    ← Back to login
-                  </button>
-                  <div>
-                    <h2 className="text-2xl font-bold">OTP Login</h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Enter your registered mobile number to receive a one-time password.
-                    </p>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Mobile Number</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input className="pl-9 h-11" defaultValue="+91 98200 12345" />
-                    </div>
-                  </div>
-                  <Button onClick={() => { setOtp(""); toast({ title: "OTP Sent", description: "Use 123456 for demo" }); }} className="w-full h-11">
-                    Send OTP
-                  </Button>
-                  <div className="space-y-2">
-                    <Label className="text-center block">Enter 6-digit OTP</Label>
-                    <div className="flex justify-center">
-                      <InputOTP maxLength={6} value={otp} onChange={setOtp}>
-                        <InputOTPGroup>
-                          {[0, 1, 2, 3, 4, 5].map((i) => (
-                            <InputOTPSlot key={i} index={i} />
-                          ))}
-                        </InputOTPGroup>
-                      </InputOTP>
-                    </div>
-                    <p className="text-xs text-center text-muted-foreground">Demo OTP: 123456</p>
-                  </div>
-                  <Button onClick={handleOtpVerify} disabled={otp.length < 6 || loading} className="w-full h-11">
-                    {loading ? "Verifying..." : "Verify & Login"}
-                  </Button>
-                </div>
-              )}
-
               {mode === "forgot" && (
                 <div className="space-y-6">
                   <button onClick={() => setMode("login")} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
@@ -429,7 +403,7 @@ export function LoginScreen() {
                   <div>
                     <h2 className="text-2xl font-bold">Reset Password</h2>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Enter your email — since this demo has no email delivery, we'll hand you a new temporary password directly.
+                      Enter your email. We&apos;ll send a one-time reset code (valid 1 hour). Your password stays unchanged until you complete the next step.
                     </p>
                   </div>
                   <div className="space-y-1.5">
@@ -446,7 +420,44 @@ export function LoginScreen() {
                     </div>
                   </div>
                   <Button onClick={handleForgotPassword} disabled={forgotLoading} className="w-full h-11">
-                    {forgotLoading ? "Resetting..." : "Reset Password"}
+                    {forgotLoading ? "Sending..." : "Send reset code"}
+                  </Button>
+                </div>
+              )}
+
+              {mode === "reset" && (
+                <div className="space-y-6">
+                  <button onClick={() => setMode("forgot")} className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1">
+                    ← Back
+                  </button>
+                  <div>
+                    <h2 className="text-2xl font-bold">Set new password</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Paste the reset code from your email (or the code shown in development) and choose a new password.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Email</Label>
+                    <Input value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)} className="h-11" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Reset code</Label>
+                    <Input value={resetToken} onChange={(e) => setResetToken(e.target.value)} className="h-11 font-mono text-xs" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>New password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        type="password"
+                        className="pl-9 h-11"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <Button onClick={handleResetPassword} disabled={resetLoading} className="w-full h-11">
+                    {resetLoading ? "Updating..." : "Update password"}
                   </Button>
                 </div>
               )}

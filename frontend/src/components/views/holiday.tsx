@@ -138,11 +138,16 @@ export function HolidayView() {
     <PageShell>
       <PageHeader
         title="Holiday Packages"
-        subtitle="Curated domestic & international tours with flights, stays, transfers & sightseeing."
+        subtitle="Demo catalog only — use Products → Packages for live package builder inventory."
         action={
-          <Button variant="outline" onClick={() => { setTypeFilter("All"); setScope("all"); setSearch(""); }}>
-            Reset Filters
-          </Button>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="border-amber-300 text-amber-800 dark:text-amber-300">
+              Demo catalog
+            </Badge>
+            <Button variant="outline" onClick={() => { setTypeFilter("All"); setScope("all"); setSearch(""); }}>
+              Reset Filters
+            </Button>
+          </div>
         }
       />
 

@@ -30,6 +30,12 @@ export const forgotPasswordSchema = z.object({
   email: z.string().email(),
 });
 
+export const resetPasswordSchema = z.object({
+  email: z.string().email(),
+  token: z.string().min(16),
+  newPassword: z.string().min(8).max(128),
+});
+
 export const bookingSchema = z.object({
   customerName: z.string().min(1),
   customerId: z.string().optional(),
@@ -245,6 +251,12 @@ export const walletSchema = z.object({
   amount: z.number().positive(),
   source: z.string().optional(),
   description: z.string().optional(),
+  /** Required for Credit top-ups when Razorpay is configured */
+  orderId: z.string().optional(),
+  paymentId: z.string().optional(),
+  signature: z.string().optional(),
+  /** Only accepted when server allowDemoPayments() is true */
+  demo: z.boolean().optional(),
 });
 
 export const attendanceCheckSchema = z.object({});

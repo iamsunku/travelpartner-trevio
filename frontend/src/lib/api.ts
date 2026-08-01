@@ -118,9 +118,15 @@ export const api = {
     }),
 
   forgotPassword: (email: string) =>
-    apiFetch<{ ok: boolean; tempPassword?: string; emailed?: boolean; message?: string }>("/api/auth/forgot-password", {
+    apiFetch<{ ok: boolean; resetToken?: string; tempPassword?: string; emailed?: boolean; message?: string }>(
+      "/api/auth/forgot-password",
+      { method: "POST", body: JSON.stringify({ email }) }
+    ),
+
+  resetPassword: (email: string, token: string, newPassword: string) =>
+    apiFetch<{ ok: boolean }>("/api/auth/reset-password", {
       method: "POST",
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, token, newPassword }),
     }),
 
   registerAgent: (body: AgentRegistrationBody) =>
