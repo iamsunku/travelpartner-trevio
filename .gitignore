@@ -36,3 +36,12 @@ backend/db/*.db-journal
 .idea/
 .vscode/
 .claude/
+
+# local-only documentation (kept on disk, not pushed to GitHub)
+docs/
+/*.md
+!README.md
+
+# local temp / scratch scripts
+backend/_tmp_*.ts
+**/_tmp_*
