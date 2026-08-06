@@ -176,10 +176,12 @@ app.use(analyticsMiddleware());
 const isProd = process.env.NODE_ENV === "production";
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  // Dev: allow rapid retry while testing roles/credentials. Prod: keep brute-force protection tight.
-  limit: isProd ? 10 : 200,
+  // Production: protect against brute force without blocking multi-role demos or mobile retries.
+  // Only failed auth responses count (skipSuccessfulRequests).
+  limit: isProd ? 60 : 200,
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true,
   message: { error: "Too many sign-in attempts. Please wait a few minutes and try again." },
   skip: () => process.env.NODE_ENV === "test",
 });
