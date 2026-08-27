@@ -580,6 +580,8 @@ export const agencyBrandingSchema = z.object({
   backgroundImage: z.string().optional().nullable(),
   headerHtml: z.string().optional().nullable(),
   showPageNumbers: z.boolean().optional().default(true),
+  signatureUrl: z.string().optional().nullable(),
+  authorizedSignatory: z.string().optional().nullable(),
 });
 
 export const proposalStatusEnum = z.enum([

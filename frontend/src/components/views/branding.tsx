@@ -37,6 +37,7 @@ export function BrandingView() {
   const { toast } = useToast();
   const { submitting, runSubmit } = useSubmitLock();
   const [branding, setBranding] = useState<AgencyBrandingRecord | null>(null);
+  const [agencyName, setAgencyName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,8 +45,9 @@ export function BrandingView() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<{ branding: AgencyBrandingRecord }>("/api/settings/branding");
+      const data = await apiFetch<{ branding: AgencyBrandingRecord; agencyName?: string }>("/api/settings/branding");
       setBranding(data.branding);
+      setAgencyName(data.agencyName || "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to load branding settings");
     } finally {
@@ -88,7 +90,9 @@ export function BrandingView() {
     <PageShell className="pb-20">
       <EnterprisePageHeader
         title="Branding"
-        subtitle="Agency-wide defaults for quotations and documents"
+        subtitle={agencyName
+          ? `Defaults for ${agencyName} — logo, colors, signature on quotations & invoices`
+          : "Agency-wide defaults for quotations and documents"}
         breadcrumbs={[{ label: "Settings" }, { label: "Branding" }]}
       />
 
@@ -131,6 +135,12 @@ export function BrandingView() {
             <Field label="Footer text">
               <Textarea value={branding.footerText ?? ""} onChange={(e) => setBranding({ ...branding, footerText: e.target.value || null })} rows={2} />
             </Field>
+            <Field label="Signature image URL">
+              <Input value={branding.signatureUrl ?? ""} onChange={(e) => setBranding({ ...branding, signatureUrl: e.target.value || null })} placeholder="https://..." />
+            </Field>
+            <Field label="Authorized signatory">
+              <Input value={branding.authorizedSignatory ?? ""} onChange={(e) => setBranding({ ...branding, authorizedSignatory: e.target.value || null })} placeholder="Name on invoices" />
+            </Field>
             <Field label="Header HTML">
               <Textarea value={branding.headerHtml ?? ""} onChange={(e) => setBranding({ ...branding, headerHtml: e.target.value || null })} rows={3} placeholder="Optional custom header HTML" />
             </Field>
@@ -164,6 +174,16 @@ export function BrandingView() {
             <p className="text-caption text-muted-foreground mt-2">Preview of agency branding applied to quote documents.</p>
             {branding.footerText && (
               <p className="text-helper text-muted-foreground mt-auto pt-6 border-t border-border">{branding.footerText}</p>
+            )}
+            {(branding.signatureUrl || branding.authorizedSignatory) && (
+              <div className="mt-4 pt-4 border-t border-border space-y-1">
+                {branding.signatureUrl && (
+                  <img src={branding.signatureUrl} alt="Signature" className="h-10 object-contain" />
+                )}
+                {branding.authorizedSignatory && (
+                  <p className="text-helper text-muted-foreground">{branding.authorizedSignatory}</p>
+                )}
+              </div>
             )}
             {branding.showPageNumbers && <p className="text-helper text-center text-muted-foreground mt-2">Page 1</p>}
           </div>

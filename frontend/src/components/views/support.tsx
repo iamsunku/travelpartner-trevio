@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Plus, Search, Send, MessageCircle, Plane, CreditCard,
-  RefreshCw, FileText, User, Headphones, Bot, ArrowRight, CheckCircle2, Clock, Loader2,
+  RefreshCw, FileText, User, Headphones, ArrowRight, CheckCircle2, Clock, Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
+} from "@/components/ui/sheet";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
@@ -31,7 +33,7 @@ import {
   PageShell, PageHeader, MetricCard, SectionHeader, BrandHero, StatusBadge,
 } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
-import { api, type SupportTicketApi } from "@/lib/api";
+import { api, type SupportTicketApi, type SupportTicketMessageApi } from "@/lib/api";
 import { useAuthStore } from "@/store/app-store";
 import {
   OPERATIONS_TYPES,
@@ -65,25 +67,6 @@ const HELP_CATEGORIES = [
   { icon: Headphones, title: "Technical Support", desc: "APIs, integrations, troubleshooting, system status", articles: 22, color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" },
 ];
 
-type ChatMsg = { id: number; sender: "user" | "agent"; text: string; time: string };
-
-const INITIAL_CHAT: ChatMsg[] = [
-  { id: 1, sender: "agent", text: "Hi! Welcome to Travel Partner Pro Support. How can I help you today?", time: "10:24 AM" },
-  { id: 2, sender: "user", text: "Hi, I have a question about a refund for booking BK-8848", time: "10:25 AM" },
-  { id: 3, sender: "agent", text: "Sure! Let me pull up that booking for you. The refund of ₹42,000 for Nisha Agarwal's CCU→BKK flight was initiated on Jan 12. Standard processing time is 5-7 business days.", time: "10:25 AM" },
-  { id: 4, sender: "user", text: "It's been 8 days and the customer hasn't received it yet", time: "10:26 AM" },
-  { id: 5, sender: "agent", text: "I understand the concern. Let me escalate this with Razorpay immediately. I'll also create a priority ticket and have our finance team follow up within 2 hours.", time: "10:27 AM" },
-];
-
-const AGENT_REPLIES = [
-  "Thanks for the details. Let me check that for you right away.",
-  "I've created ticket TK-3405 and assigned it to our finance team. They'll respond within 2 hours.",
-  "Could you please share the customer's registered email ID so I can verify?",
-  "I see the issue — the refund was held up due to a bank holiday. It should reflect by tomorrow EOD.",
-  "Is there anything else I can help you with today?",
-  "Perfect! I've noted this on the ticket. You'll receive an SMS update once resolved.",
-];
-
 export function SupportView() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -92,6 +75,9 @@ export function SupportView() {
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [tickets, setTickets] = useState<SupportTicketApi[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<SupportTicketApi | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("tickets");
 
   const loadTickets = useCallback(() => {
     setLoading(true);
@@ -117,14 +103,24 @@ export function SupportView() {
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
+  const openTicket = (t: SupportTicketApi) => {
+    setSelected(t);
+    setSheetOpen(true);
+  };
+
+  const focusRaiseTicket = () => {
+    setActiveTab("tickets");
+    setRaiseOpen(true);
+  };
+
   return (
     <PageShell>
       <PageHeader
         title="Support"
-        subtitle="Tickets, live chat, FAQs & help center"
+        subtitle="Tickets, FAQs & help center"
       />
 
-      <Tabs defaultValue="tickets">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full sm:w-auto overflow-x-auto bg-muted/60">
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
           <TabsTrigger value="chat">Live Chat</TabsTrigger>
@@ -206,7 +202,7 @@ export function SupportView() {
                         </TableCell>
                       </TableRow>
                     ) : filteredTickets.map((t) => (
-                      <TableRow key={t.id} className="hover:bg-muted/40">
+                      <TableRow key={t.id} className="hover:bg-muted/40 cursor-pointer" onClick={() => openTicket(t)}>
                         <TableCell className="font-mono text-xs font-medium">{t.ticketId}</TableCell>
                         <TableCell>
                           <p className="text-sm font-medium line-clamp-1">{t.subject}</p>
@@ -252,9 +248,25 @@ export function SupportView() {
           </Card>
         </TabsContent>
 
-        {/* LIVE CHAT */}
+        {/* LIVE CHAT → ticket CTA */}
         <TabsContent value="chat" className="mt-4">
-          <LiveChat />
+          <Card>
+            <CardContent className="p-8 flex flex-col items-center text-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <MessageCircle className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-base font-semibold">Need help from support?</p>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  Conversations are tracked as support tickets so your team can reply with full history.
+                  Create a ticket to start the thread.
+                </p>
+              </div>
+              <Button className="bg-primary hover:bg-primary/90" onClick={focusRaiseTicket}>
+                <Plus className="w-4 h-4 mr-1.5" /> Create support ticket
+              </Button>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* FAQ */}
@@ -336,7 +348,7 @@ export function SupportView() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline"><MessageCircle className="w-4 h-4 mr-1.5" /> Live Chat</Button>
+                <Button variant="outline" onClick={focusRaiseTicket}><MessageCircle className="w-4 h-4 mr-1.5" /> Create Ticket</Button>
                 <Button className="bg-primary hover:bg-primary/90" onClick={() => setRaiseOpen(true)}><Plus className="w-4 h-4 mr-1.5" /> Raise Ticket</Button>
               </div>
             </CardContent>
@@ -345,124 +357,128 @@ export function SupportView() {
       </Tabs>
 
       <RaiseTicketDialog open={raiseOpen} onOpenChange={setRaiseOpen} onCreated={loadTickets} />
+      <TicketDetailSheet
+        ticket={selected}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        onUpdated={(updated) => {
+          setSelected(updated);
+          setTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+        }}
+      />
     </PageShell>
   );
 }
 
-function LiveChat() {
-  const [messages, setMessages] = useState<ChatMsg[]>(INITIAL_CHAT);
-  const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(false);
+function TicketDetailSheet({
+  ticket,
+  open,
+  onOpenChange,
+  onUpdated,
+}: {
+  ticket: SupportTicketApi | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onUpdated: (t: SupportTicketApi) => void;
+}) {
+  const { toast } = useToast();
+  const user = useAuthStore((s) => s.user);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const messages: SupportTicketMessageApi[] = ticket?.messages || [];
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, typing]);
+    if (open) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [open, messages.length]);
 
-  const now = () => new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  if (!ticket) return null;
 
-  const send = () => {
-    const text = input.trim();
+  const sendReply = async () => {
+    const text = reply.trim();
     if (!text) return;
-    const userMsg: ChatMsg = { id: Date.now(), sender: "user", text, time: now() };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setTyping(true);
-    setTimeout(() => {
-      const reply = AGENT_REPLIES[Math.floor(Math.random() * AGENT_REPLIES.length)];
-      setMessages((prev) => [...prev, { id: Date.now() + 1, sender: "agent", text: reply, time: now() }]);
-      setTyping(false);
-    }, 1400);
+    setSending(true);
+    try {
+      const { message } = await api.postSupportMessage(ticket.id, { message: text });
+      const msg = message as SupportTicketMessageApi;
+      const next: SupportTicketApi = {
+        ...ticket,
+        status: ticket.status === "Open" ? "In Progress" : ticket.status,
+        messages: [...(ticket.messages || []), msg],
+      };
+      onUpdated(next);
+      setReply("");
+      toast({ title: "Reply sent" });
+    } catch (e) {
+      toast({
+        title: "Failed to send",
+        description: e instanceof Error ? e.message : "Could not post message",
+        variant: "destructive",
+      });
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
-    <Card className="overflow-hidden">
-      <div className="flex flex-col h-[600px]">
-        <div className="flex items-center justify-between p-3 border-b border-border bg-gradient-to-r from-brand-blue via-primary to-brand-teal text-white">
-          <div className="flex items-center gap-2.5">
-            <div className="relative">
-              <Avatar className="w-9 h-9 ring-2 ring-white/30">
-                <AvatarFallback className="bg-white/20 text-white">
-                  <Bot className="w-4 h-4" />
-                </AvatarFallback>
-              </Avatar>
-              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold">Travel Partner Support</p>
-              <p className="text-[10px] text-white/75">Online · Avg reply 2 min</p>
-            </div>
-          </div>
-          <Badge className="bg-white/15 text-white border-0 hover:bg-white/20">Live</Badge>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col p-0">
+        <SheetHeader className="border-b px-4 py-4 text-left">
+          <SheetTitle className="font-mono text-base">{ticket.ticketId}</SheetTitle>
+          <SheetDescription className="space-y-1">
+            <span className="block text-foreground font-medium">{ticket.subject}</span>
+            <span className="flex flex-wrap gap-2 items-center">
+              <StatusBadge status={ticket.status} />
+              <Badge variant="outline" className="text-[10px]">{ticket.priority}</Badge>
+              <span className="text-xs">{ticket.department}</span>
+            </span>
+          </SheetDescription>
+        </SheetHeader>
+
+        <div className="px-4 py-3 border-b bg-muted/30 text-xs space-y-1">
+          <p><span className="text-muted-foreground">Customer:</span> {ticket.customerName}</p>
+          <p className="text-muted-foreground leading-relaxed">{ticket.description}</p>
         </div>
 
-        {/* Messages */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-thin p-4 space-y-3 bg-muted/30">
-          {messages.map((m) => (
-            <motion.div
-              key={m.id}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={cn("flex gap-2 max-w-[80%]", m.sender === "user" ? "ml-auto flex-row-reverse" : "")}
-            >
-              {m.sender === "agent" && (
-                <Avatar className="w-7 h-7 shrink-0">
-                  <AvatarFallback className="bg-gradient-to-br from-brand-blue to-brand-teal text-white">
-                    <Bot className="w-3.5 h-3.5" />
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              <div>
+        <div ref={scrollRef} className="flex-1 overflow-y-auto scroll-thin p-4 space-y-3">
+          {messages.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No replies yet — send the first message.</p>
+          ) : messages.map((m) => {
+            const mine = user?.email && m.sender === user.email;
+            return (
+              <div key={m.id} className={cn("max-w-[90%] space-y-1", mine ? "ml-auto text-right" : "")}>
                 <div className={cn(
-                  "rounded-2xl px-3 py-2 text-sm",
-                  m.sender === "user"
-                    ? "bg-primary text-primary-foreground rounded-tr-sm"
-                    : "bg-card border border-border rounded-tl-sm",
+                  "rounded-2xl px-3 py-2 text-sm inline-block text-left",
+                  mine ? "bg-primary text-primary-foreground rounded-tr-sm" : "bg-muted rounded-tl-sm",
                 )}>
-                  {m.text}
+                  {m.message}
                 </div>
-                <p className={cn("text-[10px] text-muted-foreground mt-0.5", m.sender === "user" ? "text-right" : "")}>{m.time}</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {m.sender} · {new Date(m.createdAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </p>
               </div>
-            </motion.div>
-          ))}
-          {typing && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-2 max-w-[80%]">
-              <Avatar className="w-7 h-7 shrink-0">
-                <AvatarFallback className="bg-gradient-to-br from-brand-blue to-brand-teal text-white">
-                  <Bot className="w-3.5 h-3.5" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="rounded-2xl rounded-tl-sm px-3 py-2.5 bg-card border border-border">
-                <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/60 animate-bounce" style={{ animationDelay: "300ms" }} />
-                </div>
-              </div>
-            </motion.div>
-          )}
+            );
+          })}
         </div>
 
-        {/* Input */}
-        <div className="border-t border-border p-3 bg-card">
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Type your message..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              className="flex-1"
-            />
-            <Button onClick={send} className="bg-primary hover:bg-primary/90" size="icon">
-              <Send className="w-4 h-4" />
+        <div className="border-t p-3 space-y-2">
+          <Textarea
+            placeholder="Write a reply…"
+            rows={3}
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+          />
+          <div className="flex justify-end">
+            <Button onClick={sendReply} disabled={sending || !reply.trim()} className="bg-primary hover:bg-primary/90">
+              {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4 mr-1.5" /> Send Reply</>}
             </Button>
           </div>
-          <p className="text-[10px] text-muted-foreground mt-1.5 text-center">
-            Press Enter to send · Shift+Enter for new line
-          </p>
         </div>
-      </div>
-    </Card>
+      </SheetContent>
+    </Sheet>
   );
 }
 

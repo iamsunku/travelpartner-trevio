@@ -28,6 +28,7 @@ import { mountTravelProposalRoutes } from "./routes/travel-proposals.js";
 import { mountProposalPdfRoutes } from "./routes/proposal-pdf.js";
 import { mountBmsRoutes } from "./routes/bms.js";
 import { mountQuotationRoutes } from "./routes/quotations.js";
+import { mountFinanceRoutes } from "./routes/finance.js";
 import { sanitizeQuotationForRole } from "./lib/quotations.js";
 import { analyticsMiddleware } from "./middleware/analytics.js";
 import { analyticsRouter } from "./routes/analytics.js";
@@ -1475,22 +1476,38 @@ app.patch("/api/notifications/:id/read", requireAuth, async (req: AuthRequest, r
 
 app.get("/api/wallet", requireAuth, requirePermission("wallet"), async (req: AuthRequest, res) => {
   try {
-    const agencyId = req.query.agencyId as string | undefined;
+    const { resolveDefaultAgencyId } = await import("./lib/api-key-config.js");
+    const agencyId =
+      (req.query.agencyId as string | undefined) ||
+      req.auth?.agencyId ||
+      (req.auth?.role === "super_admin" ? await resolveDefaultAgencyId() : null);
     if (!agencyId) {
-      res.status(400).json({ error: "agencyId required" });
+      res.status(400).json({ error: "No agency context — create an agency first" });
       return;
     }
     if (req.auth?.role !== "super_admin" && agencyId !== req.auth?.agencyId) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
-    const agency = await db.agency.findUnique({ where: { id: agencyId } });
+    const agency = await db.agency.findUnique({
+      where: { id: agencyId },
+      select: { id: true, name: true, walletBalance: true },
+    });
+    if (!agency) {
+      res.status(404).json({ error: "Agency not found" });
+      return;
+    }
     const txns = await db.walletTransaction.findMany({
       where: { agencyId },
       orderBy: { date: "desc" },
       take: 50,
     });
-    res.json({ balance: agency?.walletBalance ?? 0, transactions: txns });
+    res.json({
+      balance: agency.walletBalance ?? 0,
+      agencyId: agency.id,
+      agencyName: agency.name,
+      transactions: txns,
+    });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -1499,8 +1516,12 @@ app.get("/api/wallet", requireAuth, requirePermission("wallet"), async (req: Aut
 
 app.post("/api/wallet", requireAuth, requirePermission("wallet"), validate(walletSchema), async (req: AuthRequest, res) => {
   try {
+    const { resolveDefaultAgencyId } = await import("./lib/api-key-config.js");
     const { agencyId, type, amount, source, description, orderId, paymentId, signature, demo } = req.body;
-    const id = req.auth?.role === "super_admin" ? (agencyId || req.auth?.agencyId) : req.auth?.agencyId;
+    const id =
+      (req.auth?.role === "super_admin"
+        ? agencyId || req.auth?.agencyId || (await resolveDefaultAgencyId())
+        : req.auth?.agencyId) || null;
     if (!id || !type || !amount) {
       res.status(400).json({ error: "agencyId, type, and amount required" });
       return;
@@ -1898,14 +1919,40 @@ app.get("/api/commission", requireAuth, requirePermission("commission"), async (
 
     const totalCommission = confirmedBookings.reduce((s, b) => s + b.commission, 0);
     const totalRevenue = confirmedBookings.reduce((s, b) => s + b.amount, 0);
-    const pendingCommission = 0;
-    const paidCommission = totalCommission;
+
+    const agencyId = ownAgencyId(req);
+    const walletTxns = agencyId
+      ? await db.walletTransaction.findMany({
+          where: { agencyId, OR: [{ source: "Commission" }, { type: "Credit" }] },
+          orderBy: { date: "desc" },
+          take: 50,
+        })
+      : [];
+    const commissionCredits = walletTxns
+      .filter((t) => String(t.source || "").toLowerCase().includes("commission") || String(t.description || "").toLowerCase().includes("commission"))
+      .map((t) => ({
+        id: t.id,
+        date: (t.date instanceof Date ? t.date : new Date(t.date)).toISOString().slice(0, 10),
+        amount: t.amount,
+        description: t.description || t.source || "Commission credit",
+        status: "Credited",
+      }));
+
+    const settings = agencyId
+      ? await db.settings.findUnique({ where: { agencyId }, select: { commissionRules: true } })
+      : null;
+
+    // Paid = wallet commission credits; pending = booking commission not yet credited
+    const paidCommission = commissionCredits.reduce((s, c) => s + c.amount, 0);
+    const pendingCommission = Math.max(0, totalCommission - paidCommission);
 
     res.json({
       summary: { totalCommission, paidCommission, pendingCommission, totalRevenue, totalBookings: confirmedBookings.length },
       byAgency: Object.values(agencyMap),
       topAgents,
       monthly,
+      credits: commissionCredits,
+      rules: settings?.commissionRules ?? null,
     });
   } catch (e) {
     logger.error(e);
@@ -1913,74 +1960,20 @@ app.get("/api/commission", requireAuth, requirePermission("commission"), async (
   }
 });
 
-// ── GET /api/finance ──────────────────────────────────────────────────────────
-app.get("/api/finance", requireAuth, requirePermission("finance"), async (req: AuthRequest, res) => {
+// Finance routes mounted below (BookingInvoice + Expense + TDS ledgers)
+// ── legacy inline /api/finance removed — see mountFinanceRoutes ──────────────
+
+app.put("/api/commission/rules", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
-    const bookingScope = { ...agencyScope(req), ...branchScope(req, "agentId") };
-    const paymentScope = { ...agencyScope(req), ...branchScope(req, "collectedById") };
-    const [bookings, payments] = await Promise.all([
-      db.booking.findMany({
-        where: bookingScope,
-        select: { amount: true, commission: true, status: true, service: true, createdAt: true, bookingRef: true, customerName: true, agencyName: true },
-      }),
-      db.payment.findMany({
-        where: paymentScope,
-        select: { amount: true, method: true, status: true, type: true, date: true, txnId: true, customerName: true, bookingRef: true },
-      }),
-    ]);
-
-    const confirmedBookings = bookings.filter((b) => !["Cancelled", "Failed"].includes(b.status));
-    const successPayments = payments.filter((p) => p.status === "Success");
-
-    const totalRevenue = confirmedBookings.reduce((s, b) => s + b.amount, 0);
-    const totalCommission = confirmedBookings.reduce((s, b) => s + b.commission, 0);
-    const totalGst = 0;
-    const netRevenue = totalRevenue;
-    const totalExpenses = 0;
-    const netProfit = netRevenue;
-
-    // Monthly P&L (last 6 months) — revenue only until a GST/expense ledger exists
-    const monthlyMap: Record<string, { month: string; revenue: number; gst: number; expenses: number; profit: number }> = {};
-    for (const b of confirmedBookings) {
-      const m = b.createdAt.toISOString().slice(0, 7);
-      if (!monthlyMap[m]) monthlyMap[m] = { month: m, revenue: 0, gst: 0, expenses: 0, profit: 0 };
-      monthlyMap[m].revenue += b.amount;
-      monthlyMap[m].profit += b.amount;
-    }
-    const monthly = Object.values(monthlyMap).sort((a, b) => a.month.localeCompare(b.month)).slice(-6);
-
-    // By service revenue
-    const serviceMap: Record<string, number> = {};
-    for (const b of confirmedBookings) {
-      serviceMap[b.service] = (serviceMap[b.service] || 0) + b.amount;
-    }
-    const byService = Object.entries(serviceMap).map(([service, revenue]) => ({ service, revenue }));
-
-    // Latest invoices (top 20 bookings as invoices)
-    const invoices = confirmedBookings
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-      .slice(0, 20)
-      .map((b) => ({
-        ref: b.bookingRef,
-        customer: b.customerName,
-        agency: b.agencyName,
-        service: b.service,
-        amount: b.amount,
-        gst: 0,
-        total: b.amount,
-        date: b.createdAt.toISOString().slice(0, 10),
-      }));
-
-    res.json({
-      summary: { totalRevenue, totalGst, netRevenue, totalCommission, totalExpenses, netProfit },
-      monthly,
-      byService,
-      invoices,
-      paymentMethods: successPayments.reduce((acc: Record<string, number>, p) => {
-        acc[p.method] = (acc[p.method] || 0) + p.amount;
-        return acc;
-      }, {}),
+    const agencyId = await resolveSettingsAgencyId(req, res);
+    if (!agencyId) return;
+    const rules = Array.isArray(req.body?.rules) ? req.body.rules : req.body;
+    await db.settings.upsert({
+      where: { agencyId },
+      update: { commissionRules: rules as object },
+      create: { agencyId, commissionRules: rules as object },
     });
+    res.json({ ok: true, rules });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -2579,6 +2572,39 @@ app.patch("/api/support/tickets/:id", requireAuth, requirePermission("support"),
   }
 });
 
+app.post("/api/support/tickets/:id/messages", requireAuth, requirePermission("support"), async (req: AuthRequest, res) => {
+  try {
+    const id = routeParamId(req);
+    const existing = await db.supportTicket.findFirst({
+      where: { id, ...agencyScope(req) },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Ticket not found" });
+      return;
+    }
+    const message = String(req.body?.message || "").trim();
+    if (!message) {
+      res.status(400).json({ error: "message is required" });
+      return;
+    }
+    const row = await db.ticketMessage.create({
+      data: {
+        ticketId: existing.id,
+        sender: req.auth?.email || req.body?.sender || "Staff",
+        message,
+        isInternal: Boolean(req.body?.isInternal),
+      },
+    });
+    if (existing.status === "Open") {
+      await db.supportTicket.update({ where: { id: existing.id }, data: { status: "In Progress" } });
+    }
+    res.status(201).json({ message: row });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 app.get("/api/settings", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
     const agencyId = await resolveSettingsAgencyId(req, res);
@@ -2605,6 +2631,8 @@ app.put("/api/settings", requireAuth, requireRole("super_admin", "agency_admin")
     if (typeof body.currency === "string") data.currency = body.currency;
     if (typeof body.timezone === "string") data.timezone = body.timezone;
     if (typeof body.notifications === "boolean") data.notifications = body.notifications;
+    if (body.security && typeof body.security === "object") data.security = body.security;
+    if (body.commissionRules !== undefined) data.commissionRules = body.commissionRules;
     const settings = await db.settings.upsert({
       where: { agencyId },
       update: data,
@@ -2612,6 +2640,85 @@ app.put("/api/settings", requireAuth, requireRole("super_admin", "agency_admin")
     });
     const { apiKeys: _apiKeys, ...safe } = settings;
     res.json(safe);
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.get("/api/settings/company", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
+  try {
+    const agencyId = await resolveSettingsAgencyId(req, res);
+    if (!agencyId) return;
+    const [agency, branding] = await Promise.all([
+      db.agency.findUnique({ where: { id: agencyId } }),
+      db.agencyBranding.findUnique({ where: { agencyId } }),
+    ]);
+    if (!agency) {
+      res.status(404).json({ error: "Agency not found" });
+      return;
+    }
+    res.json({
+      id: agency.id,
+      name: agency.name,
+      owner: agency.owner,
+      email: agency.email,
+      phone: agency.phone,
+      address: agency.address || "",
+      city: agency.city || "",
+      state: agency.state || "",
+      country: agency.country || "",
+      gstNumber: agency.gstNumber || "",
+      panNumber: agency.panNumber || "",
+      logo: branding?.logo || agency.logo || "",
+      signatureUrl: branding?.signatureUrl || "",
+      authorizedSignatory: branding?.authorizedSignatory || agency.owner,
+      footerText: branding?.footerText || "",
+    });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/api/settings/company", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
+  try {
+    const agencyId = await resolveSettingsAgencyId(req, res);
+    if (!agencyId) return;
+    const body = req.body ?? {};
+    const agency = await db.agency.update({
+      where: { id: agencyId },
+      data: {
+        ...(typeof body.name === "string" ? { name: body.name } : {}),
+        ...(typeof body.owner === "string" ? { owner: body.owner } : {}),
+        ...(typeof body.email === "string" ? { email: body.email } : {}),
+        ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
+        ...(typeof body.address === "string" ? { address: body.address } : {}),
+        ...(typeof body.city === "string" ? { city: body.city } : {}),
+        ...(typeof body.state === "string" ? { state: body.state } : {}),
+        ...(typeof body.country === "string" ? { country: body.country } : {}),
+        ...(typeof body.gstNumber === "string" ? { gstNumber: body.gstNumber } : {}),
+        ...(typeof body.panNumber === "string" ? { panNumber: body.panNumber } : {}),
+        ...(typeof body.logo === "string" ? { logo: body.logo } : {}),
+      },
+    });
+    await db.agencyBranding.upsert({
+      where: { agencyId },
+      update: {
+        ...(typeof body.logo === "string" ? { logo: body.logo } : {}),
+        ...(typeof body.signatureUrl === "string" ? { signatureUrl: body.signatureUrl } : {}),
+        ...(typeof body.authorizedSignatory === "string" ? { authorizedSignatory: body.authorizedSignatory } : {}),
+        ...(typeof body.footerText === "string" ? { footerText: body.footerText } : {}),
+      },
+      create: {
+        agencyId,
+        logo: typeof body.logo === "string" ? body.logo : agency.logo,
+        signatureUrl: typeof body.signatureUrl === "string" ? body.signatureUrl : null,
+        authorizedSignatory: typeof body.authorizedSignatory === "string" ? body.authorizedSignatory : agency.owner,
+        footerText: typeof body.footerText === "string" ? body.footerText : null,
+      },
+    });
+    res.json({ ok: true, agencyId });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -2921,6 +3028,7 @@ mountTravelProposalRoutes(app, agencyScope);
 mountProposalPdfRoutes(app, agencyScope);
 mountQuotationRoutes(app, agencyScope, ownAgencyId, ownBranchId, branchScope);
 mountBmsRoutes(app, agencyScope, ownAgencyId, ownBranchId, branchScope);
+mountFinanceRoutes(app, agencyScope, ownAgencyId, branchScope);
 
 // Analytics routes
 app.use("/api/analytics", analyticsRouter);

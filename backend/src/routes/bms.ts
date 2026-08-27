@@ -293,9 +293,31 @@ export function mountBmsRoutes(
           res.status(400).json({ error: "Customer name is required before conversion" });
           return;
         }
-        if (!quote.travelStartDate && !quote.travelDates) {
+
+        // Allow travel dates from request body (UI) or hotel package lines when quote fields are empty.
+        const bodyStart = typeof req.body?.travelStartDate === "string" ? req.body.travelStartDate.trim() : "";
+        const bodyEnd = typeof req.body?.travelEndDate === "string" ? req.body.travelEndDate.trim() : "";
+        let travelStartDate = bodyStart || quote.travelStartDate || quote.travelDates || "";
+        let travelEndDate = bodyEnd || quote.travelEndDate || "";
+        if (!travelStartDate) {
+          const pkg = quote.packages.find((p) => p.isSelected) || quote.packages[0];
+          const hotels = Array.isArray(pkg?.hotels) ? (pkg.hotels as Array<{ checkIn?: string; checkOut?: string }>) : [];
+          travelStartDate = hotels[0]?.checkIn || "";
+          travelEndDate = travelEndDate || hotels[0]?.checkOut || "";
+        }
+        if (!travelStartDate) {
           res.status(400).json({ error: "Travel dates are required before conversion" });
           return;
+        }
+        if (bodyStart || bodyEnd) {
+          await db.quotation.update({
+            where: { id: quote.id },
+            data: {
+              travelStartDate: travelStartDate || null,
+              travelEndDate: travelEndDate || null,
+              travelDates: travelStartDate || quote.travelDates,
+            },
+          });
         }
         const existing = await db.booking.findFirst({ where: { quotationId: quote.id } });
         if (existing) {
@@ -308,8 +330,12 @@ export function mountBmsRoutes(
         const infants = quote.infants ?? 0;
         const rooms = Math.max(1, Math.ceil((adults + children) / 3));
         const packageValue = quote.total;
-        const costPrice = quote.totalNetCost ?? 0;
-        const grossProfit = quote.grossProfit ?? packageValue - costPrice;
+        let costPrice = Number(quote.totalNetCost || 0);
+        if (costPrice <= 0 && packageValue > 0) {
+          // Older quotes often stored selling totals without net cost — derive a working cost.
+          costPrice = Math.round((quote.amount || packageValue - (quote.gst || 0)) * 0.75);
+        }
+        const grossProfit = Number(quote.grossProfit || 0) || packageValue - costPrice;
         const bookingRef = await nextBookingRef();
         const salesName = quote.salesExecutiveName || quote.createdBy || req.auth?.email || "Sales";
         const opsName = (req.body?.operationsExecutiveName as string) || "Operations";
@@ -319,8 +345,8 @@ export function mountBmsRoutes(
             bookingRef,
             customerName: quote.customerName,
             service: quote.service === "International" ? "Holiday" : (quote.service as string) || "Holiday",
-            route: quote.destination || quote.travelDates || "Package",
-            travelDate: (quote.travelDates || quote.validTill || "").slice(0, 32) || new Date().toISOString().slice(0, 10),
+            route: quote.destination || travelStartDate || "Package",
+            travelDate: (travelStartDate || quote.travelDates || quote.validTill || "").slice(0, 32) || new Date().toISOString().slice(0, 10),
             amount: packageValue,
             commission: Math.round(packageValue * 0.05),
             status: "Awaiting Passenger Details",

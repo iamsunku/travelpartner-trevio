@@ -88,7 +88,7 @@ async function main() {
   // starts empty; create real records through the app itself.
   await prisma.agency.upsert({
     where: { id: "ag-1" },
-    update: {},
+    update: { walletBalance: 845000 },
     create: {
       id: "ag-1",
       name: "Wanderlust Travels",
@@ -97,6 +97,7 @@ async function main() {
       phone: "+91 98200 12345",
       plan: "Enterprise",
       status: "Active",
+      walletBalance: 845000,
       apiAllocation: { flights: 50000, hotels: 30000 },
     },
   });

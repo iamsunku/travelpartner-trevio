@@ -879,6 +879,8 @@ export interface AgencyBrandingRecord {
   backgroundImage?: string | null;
   headerHtml?: string | null;
   showPageNumbers: boolean;
+  signatureUrl?: string | null;
+  authorizedSignatory?: string | null;
   updatedAt: string;
 }
 

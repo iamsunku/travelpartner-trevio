@@ -113,9 +113,45 @@ export function SettingsView() {
 function CompanyTab() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [logo, setLogo] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [agencyName] = useState("Wanderlust Travels");
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+    gstNumber: "",
+    panNumber: "",
+    logo: "",
+    signatureUrl: "",
+    authorizedSignatory: "",
+  });
+
+  useEffect(() => {
+    api.getCompanySettings()
+      .then((res) => {
+        setForm({
+          name: res.name || "",
+          email: res.email || "",
+          phone: res.phone || "",
+          address: res.address || "",
+          gstNumber: res.gstNumber || "",
+          panNumber: res.panNumber || "",
+          logo: res.logo || "",
+          signatureUrl: res.signatureUrl || "",
+          authorizedSignatory: res.authorizedSignatory || "",
+        });
+      })
+      .catch((e) => {
+        toast({
+          title: "Could not load company",
+          description: e instanceof Error ? e.message : "Failed to load",
+          variant: "destructive",
+        });
+      })
+      .finally(() => setLoading(false));
+  }, [toast]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -136,7 +172,7 @@ function CompanyTab() {
       const reader = new FileReader();
       reader.onload = (event) => {
         const result = event.target?.result as string;
-        setLogo(result);
+        setForm((prev) => ({ ...prev, logo: result }));
         toast({ title: "Logo uploaded", description: "Changes will be saved when you click Save Changes" });
       };
       reader.readAsDataURL(file);
@@ -145,11 +181,43 @@ function CompanyTab() {
     }
   };
 
-  const handleSave = () => {
-    toast({ title: "Saved", description: "Company profile updated successfully." });
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.updateCompanySettings({
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        address: form.address,
+        gstNumber: form.gstNumber,
+        panNumber: form.panNumber,
+        logo: form.logo,
+        signatureUrl: form.signatureUrl,
+        authorizedSignatory: form.authorizedSignatory,
+      });
+      toast({ title: "Saved", description: "Company profile updated successfully." });
+    } catch (e) {
+      toast({
+        title: "Save failed",
+        description: e instanceof Error ? e.message : "Could not save company settings",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const initials = agencyName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+  const initials = (form.name || "AG").split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-8 flex items-center justify-center gap-2 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" /> Loading company profile…
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -159,11 +227,10 @@ function CompanyTab() {
           <CardDescription>Basic information about your travel agency</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Logo upload */}
           <div className="flex items-center gap-4">
             <Avatar className="w-20 h-20">
-              {logo ? (
-                <img src={logo} alt="Logo" className="w-full h-full object-cover" />
+              {form.logo ? (
+                <img src={form.logo} alt="Logo" className="w-full h-full object-cover" />
               ) : (
                 <AvatarFallback className="bg-gradient-to-br from-brand-blue to-brand-teal text-white text-2xl font-bold">
                   {initials}
@@ -180,7 +247,7 @@ function CompanyTab() {
                 {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Camera className="w-3.5 h-3.5 mr-1.5" />}
                 {uploading ? "Uploading..." : "Upload Logo"}
               </Button>
-              <p className="text-[11px] text-muted-foreground mt-1.5">PNG or JPG, max 2MB. Recommended 256×256px.</p>
+              <p className="text-[11px] text-muted-foreground mt-1.5">PNG or JPG, max 2MB. Or paste a logo URL below.</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -194,40 +261,45 @@ function CompanyTab() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Agency Name</Label>
-              <Input defaultValue="Wanderlust Travels Pvt Ltd" />
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label>Brand Name</Label>
-              <Input defaultValue="Wanderlust Travels" />
+              <Label>Logo URL</Label>
+              <Input value={form.logo} onChange={(e) => setForm({ ...form, logo: e.target.value })} placeholder="https://..." />
             </div>
             <div className="sm:col-span-2 space-y-1.5">
               <Label>Registered Address</Label>
-              <Textarea defaultValue="Plot 14, Andheri Industrial Estate, Andheri East, Mumbai, Maharashtra 400069, India" rows={2} />
+              <Textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} rows={2} />
             </div>
             <div className="space-y-1.5">
               <Label>GST Number</Label>
-              <Input defaultValue="27AABCW1234M1Z5" className="font-mono" />
+              <Input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} className="font-mono" />
             </div>
             <div className="space-y-1.5">
               <Label>PAN Number</Label>
-              <Input defaultValue="AABCW1234M" className="font-mono" />
+              <Input value={form.panNumber} onChange={(e) => setForm({ ...form, panNumber: e.target.value })} className="font-mono" />
             </div>
             <div className="space-y-1.5">
               <Label>Contact Email</Label>
-              <Input type="email" defaultValue="contact@wanderlusttravels.in" />
+              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </div>
             <div className="space-y-1.5">
               <Label>Contact Phone</Label>
-              <Input defaultValue="+91 22 4000 1234" />
+              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
             </div>
-            <div className="sm:col-span-2 space-y-1.5">
-              <Label>Website</Label>
-              <Input defaultValue="https://www.wanderlusttravels.in" />
+            <div className="space-y-1.5">
+              <Label>Signature Image URL</Label>
+              <Input value={form.signatureUrl} onChange={(e) => setForm({ ...form, signatureUrl: e.target.value })} placeholder="https://..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Authorized Signatory</Label>
+              <Input value={form.authorizedSignatory} onChange={(e) => setForm({ ...form, authorizedSignatory: e.target.value })} />
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline">Cancel</Button>
-            <Button onClick={handleSave} className="bg-primary hover:bg-primary/90"><Save className="w-4 h-4 mr-1.5" /> Save Changes</Button>
+            <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90">
+              <Save className="w-4 h-4 mr-1.5" /> {saving ? "Saving…" : "Save Changes"}
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -235,19 +307,15 @@ function CompanyTab() {
       <div className="space-y-4">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle>Subscription</CardTitle>
+            <CardTitle>Invoice branding</CardTitle>
           </CardHeader>
-          <CardContent>
-            <Badge className="bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400 mb-2">Enterprise Plan</Badge>
-            <p className="text-2xl font-bold">₹25,000<span className="text-sm font-normal text-muted-foreground">/mo</span></p>
-            <p className="text-xs text-muted-foreground mt-1">Renews on Feb 19, 2025</p>
-            <Separator className="my-3" />
-            <div className="space-y-1.5 text-xs">
-              {["Unlimited bookings", "All modules included", "Priority support", "API access (10K/day)", "Custom branding"].map((f) => (
-                <div key={f} className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />{f}</div>
-              ))}
-            </div>
-            <Button variant="outline" className="w-full mt-3">Manage Plan</Button>
+          <CardContent className="text-xs text-muted-foreground space-y-2">
+            <p>Logo, signature URL and authorized signatory appear on printable tax invoices.</p>
+            {form.signatureUrl ? (
+              <img src={form.signatureUrl} alt="Signature preview" className="h-12 object-contain border rounded bg-white p-1" />
+            ) : (
+              <p className="italic">No signature image set yet.</p>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -255,9 +323,8 @@ function CompanyTab() {
             <CardTitle>Compliance</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-xs">
-            <div className="flex items-center justify-between"><span className="text-muted-foreground">IATA Accredited</span><Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">Verified</Badge></div>
-            <div className="flex items-center justify-between"><span className="text-muted-foreground">TAAI Member</span><Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">Active</Badge></div>
-            <div className="flex items-center justify-between"><span className="text-muted-foreground">GST Filing</span><Badge className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">Pending</Badge></div>
+            <div className="flex items-center justify-between"><span className="text-muted-foreground">GST Number</span><span className="font-mono">{form.gstNumber || "—"}</span></div>
+            <div className="flex items-center justify-between"><span className="text-muted-foreground">PAN Number</span><span className="font-mono">{form.panNumber || "—"}</span></div>
           </CardContent>
         </Card>
       </div>
@@ -454,14 +521,112 @@ function UsersTab() {
 }
 
 function SystemTab() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [theme, setTheme] = useState("system");
+  const [currency, setCurrency] = useState("INR");
+  const [timezone, setTimezone] = useState("Asia/Kolkata");
+  const [notifications, setNotifications] = useState(true);
+
+  useEffect(() => {
+    api.getSettings()
+      .then((res) => {
+        setTheme(res.theme || "system");
+        setCurrency(res.currency || "INR");
+        setTimezone(res.timezone || "Asia/Kolkata");
+        setNotifications(res.notifications !== false);
+      })
+      .catch((e) => {
+        toast({
+          title: "Could not load settings",
+          description: e instanceof Error ? e.message : "Failed to load",
+          variant: "destructive",
+        });
+      })
+      .finally(() => setLoading(false));
+  }, [toast]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.updateSettings({ theme, currency, timezone, notifications });
+      toast({ title: "System settings saved" });
+    } catch (e) {
+      toast({
+        title: "Save failed",
+        description: e instanceof Error ? e.message : "Could not save",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-8 flex items-center justify-center gap-2 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" /> Loading system settings…
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
-      <CardContent className="p-6 space-y-2">
-        <p className="text-sm font-medium">System settings coming soon</p>
-        <p className="text-sm text-muted-foreground">
-          Localization, notification gateways, and system info are not persisted yet. Use Company and Users &amp; Roles
-          for live configuration during UAT.
-        </p>
+      <CardHeader className="pb-3">
+        <CardTitle>System Preferences</CardTitle>
+        <CardDescription>Theme, currency, timezone and notification defaults</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Theme</Label>
+            <Select value={theme} onValueChange={setTheme}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="system">System</SelectItem>
+                <SelectItem value="light">Light</SelectItem>
+                <SelectItem value="dark">Dark</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Currency</Label>
+            <Select value={currency} onValueChange={setCurrency}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {["INR", "USD", "EUR", "AED", "SGD"].map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label>Timezone</Label>
+            <Select value={timezone} onValueChange={setTimezone}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {["Asia/Kolkata", "Asia/Dubai", "Asia/Singapore", "Europe/London", "America/New_York"].map((tz) => (
+                  <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="flex items-center justify-between p-2.5 rounded-lg border border-border">
+          <div>
+            <p className="text-sm font-medium">Email & in-app notifications</p>
+            <p className="text-xs text-muted-foreground">Master switch for agency notification defaults</p>
+          </div>
+          <Switch checked={notifications} onCheckedChange={setNotifications} />
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90">
+            <Save className="w-4 h-4 mr-1.5" /> {saving ? "Saving…" : "Save System Settings"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -469,13 +634,104 @@ function SystemTab() {
 
 
 function SecurityTab() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [minPasswordLength, setMinPasswordLength] = useState(8);
+  const [require2FA, setRequire2FA] = useState(false);
+  const [sessionTimeoutHours, setSessionTimeoutHours] = useState(24);
+
+  useEffect(() => {
+    api.getSettings()
+      .then((res) => {
+        const sec = (res.security || {}) as Record<string, unknown>;
+        setMinPasswordLength(Number(sec.minPasswordLength) || 8);
+        setRequire2FA(Boolean(sec.require2FA));
+        setSessionTimeoutHours(Number(sec.sessionTimeoutHours) || 24);
+      })
+      .catch((e) => {
+        toast({
+          title: "Could not load security settings",
+          description: e instanceof Error ? e.message : "Failed to load",
+          variant: "destructive",
+        });
+      })
+      .finally(() => setLoading(false));
+  }, [toast]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.updateSettings({
+        security: {
+          minPasswordLength,
+          require2FA,
+          sessionTimeoutHours,
+        },
+      });
+      toast({ title: "Security settings saved" });
+    } catch (e) {
+      toast({
+        title: "Save failed",
+        description: e instanceof Error ? e.message : "Could not save",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="p-8 flex items-center justify-center gap-2 text-muted-foreground">
+          <Loader2 className="w-5 h-5 animate-spin" /> Loading security settings…
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card>
-      <CardContent className="p-6 space-y-2">
-        <p className="text-sm font-medium">Security controls coming soon</p>
-        <p className="text-sm text-muted-foreground">
-          MFA, IP whitelist, and API rate limits are not persisted yet. Password changes use Forgot password / reset flow.
-        </p>
+      <CardHeader className="pb-3">
+        <CardTitle>Security Controls</CardTitle>
+        <CardDescription>Password policy, 2FA requirement and session timeout</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Minimum password length</Label>
+            <Input
+              type="number"
+              min={6}
+              max={64}
+              value={minPasswordLength}
+              onChange={(e) => setMinPasswordLength(Number(e.target.value) || 8)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Session timeout (hours)</Label>
+            <Input
+              type="number"
+              min={1}
+              max={720}
+              value={sessionTimeoutHours}
+              onChange={(e) => setSessionTimeoutHours(Number(e.target.value) || 24)}
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between p-2.5 rounded-lg border border-border">
+          <div>
+            <p className="text-sm font-medium">Require two-factor authentication</p>
+            <p className="text-xs text-muted-foreground">Stored as agency policy flag in settings.security</p>
+          </div>
+          <Switch checked={require2FA} onCheckedChange={setRequire2FA} />
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={handleSave} disabled={saving} className="bg-primary hover:bg-primary/90">
+            <Save className="w-4 h-4 mr-1.5" /> {saving ? "Saving…" : "Save Security Settings"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

@@ -356,9 +356,24 @@ export interface MappedCommission {
   byAgency: { agency: string; bookings: number; revenue: number; commission: number }[];
   topAgents: { agent: string; bookings: number; commission: number }[];
   monthly: { month: string; label: string; bookings: number; commission: number }[];
+  credits: Array<{ id: string; date: string; description: string; amount: number; balance: number }>;
+  rules: ApiCommissionResponse["rules"];
 }
 
 export function mapApiCommission(data: ApiCommissionResponse): MappedCommission {
+  const chronological = [...(data.credits || [])].sort((a, b) => a.date.localeCompare(b.date));
+  let running = 0;
+  const creditsChrono = chronological.map((c) => {
+    running += c.amount;
+    return {
+      id: c.id,
+      date: c.date,
+      description: c.description,
+      amount: c.amount,
+      balance: running,
+    };
+  });
+  const credits = [...creditsChrono].reverse();
   return {
     summary: data.summary,
     byAgency: data.byAgency,
@@ -367,6 +382,8 @@ export function mapApiCommission(data: ApiCommissionResponse): MappedCommission 
       ...m,
       label: formatMonthLabel(m.month),
     })),
+    credits,
+    rules: data.rules ?? null,
   };
 }
 
@@ -378,23 +395,35 @@ export interface MappedFinance {
     netRevenue: number;
     totalCommission: number;
     totalExpenses: number;
+    totalTds: number;
     netProfit: number;
   };
   monthly: { month: string; label: string; revenue: number; gst: number; expenses: number; profit: number }[];
   byService: { service: string; revenue: number }[];
   invoices: ApiFinanceInvoice[];
+  expenses: Array<{ id: string; category: string; description: string; amount: number; date: string; paidBy: string }>;
+  expenseByCategory: Array<{ name: string; value: number }>;
+  tds: Array<{ id: string; section: string; nature: string; amount: number; rate: number; deducted: number; status: string; date: string; partyName: string }>;
+  gstFilings: Array<{ month: string; taxable: number; cgst: number; sgst: number; igst: number; status: string }>;
   paymentMethods: { method: string; amount: number }[];
 }
 
 export function mapApiFinance(data: ApiFinanceResponse): MappedFinance {
   return {
-    summary: data.summary,
+    summary: {
+      ...data.summary,
+      totalTds: data.summary.totalTds ?? 0,
+    },
     monthly: data.monthly.map((m) => ({
       ...m,
       label: formatMonthLabel(m.month),
     })),
     byService: data.byService,
     invoices: data.invoices,
+    expenses: data.expenses || [],
+    expenseByCategory: data.expenseByCategory || [],
+    tds: data.tds || [],
+    gstFilings: data.gstFilings || [],
     paymentMethods: Object.entries(data.paymentMethods).map(([method, amount]) => ({ method, amount })),
   };
 }

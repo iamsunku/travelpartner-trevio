@@ -12,6 +12,7 @@ function resolveApiBase(): string {
 }
 
 const API_BASE = resolveApiBase();
+export { API_BASE };
 
 export class ApiError extends Error {
   constructor(
@@ -317,8 +318,15 @@ export const api = {
   markAllNotificationsRead: () =>
     apiFetch<{ updated: number }>("/api/notifications/read-all", { method: "PATCH" }),
 
-  getWallet: (agencyId: string) =>
-    apiFetch<{ balance: number; transactions: ApiWalletTxn[] }>(`/api/wallet?agencyId=${agencyId}`),
+  getWallet: (agencyId?: string) => {
+    const qs = agencyId ? `?agencyId=${encodeURIComponent(agencyId)}` : "";
+    return apiFetch<{
+      balance: number;
+      agencyId?: string;
+      agencyName?: string;
+      transactions: ApiWalletTxn[];
+    }>(`/api/wallet${qs}`);
+  },
 
   getDashboard: () => apiFetch<{
     stats: { bookings: number; agencies: number; customers: number; leads: number; payments: number; packages?: number };
@@ -523,6 +531,32 @@ export const api = {
 
   getFinance: () =>
     apiFetch<ApiFinanceResponse>("/api/finance"),
+
+  createExpense: (body: Record<string, unknown>) =>
+    apiFetch<{ expense: unknown }>("/api/finance/expenses", { method: "POST", body: JSON.stringify(body) }),
+
+  deleteExpense: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/api/finance/expenses/${id}`, { method: "DELETE" }),
+
+  createTds: (body: Record<string, unknown>) =>
+    apiFetch<{ tds: unknown }>("/api/finance/tds", { method: "POST", body: JSON.stringify(body) }),
+
+  updateTds: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ tds: unknown }>(`/api/finance/tds/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  getCompanySettings: () => apiFetch<Record<string, string>>("/api/settings/company"),
+
+  updateCompanySettings: (body: Record<string, unknown>) =>
+    apiFetch<{ ok: boolean }>("/api/settings/company", { method: "PUT", body: JSON.stringify(body) }),
+
+  saveCommissionRules: (rules: unknown) =>
+    apiFetch<{ ok: boolean }>("/api/commission/rules", { method: "PUT", body: JSON.stringify({ rules }) }),
+
+  postSupportMessage: (ticketId: string, body: { message: string; isInternal?: boolean }) =>
+    apiFetch<{ message: unknown }>(`/api/support/tickets/${ticketId}/messages`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   getAnalyticsPlatform: (range: "monthly" | "yearly") =>
     apiFetch<ApiPlatformAnalytics>(`/api/analytics/platform?range=${range}`),
@@ -818,6 +852,15 @@ export interface CouponWriteBody {
   agencyId?: string;
 }
 
+export interface SupportTicketMessageApi {
+  id: string;
+  ticketId: string;
+  sender: string;
+  message: string;
+  isInternal: boolean;
+  createdAt: string;
+}
+
 export interface SupportTicketApi {
   id: string;
   ticketId: string;
@@ -834,6 +877,7 @@ export interface SupportTicketApi {
   assignedTo?: string | null;
   createdAt: string;
   updatedAt: string;
+  messages?: SupportTicketMessageApi[];
 }
 
 export interface CreateSupportTicketBody {
@@ -1007,6 +1051,23 @@ export interface ApiPayment {
   date: string;
 }
 
+export interface ApiCommissionCredit {
+  id: string;
+  date: string;
+  amount: number;
+  description: string;
+  status?: string;
+}
+
+export interface ApiCommissionRule {
+  id: string;
+  title: string;
+  type: string;
+  rate: string;
+  scope: string;
+  desc: string;
+}
+
 export interface ApiCommissionResponse {
   summary: {
     totalCommission: number;
@@ -1018,10 +1079,15 @@ export interface ApiCommissionResponse {
   byAgency: { agency: string; bookings: number; revenue: number; commission: number }[];
   topAgents: { agent: string; bookings: number; commission: number }[];
   monthly: { month: string; bookings: number; commission: number }[];
+  credits?: ApiCommissionCredit[];
+  rules?: ApiCommissionRule[] | null;
 }
 
 export interface ApiFinanceInvoice {
+  id?: string;
   ref: string;
+  bookingRef?: string;
+  bookingId?: string;
   customer: string;
   agency: string;
   service: string;
@@ -1029,6 +1095,8 @@ export interface ApiFinanceInvoice {
   gst: number;
   total: number;
   date: string;
+  status?: string;
+  invoiceType?: string;
 }
 
 export interface ApiFinanceResponse {
@@ -1038,11 +1106,16 @@ export interface ApiFinanceResponse {
     netRevenue: number;
     totalCommission: number;
     totalExpenses: number;
+    totalTds?: number;
     netProfit: number;
   };
   monthly: { month: string; revenue: number; gst: number; expenses: number; profit: number }[];
   byService: { service: string; revenue: number }[];
   invoices: ApiFinanceInvoice[];
+  expenses?: Array<{ id: string; category: string; description: string; amount: number; date: string; paidBy: string }>;
+  expenseByCategory?: Array<{ name: string; value: number }>;
+  tds?: Array<{ id: string; section: string; nature: string; amount: number; rate: number; deducted: number; status: string; date: string; partyName: string }>;
+  gstFilings?: Array<{ month: string; taxable: number; cgst: number; sgst: number; igst: number; status: string }>;
   paymentMethods: Record<string, number>;
 }
 

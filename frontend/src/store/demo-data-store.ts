@@ -650,14 +650,13 @@ export const useDemoDataStore = create<DemoDataState>()(
             patch.commissionStats = mapApiCommission(commissionSettled.value);
           }
 
-          if (agencyId) {
-            try {
-              const walletRes = await api.getWallet(agencyId);
-              patch.walletBalance = walletRes.balance;
-              patch.walletTxns = (walletRes.transactions ?? []).map(mapApiWalletTxn);
-            } catch {
-              /* wallet optional */
-            }
+          // Always load wallet — API resolves agency for superadmin when agencyId is missing
+          try {
+            const walletRes = await api.getWallet(agencyId);
+            patch.walletBalance = walletRes.balance;
+            patch.walletTxns = (walletRes.transactions ?? []).map(mapApiWalletTxn);
+          } catch {
+            /* wallet optional */
           }
 
           set(patch);

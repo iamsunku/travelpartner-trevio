@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Copy, ImageIcon, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Check, ChevronLeft, ChevronRight, Copy, ImageIcon, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { api, apiFetch, ApiError } from "@/lib/api";
 import { mapApiQuotation } from "@/lib/api-mappers";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore } from "@/store/app-store";
 import type { ProductRecord, Quotation, QuotationPackage } from "@/types";
 import { formatFullINR } from "@/components/shared/ui-helpers";
-import { calcPackageCosting } from "@/lib/quote-costing";
+import { calcPackageCosting, resolveQuotationCosting } from "@/lib/quote-costing";
+import { QuotePriceBreakdown } from "@/components/shared/quote-price-breakdown";
 import { DESTINATION_QUOTE_PLANS, getDestinationQuotePlan } from "@/lib/destination-quote-plans";
 import { downloadClientQuotationBrochure } from "@/lib/client-quotation-brochure";
 import { DestinationSelect } from "@/components/shared/destination-select";
@@ -27,18 +28,45 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 const STEPS = [
-  "Basic Details",
-  "Hotels",
-  "Flights",
-  "Itinerary",
-  "Transfers & Activities",
-  "Meals",
-  "Insurance & Visa",
-  "Add-ons",
-  "Packages & Costing",
-  "Terms",
-  "Review",
+  { label: "Basic Details", hint: "Customer & trip" },
+  { label: "Hotels", hint: "Stay" },
+  { label: "Flights", hint: "Air" },
+  { label: "Itinerary", hint: "Day plan" },
+  { label: "Transfers & Activities", hint: "Ground" },
+  { label: "Meals", hint: "Food" },
+  { label: "Insurance & Visa", hint: "Docs" },
+  { label: "Add-ons", hint: "Extras" },
+  { label: "Packages & Costing", hint: "Price" },
+  { label: "Terms", hint: "Policies" },
+  { label: "Review", hint: "Finish" },
+] as const;
+
+const STEP_GROUPS: { title: string; from: number; to: number }[] = [
+  { title: "Start", from: 0, to: 0 },
+  { title: "Trip build", from: 1, to: 5 },
+  { title: "Extras", from: 6, to: 7 },
+  { title: "Finish", from: 8, to: 10 },
 ];
+
+function FormSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border bg-card p-4 sm:p-5 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
+        {description ? <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{description}</p> : null}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5">{children}</div>
+    </section>
+  );
+}
 
 function emptyPackage(name: string, selected = false): QuotationPackage {
   return {
@@ -308,110 +336,194 @@ export function QuotationWizardDialog({
     setStep((s) => Math.max(s - 1, 0));
   }
 
+  const progressPct = Math.round(((step + 1) / STEPS.length) * 100);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
-            {quoteNo || "New Quotation"} — Wizard
-          </DialogTitle>
-          <DialogDescription>
-            Step {step + 1} of {STEPS.length}: {STEPS[step]}
-            {nights != null ? ` · ${nights} nights` : ""}
-          </DialogDescription>
+      <DialogContent
+        showCloseButton
+        className="sm:max-w-5xl lg:max-w-6xl w-[calc(100%-1.5rem)] p-0 gap-0 max-h-[92vh] overflow-hidden flex flex-col"
+      >
+        <DialogHeader className="px-5 pt-5 pb-3 border-b shrink-0 space-y-3 text-left">
+          <div className="flex flex-wrap items-start justify-between gap-2 pr-8">
+            <div>
+              <DialogTitle className="text-lg">
+                {quoteNo || "New quotation"}
+              </DialogTitle>
+              <DialogDescription className="mt-1">
+                {STEPS[step].label}
+                {nights != null ? ` · ${nights} nights` : ""}
+                {" · "}
+                Step {step + 1} of {STEPS.length}
+              </DialogDescription>
+            </div>
+            <div className="text-right text-xs text-muted-foreground hidden sm:block">
+              <p className="font-medium text-foreground tabular-nums">{formatFullINR(liveCosting.total)}</p>
+              <p>Live total · {liveCosting.profitMargin}% margin</p>
+            </div>
+          </div>
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-teal-600 transition-all duration-300"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
         </DialogHeader>
 
-        <div className="flex gap-1 overflow-x-auto pb-2 mb-2">
-          {STEPS.map((s, i) => (
-            <button
-              key={s}
-              type="button"
-              className={cn(
-                "text-[10px] px-2 py-1 rounded whitespace-nowrap",
-                i === step ? "bg-teal-600 text-white" : i < step ? "bg-teal-100 text-teal-800" : "bg-muted text-muted-foreground",
-              )}
-              onClick={() => setStep(i)}
-            >
-              {i + 1}. {s}
-            </button>
-          ))}
-        </div>
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          <nav className="hidden md:flex w-52 shrink-0 flex-col gap-4 border-r bg-muted/20 p-3 overflow-y-auto">
+            {STEP_GROUPS.map((group) => (
+              <div key={group.title} className="space-y-1">
+                <p className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {group.title}
+                </p>
+                {STEPS.slice(group.from, group.to + 1).map((s, idx) => {
+                  const i = group.from + idx;
+                  const done = i < step;
+                  const active = i === step;
+                  return (
+                    <button
+                      key={s.label}
+                      type="button"
+                      onClick={() => setStep(i)}
+                      className={cn(
+                        "w-full flex items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
+                        active && "bg-teal-600 text-white shadow-sm",
+                        done && !active && "text-teal-800 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/40",
+                        !done && !active && "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
+                          active && "bg-white/20",
+                          done && !active && "bg-teal-100 text-teal-800 dark:bg-teal-900/50",
+                          !done && !active && "bg-muted",
+                        )}
+                      >
+                        {done ? <Check className="w-3.5 h-3.5" /> : i + 1}
+                      </span>
+                      <span className="min-w-0 leading-tight">
+                        <span className="block font-medium truncate">{s.label}</span>
+                        <span className={cn("block text-[10px] truncate", active ? "text-white/80" : "text-muted-foreground")}>
+                          {s.hint}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </nav>
 
+          <div className="flex-1 min-w-0 flex flex-col min-h-0 relative">
+            <div className="md:hidden shrink-0 px-3 py-2 border-b bg-background">
+              <div className="flex gap-1.5 overflow-x-auto">
+                {STEPS.map((s, i) => (
+                  <button
+                    key={s.label}
+                    type="button"
+                    onClick={() => setStep(i)}
+                    className={cn(
+                      "shrink-0 rounded-full px-2.5 py-1 text-xs whitespace-nowrap",
+                      i === step ? "bg-teal-600 text-white" : i < step ? "bg-teal-100 text-teal-800" : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {i + 1}. {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
         {step === 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 rounded-lg border bg-muted/30 p-3 space-y-2">
-              <Label className="text-xs">Load a destination plan (optional)</Label>
-              <p className="text-[11px] text-muted-foreground">
-                Super Admin / Admin / Branch / Employee: pick a ready client brochure plan, then change customer, dates and prices. The PDF sent to the customer looks like the Trevio trip quotation (overview, highlights, itinerary, hotels, flights, inclusions) — without cost or profit.
-              </p>
-              <Select onValueChange={applyDestinationPlan}>
-                <SelectTrigger className="h-9"><SelectValue placeholder="Choose a plan…" /></SelectTrigger>
-                <SelectContent>
-                  {DESTINATION_QUOTE_PLANS.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Field label="Customer *" value={form.customerName} onChange={(v) => setForm({ ...form, customerName: v })} />
-            <Field label="Contact Person" value={form.contactPerson} onChange={(v) => setForm({ ...form, contactPerson: v })} />
-            <Field label="Email" value={form.contactEmail} onChange={(v) => setForm({ ...form, contactEmail: v })} />
-            <Field label="Phone" value={form.contactPhone} onChange={(v) => setForm({ ...form, contactPhone: v })} />
-            <Field label="Travel Agent" value={form.agentName} onChange={(v) => setForm({ ...form, agentName: v })} />
-            <Field label="Sales Executive" value={form.salesExecutiveName} onChange={(v) => setForm({ ...form, salesExecutiveName: v })} />
-            <div className="col-span-2">
-              <Label className="text-xs text-muted-foreground">Destination master (optional — fills city/country)</Label>
-              <DestinationSelect
-                value={destinationId}
-                onChange={(id) => {
-                  setDestinationId(id);
-                  apiFetch<{ item: { name: string; country?: string; heroImage?: string | null; bannerImage?: string | null; thumbnail?: string | null; galleryImages?: string[] } }>(`/api/destinations/${id}`)
-                    .then((data) => {
-                      const hero = data.item.heroImage || data.item.bannerImage || data.item.thumbnail || data.item.galleryImages?.[0] || "";
-                      setForm((f) => ({
-                        ...f,
-                        destination: data.item.name || f.destination,
-                        country: data.item.country || f.country,
-                        coverImage: f.coverImage || hero,
-                      }));
-                    })
-                    .catch(() => undefined);
-                }}
-                placeholder="Search destinations…"
-              />
-            </div>
-            <Field label="Destination City *" value={form.destination} onChange={(v) => setForm({ ...form, destination: v })} />
-            <Field label="Country" value={form.country} onChange={(v) => setForm({ ...form, country: v })} />
-            <div className="col-span-2 space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Cover / destination image (customer PDF)</Label>
-              <p className="text-[11px] text-muted-foreground">
-                Paste an image URL — same as entering a flight number. Used on the brochure cover and destination page. Destination master or a loaded plan can fill this automatically.
-              </p>
-              <ImageUrlField
-                value={form.coverImage}
-                onChange={(v) => setForm({ ...form, coverImage: v })}
-                placeholder="https://… destination photo"
-              />
-            </div>
-            <Field label="Start Date" type="date" value={form.travelStartDate} onChange={(v) => setForm({ ...form, travelStartDate: v })} />
-            <Field label="End Date" type="date" value={form.travelEndDate} onChange={(v) => setForm({ ...form, travelEndDate: v })} />
-            <Field label="Adults" type="number" value={String(form.adults)} onChange={(v) => setForm({ ...form, adults: Math.max(0, Number(v) || 0) })} />
-            <Field label="Children" type="number" value={String(form.children)} onChange={(v) => setForm({ ...form, children: Math.max(0, Number(v) || 0) })} />
-            <Field label="Infants" type="number" value={String(form.infants)} onChange={(v) => setForm({ ...form, infants: Math.max(0, Number(v) || 0) })} />
-            <Field label="Valid Until" type="date" value={form.validTill} onChange={(v) => setForm({ ...form, validTill: v })} />
-            <Field label="Enquiry Ref" value={form.enquiryRef} onChange={(v) => setForm({ ...form, enquiryRef: v })} />
-            <div className="flex items-center gap-2 pt-6">
-              <Checkbox checked={form.isInternational} onCheckedChange={(v) => setForm({ ...form, isInternational: Boolean(v) })} id="intl" />
-              <Label htmlFor="intl">International booking</Label>
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs">Special Requests (customer-facing)</Label>
-              <Textarea value={form.specialRequests} onChange={(e) => setForm({ ...form, specialRequests: e.target.value })} />
-            </div>
-            <div className="col-span-2">
-              <Label className="text-xs text-amber-700">Internal Notes (never on PDF / agent portal)</Label>
-              <Textarea value={form.internalNotes} onChange={(e) => setForm({ ...form, internalNotes: e.target.value })} />
-            </div>
+          <div className="space-y-4">
+            <FormSection
+              title="Start from a plan (optional)"
+              description="Pick a ready brochure plan, then edit customer, dates, and prices. Customer PDF hides cost & profit."
+            >
+              <div className="sm:col-span-2">
+                <Select onValueChange={applyDestinationPlan}>
+                  <SelectTrigger className="h-10"><SelectValue placeholder="Choose a destination plan…" /></SelectTrigger>
+                  <SelectContent>
+                    {DESTINATION_QUOTE_PLANS.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </FormSection>
+
+            <FormSection title="Customer" description="Who this quote is for.">
+              <Field label="Customer *" value={form.customerName} onChange={(v) => setForm({ ...form, customerName: v })} />
+              <Field label="Contact person" value={form.contactPerson} onChange={(v) => setForm({ ...form, contactPerson: v })} />
+              <Field label="Email" value={form.contactEmail} onChange={(v) => setForm({ ...form, contactEmail: v })} />
+              <Field label="Phone" value={form.contactPhone} onChange={(v) => setForm({ ...form, contactPhone: v })} />
+              <Field label="Travel agent" value={form.agentName} onChange={(v) => setForm({ ...form, agentName: v })} />
+              <Field label="Sales executive" value={form.salesExecutiveName} onChange={(v) => setForm({ ...form, salesExecutiveName: v })} />
+            </FormSection>
+
+            <FormSection title="Destination" description="City for the trip and cover image for the customer PDF.">
+              <div className="sm:col-span-2 space-y-1.5">
+                <Label className="text-sm font-medium">Search destination master</Label>
+                <DestinationSelect
+                  value={destinationId}
+                  onChange={(id) => {
+                    setDestinationId(id);
+                    apiFetch<{ item: { name: string; country?: string; heroImage?: string | null; bannerImage?: string | null; thumbnail?: string | null; galleryImages?: string[] } }>(`/api/destinations/${id}`)
+                      .then((data) => {
+                        const hero = data.item.heroImage || data.item.bannerImage || data.item.thumbnail || data.item.galleryImages?.[0] || "";
+                        setForm((f) => ({
+                          ...f,
+                          destination: data.item.name || f.destination,
+                          country: data.item.country || f.country,
+                          coverImage: f.coverImage || hero,
+                        }));
+                      })
+                      .catch(() => undefined);
+                  }}
+                  placeholder="Search destinations…"
+                />
+              </div>
+              <Field label="Destination city *" value={form.destination} onChange={(v) => setForm({ ...form, destination: v })} />
+              <Field label="Country" value={form.country} onChange={(v) => setForm({ ...form, country: v })} />
+              <div className="sm:col-span-2 space-y-1.5">
+                <Label className="text-sm font-medium">Cover image URL</Label>
+                <p className="text-xs text-muted-foreground">Paste a photo link for the brochure cover. Destination search can auto-fill this.</p>
+                <ImageUrlField
+                  value={form.coverImage}
+                  onChange={(v) => setForm({ ...form, coverImage: v })}
+                  placeholder="https://… destination photo"
+                />
+              </div>
+            </FormSection>
+
+            <FormSection title="Travel dates & guests">
+              <Field label="Start date" type="date" value={form.travelStartDate} onChange={(v) => setForm({ ...form, travelStartDate: v })} />
+              <Field label="End date" type="date" value={form.travelEndDate} onChange={(v) => setForm({ ...form, travelEndDate: v })} />
+              <Field label="Adults" type="number" value={String(form.adults)} onChange={(v) => setForm({ ...form, adults: Math.max(0, Number(v) || 0) })} />
+              <Field label="Children" type="number" value={String(form.children)} onChange={(v) => setForm({ ...form, children: Math.max(0, Number(v) || 0) })} />
+              <Field label="Infants" type="number" value={String(form.infants)} onChange={(v) => setForm({ ...form, infants: Math.max(0, Number(v) || 0) })} />
+              <Field label="Valid until" type="date" value={form.validTill} onChange={(v) => setForm({ ...form, validTill: v })} />
+              <Field label="Enquiry ref" value={form.enquiryRef} onChange={(v) => setForm({ ...form, enquiryRef: v })} />
+              <div className="flex items-center gap-2.5 pt-7">
+                <Checkbox checked={form.isInternational} onCheckedChange={(v) => setForm({ ...form, isInternational: Boolean(v) })} id="intl" />
+                <Label htmlFor="intl" className="text-sm font-medium cursor-pointer">International booking</Label>
+              </div>
+            </FormSection>
+
+            <FormSection title="Notes">
+              <div className="sm:col-span-2 space-y-1.5">
+                <Label className="text-sm font-medium">Special requests</Label>
+                <p className="text-xs text-muted-foreground">Shown to the customer on the quote.</p>
+                <Textarea className="min-h-[72px]" value={form.specialRequests} onChange={(e) => setForm({ ...form, specialRequests: e.target.value })} />
+              </div>
+              <div className="sm:col-span-2 space-y-1.5">
+                <Label className="text-sm font-medium text-amber-800 dark:text-amber-400">Internal notes</Label>
+                <p className="text-xs text-muted-foreground">Team only — never on PDF or agent portal.</p>
+                <Textarea className="min-h-[72px]" value={form.internalNotes} onChange={(e) => setForm({ ...form, internalNotes: e.target.value })} />
+              </div>
+            </FormSection>
           </div>
         )}
 
@@ -695,18 +807,53 @@ export function QuotationWizardDialog({
               <Field label="Tax Rate %" type="number" value={String(form.taxRate)} onChange={(v) => setForm({ ...form, taxRate: Number(v) || 0 })} />
             </div>
             <p className="text-xs text-muted-foreground">
-              Figures below are a live preview. Final totals are recalculated on the server when you save.
+              Final Quote Price — stay, rates and summary update live. Totals are recalculated on the server when you save.
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-              <Info label="Net cost" value={formatFullINR(liveCosting.totalNetCost)} />
-              <Info label="Selling" value={formatFullINR(liveCosting.totalSelling + liveCosting.discountAmount)} />
-              <Info label="Discount" value={formatFullINR(liveCosting.discountAmount)} />
-              <Info label="GST (incl.)" value={formatFullINR(liveCosting.gst)} />
-              <Info label="Final package" value={formatFullINR(liveCosting.total)} />
-              <Info label="Per person" value={formatFullINR(liveCosting.perPersonCost)} />
-              <Info label="Gross profit" value={formatFullINR(liveCosting.grossProfit)} />
-              <Info label="Margin" value={`${liveCosting.profitMargin}%`} />
-            </div>
+            <QuotePriceBreakdown
+              costing={resolveQuotationCosting({
+                amount: liveCosting.taxableAmount,
+                gst: liveCosting.gst,
+                total: liveCosting.total,
+                taxRate: form.taxRate,
+                totalNetCost: liveCosting.totalNetCost,
+                grossProfit: liveCosting.grossProfit,
+                profitMargin: liveCosting.profitMargin,
+                perPersonCost: liveCosting.perPersonCost,
+                discountAmount: liveCosting.discountAmount,
+                discountType: form.discountType || null,
+                discountValue: form.discountValue,
+                adults: form.adults,
+                children: form.children,
+                infants: form.infants,
+                travelStartDate: form.travelStartDate,
+                travelEndDate: form.travelEndDate,
+                packages: packages as unknown as Array<Record<string, unknown>>,
+              })}
+              editable
+              showInternal
+              onChangeDates={(checkIn, checkOut) => {
+                setForm((f) => ({ ...f, travelStartDate: checkIn, travelEndDate: checkOut }));
+                const hotels = [...((selected?.hotels || []) as Array<Record<string, unknown>>)];
+                if (hotels[0]) {
+                  hotels[0] = { ...hotels[0], checkIn, checkOut };
+                  patchSelected({ hotels });
+                }
+              }}
+              onChangeRooms={(rooms) => {
+                const hotels = [...((selected?.hotels || []) as Array<Record<string, unknown>>)];
+                if (hotels[0]) {
+                  hotels[0] = { ...hotels[0], rooms };
+                  patchSelected({ hotels });
+                } else {
+                  patchSelected({
+                    hotels: [{ hotelName: "Stay", rooms, checkIn: form.travelStartDate, checkOut: form.travelEndDate, costPrice: 0, sellingPrice: 0 }],
+                  });
+                }
+              }}
+              onChangeTravellers={(adults, children, infants) => {
+                setForm((f) => ({ ...f, adults, children, infants }));
+              }}
+            />
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-xs">Inclusions (one per line)</Label>
@@ -727,16 +874,24 @@ export function QuotationWizardDialog({
         )}
 
         {step === 9 && (
-          <div className="space-y-2">
-            <Label className="text-xs">Terms & Conditions</Label>
-            <Textarea value={form.termsAndConditions} onChange={(e) => setForm({ ...form, termsAndConditions: e.target.value })} rows={3} />
-            <Label className="text-xs">Payment Policy</Label>
-            <Textarea value={form.paymentTerms} onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })} rows={2} />
-            <Label className="text-xs">Cancellation Policy</Label>
-            <Textarea value={form.cancellationPolicy} onChange={(e) => setForm({ ...form, cancellationPolicy: e.target.value })} rows={2} />
-            <Label className="text-xs">Refund Policy</Label>
-            <Textarea value={form.refundPolicy} onChange={(e) => setForm({ ...form, refundPolicy: e.target.value })} rows={2} />
-          </div>
+          <FormSection title="Terms & policies" description="These appear on the customer quotation PDF.">
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Terms & conditions</Label>
+              <Textarea className="min-h-[88px]" value={form.termsAndConditions} onChange={(e) => setForm({ ...form, termsAndConditions: e.target.value })} rows={3} />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Payment policy</Label>
+              <Textarea value={form.paymentTerms} onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })} rows={2} />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Cancellation policy</Label>
+              <Textarea value={form.cancellationPolicy} onChange={(e) => setForm({ ...form, cancellationPolicy: e.target.value })} rows={2} />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Refund policy</Label>
+              <Textarea value={form.refundPolicy} onChange={(e) => setForm({ ...form, refundPolicy: e.target.value })} rows={2} />
+            </div>
+          </FormSection>
         )}
 
         {step === 10 && (
@@ -850,44 +1005,50 @@ export function QuotationWizardDialog({
           </div>
         )}
 
-        <div className="rounded-lg border bg-muted/20 p-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
-          <Info label="Customer" value={form.customerName || "—"} />
-          <Info label="Destination" value={form.destination || "—"} />
-          <Info label="Travel" value={`${form.travelStartDate || "—"} → ${form.travelEndDate || "—"}`} />
-          <Info label="Pax" value={`${form.adults}A ${form.children}C ${form.infants}I`} />
-          <Info label="Net cost" value={formatFullINR(liveCosting.totalNetCost)} />
-          <Info label="Final" value={formatFullINR(liveCosting.total)} />
-          <Info label="Profit" value={formatFullINR(liveCosting.grossProfit)} />
-          <Info label="Margin" value={`${liveCosting.profitMargin}%`} />
-        </div>
+            </div>
 
-        <div className="flex flex-wrap gap-2 justify-between pt-3 border-t">
-          <div className="flex gap-2">
-            <Button variant="outline" disabled={busy || step === 0} onClick={back}>Back</Button>
-            <Button variant="outline" disabled={busy} onClick={() => persist(step)}>
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Draft"}
-            </Button>
-          </div>
-          <div className="flex gap-2">
-            {step < STEPS.length - 1 ? (
-              <Button disabled={busy} onClick={next}>Save & Continue</Button>
-            ) : (
-              <>
-                <Button variant="outline" disabled={busy} onClick={async () => { await persist(step); onOpenChange(false); }}>
-                  Finish Later
-                </Button>
-                <Button
-                  disabled={busy}
-                  className="bg-teal-600 hover:bg-teal-700"
-                  onClick={async () => {
-                    const q = await persist(step, true);
-                    if (q) onOpenChange(false);
-                  }}
-                >
-                  Submit for Approval
-                </Button>
-              </>
-            )}
+            <div className="shrink-0 border-t bg-background px-4 sm:px-5 py-3 space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <Info label="Customer" value={form.customerName || "—"} />
+                <Info label="Destination" value={form.destination || "—"} />
+                <Info label="Travel" value={`${form.travelStartDate || "—"} → ${form.travelEndDate || "—"}`} />
+                <Info label="Total" value={formatFullINR(liveCosting.total)} />
+              </div>
+
+              <div className="flex flex-wrap gap-2 justify-between">
+                <div className="flex gap-2">
+                  <Button variant="outline" disabled={busy || step === 0} onClick={back}>
+                    <ChevronLeft className="w-4 h-4 mr-0.5" /> Back
+                  </Button>
+                  <Button variant="outline" disabled={busy} onClick={() => persist(step)}>
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save draft"}
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  {step < STEPS.length - 1 ? (
+                    <Button disabled={busy} onClick={next} className="bg-teal-600 hover:bg-teal-700">
+                      Save & continue <ChevronRight className="w-4 h-4 ml-0.5" />
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="outline" disabled={busy} onClick={async () => { await persist(step); onOpenChange(false); }}>
+                        Finish later
+                      </Button>
+                      <Button
+                        disabled={busy}
+                        className="bg-teal-600 hover:bg-teal-700"
+                        onClick={async () => {
+                          const q = await persist(step, true);
+                          if (q) onOpenChange(false);
+                        }}
+                      >
+                        Submit for approval
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </DialogContent>
@@ -901,18 +1062,18 @@ function Field({
   label: string; value: string; onChange: (v: string) => void; type?: string;
 }) {
   return (
-    <div>
-      <Label className="text-xs text-muted-foreground">{label}</Label>
-      <Input className="h-8 text-xs" type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+    <div className="space-y-1.5">
+      <Label className="text-sm font-medium">{label}</Label>
+      <Input className="h-10" type={type} value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded border p-2">
-      <p className="text-[10px] text-muted-foreground uppercase">{label}</p>
-      <p className="font-medium">{value || "—"}</p>
+    <div className="rounded-lg border bg-muted/30 px-2.5 py-2 min-w-0">
+      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className="font-medium text-sm truncate">{value || "—"}</p>
     </div>
   );
 }
@@ -946,7 +1107,7 @@ function ImageUrlField({
         <img src={value.trim()} alt="" className="h-12 w-16 rounded object-cover border shrink-0 bg-muted" />
       )}
       <Input
-        className="h-8 text-xs"
+        className="h-10"
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
@@ -1040,9 +1201,12 @@ function ServiceEditor({
   catalogToRow?: (item: ProductRecord) => Record<string, unknown>;
 }) {
   return (
-    <div className="space-y-2">
-      <div className="flex justify-between items-center gap-2 flex-wrap">
-        <p className="text-sm font-semibold">{title}</p>
+    <div className="space-y-3">
+      <div className="flex justify-between items-start gap-3 flex-wrap">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Add from catalog or enter self-booked details.</p>
+        </div>
         <div className="flex gap-2">
           {catalogKind && catalogToRow && (
             <CatalogPicker kind={catalogKind} onPick={(item) => onChange([...rows, catalogToRow(item)])} />
@@ -1052,20 +1216,26 @@ function ServiceEditor({
           </Button>
         </div>
       </div>
-      {rows.length === 0 && <p className="text-xs text-muted-foreground">No rows yet — pick from catalog or enter self-booked details.</p>}
+      {rows.length === 0 && (
+        <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+          No {title.toLowerCase()} yet — pick from catalog or add self-booked.
+        </div>
+      )}
       {rows.map((row, i) => (
-        <div key={i} className="border rounded-lg p-2 grid grid-cols-2 md:grid-cols-3 gap-2 relative">
+        <div key={i} className="rounded-xl border bg-card p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 relative">
           <Button
             size="sm"
             variant="ghost"
-            className="absolute right-1 top-1 h-7 w-7 p-0"
+            className="absolute right-2 top-2 h-8 w-8 p-0"
             onClick={() => onChange(rows.filter((_, j) => j !== i))}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
           {fields.map((f) => (
-            <div key={f} className={isImageField(f) ? "col-span-2 md:col-span-3 pr-8" : ""}>
-              <Label className="text-[10px] capitalize text-muted-foreground">{f === "imageUrl" ? "Image URL" : f}</Label>
+            <div key={f} className={cn("space-y-1.5", isImageField(f) ? "sm:col-span-2 md:col-span-3 pr-8" : "")}>
+              <Label className="text-xs font-medium capitalize text-muted-foreground">
+                {f === "imageUrl" ? "Image URL" : f.replace(/([A-Z])/g, " $1")}
+              </Label>
               {isImageField(f) ? (
                 <ImageUrlField
                   value={String(row[f] ?? "")}
@@ -1078,7 +1248,7 @@ function ServiceEditor({
                 />
               ) : (
                 <Input
-                  className="h-7 text-xs"
+                  className="h-9"
                   value={String(row[f] ?? "")}
                   onChange={(e) => {
                     const next = [...rows];

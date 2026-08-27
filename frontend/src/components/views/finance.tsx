@@ -6,11 +6,11 @@ import {
   PieChart, Pie, Cell, Legend,
 } from "recharts";
 import {
-  IndianRupee, TrendingUp, Receipt, FileText, Wallet, Plus, Eye,
-  CreditCard, Building2, Plane, ShoppingBag, Zap, Users, FileDown,
-  CheckCircle2, Clock, AlertCircle, Calculator, Percent,
+  IndianRupee, TrendingUp, Receipt, FileText, Plus, Eye,
+  Building2, Plane, ShoppingBag, Zap, Users, FileDown,
+  CheckCircle2, Clock, AlertCircle, Calculator,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, apiFetchBlob } from "@/lib/api";
 import { mapApiFinance, type MappedFinance } from "@/lib/api-mappers";
 import {
   formatINR, formatFullINR, StatusBadge, PageShell, PageHeader, MetricCard, SectionHeader, BrandHero,
@@ -37,32 +37,27 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 
-const INVOICES: Array<{ id: string; no: string; customer: string; amount: number; gst: number; total: number; status: "Paid" | "Pending" | "Overdue"; date: string }> = [];
-const EXPENSES: Array<{ id: string; category: string; description: string; amount: number; date: string; paidBy: string }> = [];
-const GST_FILINGS: Array<{ month: string; taxable: number; cgst: number; sgst: number; igst: number; status: "Pending" | "Filed" }> = [];
-const TDS_DEDUCTIONS: Array<{ id: string; section: string; nature: string; amount: number; rate: number; deducted: number; status: "Deposited" | "Pending"; date: string }> = [];
-
-const EXPENSE_CATEGORIES = [
-  { name: "Salaries", value: 412000, color: "#0d9488" },
-  { name: "Office Rent", value: 85000, color: "#f59e0b" },
-  { name: "Marketing", value: 45000, color: "#f43f5e" },
-  { name: "API Costs", value: 38000, color: "#8b5cf6" },
-  { name: "Software", value: 18500, color: "#06b6d4" },
-  { name: "Travel", value: 22500, color: "#10b981" },
-  { name: "Utilities", value: 12800, color: "#f97316" },
-];
+const EXPENSE_CATEGORY_COLORS: Record<string, string> = {
+  Salaries: "#0d9488",
+  "Office Rent": "#f59e0b",
+  Marketing: "#f43f5e",
+  "API Costs": "#8b5cf6",
+  Software: "#06b6d4",
+  Travel: "#10b981",
+  Utilities: "#f97316",
+  Other: "#64748b",
+};
 
 const CATEGORY_ICON: Record<string, React.ElementType> = {
   Salaries: Users, "Office Rent": Building2, Marketing: TrendingUp, "API Costs": Plane,
-  Software: Calculator, Travel: Plane, Utilities: Zap,
+  Software: Calculator, Travel: Plane, Utilities: Zap, Other: ShoppingBag,
 };
 
 function OverviewTab({ data }: { data: MappedFinance | null }) {
   const totalRevenue = data?.summary.totalRevenue ?? 0;
   const gstCollected = data?.summary.totalGst ?? 0;
-  const tdsDeducted = TDS_DEDUCTIONS.reduce((s, t) => s + t.deducted, 0);
+  const tdsDeducted = data?.summary.totalTds ?? 0;
   const totalExpenses = data?.summary.totalExpenses ?? 0;
   const netProfit = data?.summary.netProfit ?? totalRevenue - totalExpenses - tdsDeducted;
 
@@ -75,15 +70,15 @@ function OverviewTab({ data }: { data: MappedFinance | null }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricCard icon={IndianRupee} label="Total Revenue (12mo)" value={formatINR(totalRevenue)} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={0} />
+        <MetricCard icon={IndianRupee} label="Total Revenue" value={formatINR(totalRevenue)} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={0} />
         <MetricCard icon={Receipt} label="GST Collected" value={formatINR(gstCollected)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={1} />
-        <MetricCard icon={FileText} label="TDS Deducted" value={formatINR(tdsDeducted)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" subtitle="Ledger not wired yet" index={2} />
+        <MetricCard icon={FileText} label="TDS Deducted" value={formatINR(tdsDeducted)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
         <MetricCard icon={TrendingUp} label="Net Profit" value={formatINR(netProfit)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={3} />
       </div>
 
       <Card>
         <CardHeader>
-          <SectionHeader title="Revenue vs Profit" description="Monthly revenue and net profit comparison" />
+          <SectionHeader title="Revenue vs Profit" description="Monthly revenue and net profit from live bookings, GST and expenses" />
         </CardHeader>
         <CardContent>
           <div className="h-72">
@@ -122,19 +117,26 @@ function OverviewTab({ data }: { data: MappedFinance | null }) {
 }
 
 function GstTab({ data }: { data: MappedFinance | null }) {
-  const list = data
-    ? data.monthly.map((m) => ({
-        month: m.label,
-        taxable: m.revenue,
-        cgst: Math.round(m.gst / 2),
-        sgst: Math.round(m.gst / 2),
-        igst: 0,
-        status: "Filed" as const,
+  const list = (data?.gstFilings?.length
+    ? data.gstFilings.map((g) => ({
+        month: g.month,
+        taxable: g.taxable,
+        cgst: g.cgst,
+        sgst: g.sgst,
+        igst: g.igst,
+        status: g.status || "Pending",
       }))
-    : GST_FILINGS;
+    : (data?.monthly || []).map((m) => ({
+        month: m.label,
+        taxable: Math.max(0, m.revenue - m.gst),
+        cgst: Math.round(m.gst / 2),
+        sgst: m.gst - Math.round(m.gst / 2),
+        igst: 0,
+        status: "Pending",
+      })));
 
-  const totalTaxable = data ? data.summary.totalRevenue : GST_FILINGS.reduce((s, g) => s + g.taxable, 0);
-  const outputTax = data ? data.summary.totalGst : Math.round(totalTaxable * 0.18);
+  const totalTaxable = list.reduce((s, g) => s + g.taxable, 0);
+  const outputTax = data?.summary.totalGst ?? list.reduce((s, g) => s + g.cgst + g.sgst + g.igst, 0);
   const inputTax = Math.round(outputTax * 0.42);
   const netPayable = outputTax - inputTax;
 
@@ -142,13 +144,13 @@ function GstTab({ data }: { data: MappedFinance | null }) {
     <div className="space-y-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <MetricCard icon={Receipt} label="Output Tax (Sales)" value={formatFullINR(outputTax)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={0} />
-        <MetricCard icon={ShoppingBag} label="Input Tax Credit (ITC)" value={formatFullINR(inputTax)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
+        <MetricCard icon={ShoppingBag} label="Input Tax Credit (est.)" value={formatFullINR(inputTax)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
         <MetricCard icon={IndianRupee} label="Net GST Payable" value={formatFullINR(netPayable)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={2} />
       </div>
 
       <Card>
         <CardHeader>
-          <SectionHeader title="GST Filing Status" description="Monthly GST returns (GSTR-1 & GSTR-3B)" />
+          <SectionHeader title="GST Filing Status" description={`Taxable base ₹${totalTaxable.toLocaleString("en-IN")} from issued invoices`} />
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-lg border max-h-96 overflow-y-auto scroll-thin mx-4 mb-4">
@@ -164,7 +166,9 @@ function GstTab({ data }: { data: MappedFinance | null }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {list.map((g) => (
+                {list.length === 0 ? (
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-sm py-8">No GST rows yet — generate booking invoices to populate.</TableCell></TableRow>
+                ) : list.map((g) => (
                   <TableRow key={g.month} className="hover:bg-muted/40">
                     <TableCell className="text-sm font-medium">{g.month}</TableCell>
                     <TableCell className="text-right text-xs">{formatFullINR(g.taxable)}</TableCell>
@@ -183,10 +187,127 @@ function GstTab({ data }: { data: MappedFinance | null }) {
   );
 }
 
-function TdsTab() {
-  const totalDeducted = TDS_DEDUCTIONS.reduce((s, t) => s + t.deducted, 0);
-  const totalAmount = TDS_DEDUCTIONS.reduce((s, t) => s + t.amount, 0);
-  const pending = TDS_DEDUCTIONS.filter((t) => t.status === "Pending").reduce((s, t) => s + t.deducted, 0);
+type FinanceInvoiceRow = {
+  id: string;
+  no: string;
+  customer: string;
+  amount: number;
+  gst: number;
+  total: number;
+  status: string;
+  date: string;
+};
+
+async function openInvoicePrint(invoiceId: string) {
+  const blob = await apiFetchBlob(`/api/finance/invoices/${invoiceId}/print`);
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+function AddTdsDialog({ onRefresh }: { onRefresh: () => void }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [section, setSection] = useState("194C");
+  const [nature, setNature] = useState("");
+  const [partyName, setPartyName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [rate, setRate] = useState("2");
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!nature || !amount || !rate || !date) {
+      toast({ title: "Missing fields", description: "Nature, amount, rate and date are required", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.createTds({
+        section,
+        nature,
+        partyName: partyName || undefined,
+        amount: Number(amount),
+        rate: Number(rate),
+        date,
+        status: "Pending",
+      });
+      toast({ title: "TDS recorded", description: `${section}: ${formatFullINR(Math.round(Number(amount) * (Number(rate) / 100)))}` });
+      setOpen(false);
+      setNature(""); setPartyName(""); setAmount(""); setRate("2");
+      onRefresh();
+    } catch (e) {
+      toast({ title: "Failed", description: e instanceof Error ? e.message : "Could not create TDS", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button className="bg-primary hover:bg-primary/90">
+          <Plus className="w-4 h-4 mr-1" /> Add TDS
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add TDS Entry</DialogTitle>
+          <DialogDescription>Record a TDS deduction against a payment.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Section</Label>
+              <Select value={section} onValueChange={setSection}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["194C", "194H", "194J", "194I", "194A"].map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Rate (%)</Label>
+              <Input type="number" value={rate} onChange={(e) => setRate(e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label>Nature of Payment</Label>
+            <Input placeholder="e.g. Vendor payment" value={nature} onChange={(e) => setNature(e.target.value)} />
+          </div>
+          <div>
+            <Label>Party Name</Label>
+            <Input placeholder="Optional" value={partyName} onChange={(e) => setPartyName(e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Amount (₹)</Label>
+              <Input type="number" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+            <div>
+              <Label>Date</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={submit} disabled={saving} className="bg-primary hover:bg-primary/90">
+            {saving ? "Saving…" : "Add TDS"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TdsTab({ data, onRefresh }: { data: MappedFinance | null; onRefresh: () => void }) {
+  const list = data?.tds ?? [];
+  const totalDeducted = list.reduce((s, t) => s + t.deducted, 0);
+  const totalAmount = list.reduce((s, t) => s + t.amount, 0);
+  const pending = list.filter((t) => t.status === "Pending").reduce((s, t) => s + t.deducted, 0);
 
   return (
     <div className="space-y-4">
@@ -197,8 +318,9 @@ function TdsTab() {
       </div>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
           <SectionHeader title="TDS Deductions" description="Section-wise TDS deducted and deposit status" />
+          <AddTdsDialog onRefresh={onRefresh} />
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-lg border max-h-96 overflow-y-auto scroll-thin mx-4 mb-4">
@@ -215,10 +337,16 @@ function TdsTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {TDS_DEDUCTIONS.map((t) => (
+                {list.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-8">
+                      No TDS entries yet — add one to start the ledger.
+                    </TableCell>
+                  </TableRow>
+                ) : list.map((t) => (
                   <TableRow key={t.id} className="hover:bg-muted/40">
                     <TableCell><Badge variant="secondary" className="text-[10px] bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400">{t.section}</Badge></TableCell>
-                    <TableCell className="text-xs">{t.nature}</TableCell>
+                    <TableCell className="text-xs">{t.nature}{t.partyName ? ` · ${t.partyName}` : ""}</TableCell>
                     <TableCell className="text-right text-xs">{formatFullINR(t.amount)}</TableCell>
                     <TableCell className="text-right text-xs">{t.rate}%</TableCell>
                     <TableCell className="text-right text-xs font-semibold text-rose-600">{formatFullINR(t.deducted)}</TableCell>
@@ -235,9 +363,35 @@ function TdsTab() {
   );
 }
 
-function InvoiceDetailDialog({ invoice, open, onOpenChange }: { invoice: typeof INVOICES[number] | null; open: boolean; onOpenChange: (v: boolean) => void }) {
+function InvoiceDetailDialog({
+  invoice,
+  open,
+  onOpenChange,
+}: {
+  invoice: FinanceInvoiceRow | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   const { toast } = useToast();
+  const [printing, setPrinting] = useState(false);
   if (!invoice) return null;
+
+  async function downloadPdf() {
+    if (!invoice) return;
+    setPrinting(true);
+    try {
+      await openInvoicePrint(invoice.id);
+    } catch (e) {
+      toast({
+        title: "Print failed",
+        description: e instanceof Error ? e.message : "Could not open invoice",
+        variant: "destructive",
+      });
+    } finally {
+      setPrinting(false);
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -252,39 +406,62 @@ function InvoiceDetailDialog({ invoice, open, onOpenChange }: { invoice: typeof 
             <div className="flex justify-between"><span className="text-muted-foreground">Date</span><span>{new Date(invoice.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span></div>
             <Separator className="my-1" />
             <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatFullINR(invoice.amount)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">GST @ 18%</span><span>{formatFullINR(invoice.gst)}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">GST</span><span>{formatFullINR(invoice.gst)}</span></div>
             <Separator className="my-1" />
             <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-primary dark:text-brand-teal">{formatFullINR(invoice.total)}</span></div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="flex-1" onClick={() => toast({ title: "PDF generated", description: `${invoice.no}.pdf downloaded` })}>
-              <FileDown className="w-3.5 h-3.5 mr-1" /> Download PDF
-            </Button>
-            {invoice.status !== "Paid" && (
-              <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90" onClick={() => toast({ title: "Payment reminder sent", description: `Reminder emailed to ${invoice.customer}` })}>
-                <CreditCard className="w-3.5 h-3.5 mr-1" /> Send Reminder
-              </Button>
-            )}
-          </div>
+          <Button variant="outline" size="sm" className="w-full" disabled={printing} onClick={downloadPdf}>
+            <FileDown className="w-3.5 h-3.5 mr-1" /> {printing ? "Opening…" : "Open Printable Invoice"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
   );
 }
 
-function GenerateInvoiceDialog() {
+function GenerateInvoiceDialog({ onRefresh }: { onRefresh: () => void }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [customer, setCustomer] = useState("");
-  const [amount, setAmount] = useState("");
-  function generate() {
-    if (!customer || !amount) {
-      toast({ title: "Missing fields", description: "Customer and amount are required", variant: "destructive" });
+  const [bookings, setBookings] = useState<Array<{ id: string; bookingRef: string; customerName: string; amount: number }>>([]);
+  const [bookingId, setBookingId] = useState("");
+  const [invoiceType, setInvoiceType] = useState("Tax Invoice");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    api.getBookings()
+      .then((res) => {
+        setBookings(
+          (res.bookings || []).map((b) => ({
+            id: b.id,
+            bookingRef: b.bookingRef,
+            customerName: b.customerName,
+            amount: b.amount,
+          }))
+        );
+      })
+      .catch(() => setBookings([]));
+  }, [open]);
+
+  async function generate() {
+    if (!bookingId) {
+      toast({ title: "Select a booking", description: "Choose a booking to invoice", variant: "destructive" });
       return;
     }
-    toast({ title: "Invoice generated", description: `INV-2025-009 created for ${customer}` });
-    setOpen(false); setCustomer(""); setAmount("");
+    setSaving(true);
+    try {
+      await api.createBookingInvoice(bookingId, { invoiceType });
+      toast({ title: "Invoice generated", description: "Booking invoice created from live ledger" });
+      setOpen(false);
+      setBookingId("");
+      onRefresh();
+    } catch (e) {
+      toast({ title: "Failed", description: e instanceof Error ? e.message : "Could not create invoice", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -295,67 +472,82 @@ function GenerateInvoiceDialog() {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Generate Invoice</DialogTitle>
-          <DialogDescription>Create a new GST invoice for a customer.</DialogDescription>
+          <DialogDescription>Create a GST invoice from an existing booking.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div>
-            <Label>Customer</Label>
-            <Select value={customer} onValueChange={setCustomer}>
-              <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
+            <Label>Booking</Label>
+            <Select value={bookingId} onValueChange={setBookingId}>
+              <SelectTrigger><SelectValue placeholder="Select booking" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none" disabled>No invoice customers yet — use Quotations</SelectItem>
+                {bookings.length === 0 ? (
+                  <SelectItem value="__none" disabled>No bookings available</SelectItem>
+                ) : bookings.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.bookingRef} · {b.customerName} · {formatINR(b.amount)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           <div>
-            <Label>Taxable Amount (₹)</Label>
-            <div className="relative">
-              <IndianRupee className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input type="number" placeholder="0" value={amount} onChange={(e) => setAmount(e.target.value)} className="pl-8" />
-            </div>
+            <Label>Invoice Type</Label>
+            <Select value={invoiceType} onValueChange={setInvoiceType}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {["Tax Invoice", "Proforma", "Credit Note"].map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          {amount && (
-            <div className="rounded-lg bg-muted/40 p-3 text-xs space-y-1">
-              <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatFullINR(Number(amount))}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">GST @ 18%</span><span>{formatFullINR(Math.round(Number(amount) * 0.18))}</span></div>
-              <Separator className="my-1" />
-              <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-primary dark:text-brand-teal">{formatFullINR(Math.round(Number(amount) * 1.18))}</span></div>
-            </div>
-          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={generate} className="bg-primary hover:bg-primary/90">Generate</Button>
+          <Button onClick={generate} disabled={saving} className="bg-primary hover:bg-primary/90">
+            {saving ? "Generating…" : "Generate"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function InvoicesTab({ data }: { data: MappedFinance | null }) {
+function InvoicesTab({ data, onRefresh }: { data: MappedFinance | null; onRefresh: () => void }) {
   const { toast } = useToast();
-  const list = data
-    ? data.invoices.map((inv, idx) => ({
-        id: `inv-${idx}`,
-        no: inv.ref,
-        customer: inv.customer,
-        amount: inv.amount,
-        gst: inv.gst,
-        total: inv.total,
-        status: "Paid" as const,
-        date: inv.date,
-      }))
-    : INVOICES;
+  const list: FinanceInvoiceRow[] = (data?.invoices || []).map((inv, idx) => ({
+    id: inv.id || `inv-${idx}`,
+    no: inv.ref,
+    customer: inv.customer,
+    amount: inv.amount,
+    gst: inv.gst,
+    total: inv.total,
+    status: inv.status || "Pending",
+    date: inv.date,
+  }));
 
-  const [selected, setSelected] = useState<typeof list[number] | null>(null);
+  const [selected, setSelected] = useState<FinanceInvoiceRow | null>(null);
   const [open, setOpen] = useState(false);
 
   const total = list.reduce((s, i) => s + i.total, 0);
   const paid = list.filter((i) => i.status === "Paid").reduce((s, i) => s + i.total, 0);
   const pending = list.filter((i) => i.status === "Pending").reduce((s, i) => s + i.total, 0);
-  const overdue = list.filter((i) => i.status === "Overdue").reduce((s, i) => s + i.total, 0);
+  const overdue = list.filter((i) => i.status === "Overdue" || i.status === "Cancelled").reduce((s, i) => s + i.total, 0);
 
-  function openInv(inv: typeof list[number]) { setSelected(inv); setOpen(true); }
+  function openInv(inv: FinanceInvoiceRow) { setSelected(inv); setOpen(true); }
+
+  async function printInv(inv: FinanceInvoiceRow, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      await openInvoicePrint(inv.id);
+    } catch (err) {
+      toast({
+        title: "Print failed",
+        description: err instanceof Error ? err.message : "Could not open invoice",
+        variant: "destructive",
+      });
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -364,14 +556,14 @@ function InvoicesTab({ data }: { data: MappedFinance | null }) {
           <MetricCard icon={FileText} label="Total Invoiced" value={formatINR(total)} color="bg-primary/10 text-primary dark:bg-primary/15 dark:text-brand-teal" index={0} />
           <MetricCard icon={CheckCircle2} label="Paid" value={formatINR(paid)} color="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400" index={1} />
           <MetricCard icon={Clock} label="Pending" value={formatINR(pending)} color="bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400" index={2} />
-          <MetricCard icon={AlertCircle} label="Overdue" value={formatINR(overdue)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
+          <MetricCard icon={AlertCircle} label="Other" value={formatINR(overdue)} color="bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400" index={3} />
         </div>
       </div>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0">
-          <SectionHeader title="Invoices" description="All generated invoices with GST and payment status" />
-          <GenerateInvoiceDialog />
+          <SectionHeader title="Invoices" description="Live booking invoices with GST and payment status" />
+          <GenerateInvoiceDialog onRefresh={onRefresh} />
         </CardHeader>
         <CardContent className="p-0">
           <div className="rounded-lg border max-h-[60vh] overflow-y-auto scroll-thin mx-4 mb-4">
@@ -389,7 +581,13 @@ function InvoicesTab({ data }: { data: MappedFinance | null }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {list.map((inv) => (
+                {list.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-8">
+                      No invoices yet — generate one from a booking.
+                    </TableCell>
+                  </TableRow>
+                ) : list.map((inv) => (
                   <TableRow key={inv.id} className="hover:bg-muted/40 cursor-pointer" onClick={() => openInv(inv)}>
                     <TableCell className="font-mono text-xs font-medium">{inv.no}</TableCell>
                     <TableCell className="text-xs">{inv.customer}</TableCell>
@@ -399,9 +597,14 @@ function InvoicesTab({ data }: { data: MappedFinance | null }) {
                     <TableCell><StatusBadge status={inv.status} /></TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(inv.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={(e) => { e.stopPropagation(); openInv(inv); }}>
-                        <Eye className="w-3.5 h-3.5" />
-                      </Button>
+                      <div className="flex justify-end gap-0.5">
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={(e) => printInv(inv, e)}>
+                          <FileDown className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={(e) => { e.stopPropagation(); openInv(inv); }}>
+                          <Eye className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -416,22 +619,41 @@ function InvoicesTab({ data }: { data: MappedFinance | null }) {
   );
 }
 
-function AddExpenseDialog() {
+function AddExpenseDialog({ onRefresh }: { onRefresh: () => void }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [paidBy, setPaidBy] = useState("Vikram Iyer");
-  function submit() {
-    if (!category || !amount || !description) {
-      toast({ title: "Missing fields", description: "Category, description and amount required", variant: "destructive" });
+  const [paidBy, setPaidBy] = useState("");
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (!category || !amount || !description || !date) {
+      toast({ title: "Missing fields", description: "Category, description, amount and date required", variant: "destructive" });
       return;
     }
-    toast({ title: "Expense added", description: `${category}: ${formatFullINR(Number(amount))}` });
-    setOpen(false);
-    setCategory(""); setDescription(""); setAmount(""); setPaidBy("Vikram Iyer");
+    setSaving(true);
+    try {
+      await api.createExpense({
+        category,
+        description,
+        amount: Number(amount),
+        date,
+        paidBy: paidBy || undefined,
+      });
+      toast({ title: "Expense added", description: `${category}: ${formatFullINR(Number(amount))}` });
+      setOpen(false);
+      setCategory(""); setDescription(""); setAmount(""); setPaidBy("");
+      onRefresh();
+    } catch (e) {
+      toast({ title: "Failed", description: e instanceof Error ? e.message : "Could not add expense", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -451,7 +673,7 @@ function AddExpenseDialog() {
               <Select value={category} onValueChange={setCategory}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
-                  {["Office Rent", "Salaries", "API Costs", "Marketing", "Software", "Travel", "Utilities"].map((c) => (
+                  {["Office Rent", "Salaries", "API Costs", "Marketing", "Software", "Travel", "Utilities", "Other"].map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
@@ -466,37 +688,44 @@ function AddExpenseDialog() {
             <Label>Description</Label>
             <Input placeholder="Expense description" value={description} onChange={(e) => setDescription(e.target.value)} />
           </div>
-          <div>
-            <Label>Paid By</Label>
-            <Select value={paidBy} onValueChange={setPaidBy}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {["Vikram Iyer", "Priya Sharma", "Rahul Khanna", "System"].map((p) => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Date</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div>
+              <Label>Paid By</Label>
+              <Input placeholder="Optional" value={paidBy} onChange={(e) => setPaidBy(e.target.value)} />
+            </div>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={submit} className="bg-primary hover:bg-primary/90">Add Expense</Button>
+          <Button onClick={submit} disabled={saving} className="bg-primary hover:bg-primary/90">
+            {saving ? "Saving…" : "Add Expense"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-function ExpensesTab() {
-  const total = EXPENSES.reduce((s, e) => s + e.amount, 0);
+function ExpensesTab({ data, onRefresh }: { data: MappedFinance | null; onRefresh: () => void }) {
+  const expenses = data?.expenses ?? [];
+  const total = expenses.reduce((s, e) => s + e.amount, 0);
+  const byCategory = (data?.expenseByCategory || []).map((c) => ({
+    name: c.name,
+    value: c.value,
+    color: EXPENSE_CATEGORY_COLORS[c.name] || EXPENSE_CATEGORY_COLORS.Other,
+  }));
 
   return (
     <div className="space-y-4">
       <BrandHero
-        eyebrow="This Month"
+        eyebrow="Expenses"
         title={formatFullINR(total)}
-        subtitle={`${EXPENSES.length} expense entries recorded`}
-        actions={<AddExpenseDialog />}
+        subtitle={`${expenses.length} expense entries on the live ledger`}
+        actions={<AddExpenseDialog onRefresh={onRefresh} />}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -505,27 +734,33 @@ function ExpensesTab() {
             <SectionHeader title="By Category" description="Expense distribution" />
           </CardHeader>
           <CardContent>
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={EXPENSE_CATEGORIES} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={75} paddingAngle={2}>
-                    {EXPENSE_CATEGORIES.map((c, i) => <Cell key={i} fill={c.color} />)}
-                  </Pie>
-                  <Tooltip
-                    contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
-                    formatter={(v: number, n) => [formatFullINR(v), n]}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="grid grid-cols-2 gap-1 mt-2">
-              {EXPENSE_CATEGORIES.map((c) => (
-                <div key={c.name} className="flex items-center gap-1.5 text-[10px]">
-                  <span className="w-2 h-2 rounded-sm" style={{ background: c.color }} />
-                  <span className="truncate">{c.name}</span>
+            {byCategory.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">No category data yet</p>
+            ) : (
+              <>
+                <div className="h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={byCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={75} paddingAngle={2}>
+                        {byCategory.map((c, i) => <Cell key={i} fill={c.color} />)}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", fontSize: 12 }}
+                        formatter={(v: number, n) => [formatFullINR(v), n]}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+                <div className="grid grid-cols-2 gap-1 mt-2">
+                  {byCategory.map((c) => (
+                    <div key={c.name} className="flex items-center gap-1.5 text-[10px]">
+                      <span className="w-2 h-2 rounded-sm" style={{ background: c.color }} />
+                      <span className="truncate">{c.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -546,7 +781,13 @@ function ExpensesTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {EXPENSES.map((e) => {
+                  {expenses.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">
+                        No expenses yet — add one to populate the ledger.
+                      </TableCell>
+                    </TableRow>
+                  ) : expenses.map((e) => {
                     const Icon = CATEGORY_ICON[e.category] || Receipt;
                     return (
                       <TableRow key={e.id} className="hover:bg-muted/40">
@@ -559,7 +800,7 @@ function ExpensesTab() {
                         <TableCell className="text-xs">{e.description}</TableCell>
                         <TableCell className="text-right text-xs font-semibold text-rose-600">{formatFullINR(e.amount)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{new Date(e.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</TableCell>
-                        <TableCell className="text-xs">{e.paidBy}</TableCell>
+                        <TableCell className="text-xs">{e.paidBy || "—"}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -576,19 +817,21 @@ function ExpensesTab() {
 export function FinanceView() {
   const [data, setData] = useState<MappedFinance | null>(null);
 
-  useEffect(() => {
+  const refresh = () => {
     api.getFinance()
-      .then((res) => {
-        setData(mapApiFinance(res));
-      })
+      .then((res) => setData(mapApiFinance(res)))
       .catch(() => undefined);
+  };
+
+  useEffect(() => {
+    refresh();
   }, []);
 
   return (
     <PageShell>
       <PageHeader
         title="Finance"
-        subtitle="Revenue and GST totals from live bookings. Invoice/expense/TDS ledgers are empty until those modules are wired."
+        subtitle="Live ledgers for revenue, GST, TDS, invoices and expenses from your agency data."
       />
       <Tabs defaultValue="overview">
         <TabsList className="bg-muted/60 flex-wrap h-auto">
@@ -600,9 +843,9 @@ export function FinanceView() {
         </TabsList>
         <TabsContent value="overview" className="mt-4"><OverviewTab data={data} /></TabsContent>
         <TabsContent value="gst" className="mt-4"><GstTab data={data} /></TabsContent>
-        <TabsContent value="tds" className="mt-4"><TdsTab /></TabsContent>
-        <TabsContent value="invoices" className="mt-4"><InvoicesTab data={data} /></TabsContent>
-        <TabsContent value="expenses" className="mt-4"><ExpensesTab /></TabsContent>
+        <TabsContent value="tds" className="mt-4"><TdsTab data={data} onRefresh={refresh} /></TabsContent>
+        <TabsContent value="invoices" className="mt-4"><InvoicesTab data={data} onRefresh={refresh} /></TabsContent>
+        <TabsContent value="expenses" className="mt-4"><ExpensesTab data={data} onRefresh={refresh} /></TabsContent>
       </Tabs>
     </PageShell>
   );

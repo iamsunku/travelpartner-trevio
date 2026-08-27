@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   FileText, Send, FileDown, Plus, Trash2, CheckCircle2, Clock,
   Mail, MessageCircle, Eye, TrendingUp, Wallet, Percent, Ticket, Loader2, Copy, Archive,
+  ChevronDown, Sparkles, Globe, ListOrdered,
 } from "lucide-react";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore } from "@/store/app-store";
@@ -26,8 +27,12 @@ import {
 } from "@/components/ui/table";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-  DialogFooter, DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
@@ -42,6 +47,8 @@ import {
   shareQuotationViaEmail,
   shareQuotationViaWhatsApp,
 } from "@/lib/quotation-actions";
+import { resolveQuotationCosting } from "@/lib/quote-costing";
+import { QuotePriceBreakdown } from "@/components/shared/quote-price-breakdown";
 
 const SERVICE_COLORS: Record<string, string> = {
   Flight: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400",
@@ -57,10 +64,11 @@ interface QuoteItem { id: string; description: string; qty: number; price: numbe
 function useProceedToBooking() {
   const { toast } = useToast();
   const upsertBooking = useDemoDataStore((s) => s.upsertBooking);
+  const upsertQuotation = useDemoDataStore((s) => s.upsertQuotation);
   const hydrateFromApi = useDemoDataStore((s) => s.hydrateFromApi);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  async function proceed(quote: Quotation) {
+  async function proceed(quote: Quotation, dates?: { travelStartDate?: string; travelEndDate?: string }) {
     if (quote.status !== "Accepted") {
       toast({
         title: "Quote must be Accepted",
@@ -69,11 +77,25 @@ function useProceedToBooking() {
       });
       return;
     }
+    const travelStartDate = dates?.travelStartDate || quote.travelStartDate || quote.travelDates || "";
+    const travelEndDate = dates?.travelEndDate || quote.travelEndDate || "";
+    if (!travelStartDate) {
+      toast({
+        title: "Travel dates required",
+        description: "Set check-in / travel start date before converting to a booking.",
+        variant: "destructive",
+      });
+      return;
+    }
     setBusyId(quote.id);
     try {
-      const res = await api.proceedToBooking(quote.id);
+      const res = await api.proceedToBooking(quote.id, {
+        travelStartDate,
+        travelEndDate: travelEndDate || undefined,
+      });
       const booking = (await import("@/lib/api-mappers")).mapApiBooking(res.booking);
       upsertBooking(booking);
+      upsertQuotation({ ...quote, status: "Converted to Booking", convertedBookingId: booking.id });
       await hydrateFromApi().catch(() => undefined);
       toast({
         title: "Booking created",
@@ -150,13 +172,13 @@ function useQuoteActions() {
   return { pdf, email, whatsapp, markSent };
 }
 
-function CreateQuotationDialog() {
+function CreateQuotationDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { toast } = useToast();
   const { pdf, email, whatsapp } = useQuoteActions();
   const customers = useDemoDataStore((s) => s.customers);
   const addQuotation = useDemoDataStore((s) => s.addQuotation);
   const user = useAuthStore((s) => s.user);
-  const [open, setOpen] = useState(false);
+  const setOpen = onOpenChange;
   const [customer, setCustomer] = useState("");
   const [service, setService] = useState("Flight");
   const [items, setItems] = useState<QuoteItem[]>([
@@ -265,16 +287,11 @@ function CreateQuotationDialog() {
   return (
     <>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>
-          <Button className="bg-primary hover:bg-primary/90">
-            <Plus className="w-4 h-4 mr-1" /> Create Quotation
-          </Button>
-        </DialogTrigger>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Create Quotation</DialogTitle>
+            <DialogTitle>Quick line-item quote</DialogTitle>
             <DialogDescription>
-              Build a client quote from their requirements, then download PDF or share via email / WhatsApp.
+              Simple quote with customer, service type, and priced line items — then PDF, email, or WhatsApp.
             </DialogDescription>
           </DialogHeader>
 
@@ -468,12 +485,16 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
   const upsertQuotation = useDemoDataStore((s) => s.upsertQuotation);
   const [full, setFull] = useState<Quotation | null>(null);
   const [extendDate, setExtendDate] = useState("");
+  const [convertStart, setConvertStart] = useState("");
+  const [convertEnd, setConvertEnd] = useState("");
   const [versions, setVersions] = useState<NonNullable<Quotation["versions"]>>([]);
 
   useEffect(() => {
     if (!open || !quote) return;
     setFull(quote);
     setExtendDate(quote.validTill?.slice(0, 10) || "");
+    setConvertStart((quote.travelStartDate || quote.travelDates || "").slice(0, 10));
+    setConvertEnd((quote.travelEndDate || "").slice(0, 10));
     api.getQuotationFull(quote.id)
       .then((res) => {
         const mapped = mapApiQuotation(res.quotation);
@@ -481,6 +502,8 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
         upsertQuotation(mapped);
         setVersions(mapped.versions || []);
         setExtendDate(mapped.validTill?.slice(0, 10) || "");
+        setConvertStart((mapped.travelStartDate || mapped.travelDates || "").slice(0, 10));
+        setConvertEnd((mapped.travelEndDate || "").slice(0, 10));
       })
       .catch(() => undefined);
     if (!isAgent) {
@@ -494,6 +517,10 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
   const display = full || quote;
   const items = getQuotationLineItems(display);
   const step = approvalIndex(display);
+  const costing = resolveQuotationCosting({
+    ...display,
+    packages: display.packages as unknown as Array<Record<string, unknown>>,
+  });
 
   async function refresh() {
     const res = await api.getQuotationFull(display.id);
@@ -504,7 +531,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div>
@@ -574,7 +601,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             </Table>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-1 text-xs">
               <div className="flex justify-between"><span className="text-muted-foreground">Valid Till</span><span>{new Date(display.validTill).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Created By</span><span>{display.createdBy}</span></div>
@@ -588,22 +615,21 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 </div>
               )}
             </div>
-            <div className="rounded-lg bg-muted/40 p-3 text-xs space-y-1">
-              <div className="flex justify-between"><span className="text-muted-foreground">Package</span><span>{formatFullINR(display.amount)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">GST</span><span>{formatFullINR(display.gst)}</span></div>
-              {display.discountAmount ? <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>{formatFullINR(display.discountAmount)}</span></div> : null}
-              <Separator className="my-1" />
-              <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-teal-600">{formatFullINR(display.total)}</span></div>
-              {display.perPersonCost != null && <div className="flex justify-between text-muted-foreground"><span>Per person</span><span>{formatFullINR(display.perPersonCost)}</span></div>}
-              {!isAgent && display.totalNetCost != null && (
-                <>
-                  <Separator className="my-1" />
-                  <div className="flex justify-between text-amber-800 dark:text-amber-300"><span>Net cost</span><span>{formatFullINR(display.totalNetCost)}</span></div>
-                  <div className="flex justify-between text-amber-800 dark:text-amber-300"><span>Profit</span><span>{formatFullINR(display.grossProfit || 0)}</span></div>
-                  <div className="flex justify-between text-amber-800 dark:text-amber-300"><span>Margin</span><span>{display.profitMargin ?? 0}%</span></div>
-                </>
-              )}
-            </div>
+            <QuotePriceBreakdown
+              costing={{
+                ...costing,
+                checkIn: convertStart || costing.checkIn,
+                checkOut: convertEnd || costing.checkOut,
+              }}
+              showInternal={!isAgent}
+              editable={!isAgent && display.status === "Accepted"}
+              onChangeDates={(start, end) => {
+                setConvertStart(start);
+                setConvertEnd(end);
+              }}
+              onChangeTravellers={undefined}
+              onChangeRooms={undefined}
+            />
           </div>
 
           {!isAgent && (
@@ -693,7 +719,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 size="sm"
                 className="bg-teal-600 hover:bg-teal-700 text-white"
                 disabled={busyId === display.id || display.status === "Converted to Booking"}
-                onClick={() => proceed(display)}
+                onClick={() => proceed(display, { travelStartDate: convertStart, travelEndDate: convertEnd })}
               >
                 {busyId === display.id ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Ticket className="w-3.5 h-3.5 mr-1" />}
                 {display.status === "Converted to Booking" ? "Booking Created" : "Convert to Booking"}
@@ -743,6 +769,9 @@ export function QuotationsView() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [editWizardId, setEditWizardId] = useState<string | null>(null);
+  const [productQuoteOpen, setProductQuoteOpen] = useState(false);
+  const [intlQuoteOpen, setIntlQuoteOpen] = useState(false);
+  const [quickQuoteOpen, setQuickQuoteOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [sort, setSort] = useState("latest");
@@ -820,16 +849,75 @@ export function QuotationsView() {
         title="Quotation Management"
         subtitle="Enquiry → draft → approval → send → revise → accept → convert to booking"
         action={
-          <div className="flex flex-wrap gap-2">
-            {!isAgent && (
-              <Button className="bg-teal-600 hover:bg-teal-700" onClick={() => { setEditWizardId(null); setWizardOpen(true); }}>
-                <Plus className="w-4 h-4 mr-1" /> Create New Quote
+          !isAgent ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                className="bg-teal-600 hover:bg-teal-700"
+                onClick={() => { setEditWizardId(null); setWizardOpen(true); }}
+              >
+                <Plus className="w-4 h-4 mr-1" /> Create quotation
               </Button>
-            )}
-            {!isAgent && <ProductQuoteBuilderDialog />}
-            {!isAgent && <InternationalQuotationDialog />}
-            {!isAgent && <CreateQuotationDialog />}
-          </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline">
+                    Other quote types
+                    <ChevronDown className="w-4 h-4 ml-1 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-72">
+                  <DropdownMenuLabel>Choose how to build the quote</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
+                    onClick={() => { setEditWizardId(null); setWizardOpen(true); }}
+                  >
+                    <span className="font-medium flex items-center gap-1.5">
+                      <Plus className="w-3.5 h-3.5" /> Full itinerary (recommended)
+                    </span>
+                    <span className="text-xs text-muted-foreground pl-5">
+                      Packages, costing, and approval workflow
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
+                    onClick={() => setProductQuoteOpen(true)}
+                  >
+                    <span className="font-medium flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" /> From product catalog
+                    </span>
+                    <span className="text-xs text-muted-foreground pl-5">
+                      Hotels & activities already approved in catalog
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
+                    onClick={() => setIntlQuoteOpen(true)}
+                  >
+                    <span className="font-medium flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5" /> International trip
+                    </span>
+                    <span className="text-xs text-muted-foreground pl-5">
+                      Overseas package with destination & budget
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
+                    onClick={() => setQuickQuoteOpen(true)}
+                  >
+                    <span className="font-medium flex items-center gap-1.5">
+                      <ListOrdered className="w-3.5 h-3.5" /> Quick line items
+                    </span>
+                    <span className="text-xs text-muted-foreground pl-5">
+                      Simple priced rows (flight / hotel / other)
+                    </span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <ProductQuoteBuilderDialog open={productQuoteOpen} onOpenChange={setProductQuoteOpen} />
+              <InternationalQuotationDialog open={intlQuoteOpen} onOpenChange={setIntlQuoteOpen} />
+              <CreateQuotationDialog open={quickQuoteOpen} onOpenChange={setQuickQuoteOpen} />
+            </div>
+          ) : undefined
         }
       />
 

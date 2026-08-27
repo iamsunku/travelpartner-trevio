@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
+  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -46,10 +46,15 @@ function hotelRoomOptions(hotel: ProductRecord) {
   });
 }
 
-export function ProductQuoteBuilderDialog() {
+type ProductQuoteBuilderDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function ProductQuoteBuilderDialog({ open, onOpenChange }: ProductQuoteBuilderDialogProps) {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
-  const [open, setOpen] = useState(false);
+  const setOpen = onOpenChange;
   const [saving, setSaving] = useState(false);
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [hotels, setHotels] = useState<ProductRecord[]>([]);
@@ -324,15 +329,12 @@ export function ProductQuoteBuilderDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="gap-1"><Sparkles className="w-4 h-4" />Product Quote</Button>
-      </DialogTrigger>
       <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Product Quote Builder</DialogTitle>
+          <DialogTitle>Quote from product catalog</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground -mt-2">
-          System auto-builds the quote from approved hotel & activity products (with images). Product team can change selections, images, and prices before sending.
+          Build a quote from approved hotels & activities (with images). Use this when selling catalog products, not a full custom itinerary.
         </p>
 
         <div className="grid lg:grid-cols-2 gap-4">

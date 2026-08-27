@@ -769,6 +769,8 @@ model Settings {
   notifications Boolean @default(true)
   rolePermissions Json?
   apiKeys     Json?
+  security    Json?    // password policy, 2FA flags, session timeout
+  commissionRules Json? // editable commission rule cards
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -1411,6 +1413,8 @@ model AgencyBranding {
   fontFamily      String   @default("Inter")
   logo            String?
   watermark       String?
+  signatureUrl    String?
+  authorizedSignatory String?
   footerText      String?
   backgroundImage String?
   headerHtml      String?  @db.Text
@@ -1727,5 +1731,42 @@ model ChangeRequest {
 
   @@index([bookingId])
   @@index([agencyId])
+  @@index([status])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  agencyId    String
+  category    String
+  description String
+  amount      Int
+  date        String
+  paidBy      String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([agencyId])
+  @@index([date])
+  @@index([category])
+}
+
+model TdsEntry {
+  id          String   @id @default(cuid())
+  agencyId    String
+  section     String
+  nature      String
+  amount      Int
+  rate        Float
+  deducted    Int
+  status      String   @default("Pending")
+  date        String
+  partyName   String?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([agencyId])
+  @@index([date])
   @@index([status])
 }

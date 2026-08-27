@@ -1,12 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Globe, Send, FileDown } from "lucide-react";
+import { Send, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/app-store";
@@ -50,10 +50,15 @@ const EMPTY_FORM = {
   salesExecutiveEmail: "",
 };
 
-export function InternationalQuotationDialog() {
+type InternationalQuotationDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function InternationalQuotationDialog({ open, onOpenChange }: InternationalQuotationDialogProps) {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
-  const [open, setOpen] = useState(false);
+  const setOpen = onOpenChange;
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
@@ -185,13 +190,13 @@ export function InternationalQuotationDialog() {
         }));
       }
     }}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="gap-1"><Globe className="w-4 h-4" />International Quote</Button>
-      </DialogTrigger>
       <DialogContent className="sm:max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>International Trip Quotation</DialogTitle>
+          <DialogTitle>International trip quotation</DialogTitle>
         </DialogHeader>
+        <p className="text-sm text-muted-foreground -mt-2">
+          For overseas packages with destinations, hotels, and budget — not for domestic catalog products.
+        </p>
         <div className="space-y-5">
           <div>
             <h4 className="text-sm font-semibold mb-2">Customer Details</h4>

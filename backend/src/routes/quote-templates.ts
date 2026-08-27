@@ -356,16 +356,18 @@ export function mountQuoteTemplateRoutes(app: Express, agencyScope: ScopeFn) {
     }
   });
 
-  // Agency branding
+  // Agency branding — superadmin without JWT agencyId falls back to primary agency
   app.get("/api/settings/branding", requireAuth, requireCrudPermission("quote-templates", "view"), async (req: AuthRequest, res: Response) => {
     try {
-      const agencyId = req.auth?.agencyId;
-      if (!agencyId) { res.status(400).json({ error: "No agency context" }); return; }
+      const { resolveDefaultAgencyId } = await import("../lib/api-key-config.js");
+      const agencyId = req.auth?.agencyId || (await resolveDefaultAgencyId());
+      if (!agencyId) { res.status(400).json({ error: "No agency context — create an agency first" }); return; }
       let branding = await db.agencyBranding.findUnique({ where: { agencyId } });
       if (!branding) {
         branding = await db.agencyBranding.create({ data: { agencyId } });
       }
-      res.json({ branding });
+      const agency = await db.agency.findUnique({ where: { id: agencyId }, select: { id: true, name: true } });
+      res.json({ branding, agencyId, agencyName: agency?.name || "" });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -374,8 +376,9 @@ export function mountQuoteTemplateRoutes(app: Express, agencyScope: ScopeFn) {
 
   app.patch("/api/settings/branding", requireAuth, requireCrudPermission("quote-templates", "edit"), validate(agencyBrandingSchema), async (req: AuthRequest, res: Response) => {
     try {
-      const agencyId = req.auth?.agencyId;
-      if (!agencyId) { res.status(400).json({ error: "No agency context" }); return; }
+      const { resolveDefaultAgencyId } = await import("../lib/api-key-config.js");
+      const agencyId = req.auth?.agencyId || (await resolveDefaultAgencyId());
+      if (!agencyId) { res.status(400).json({ error: "No agency context — create an agency first" }); return; }
       const body = req.body as Record<string, unknown>;
       const branding = await db.agencyBranding.upsert({
         where: { agencyId },
@@ -390,6 +393,8 @@ export function mountQuoteTemplateRoutes(app: Express, agencyScope: ScopeFn) {
           backgroundImage: (body.backgroundImage as string) || null,
           headerHtml: (body.headerHtml as string) || null,
           showPageNumbers: body.showPageNumbers !== false,
+          signatureUrl: (body.signatureUrl as string) || null,
+          authorizedSignatory: (body.authorizedSignatory as string) || null,
         },
         update: {
           primaryColor: body.primaryColor as string | undefined,
@@ -401,6 +406,8 @@ export function mountQuoteTemplateRoutes(app: Express, agencyScope: ScopeFn) {
           backgroundImage: body.backgroundImage as string | null | undefined,
           headerHtml: body.headerHtml as string | null | undefined,
           showPageNumbers: body.showPageNumbers as boolean | undefined,
+          signatureUrl: body.signatureUrl as string | null | undefined,
+          authorizedSignatory: body.authorizedSignatory as string | null | undefined,
         },
       });
       res.json({ branding });
