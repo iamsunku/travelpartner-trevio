@@ -41,6 +41,7 @@ import { cn } from "@/lib/utils";
 import { InternationalQuotationDialog } from "@/components/views/international-quotation";
 import { ProductQuoteBuilderDialog } from "@/components/shared/product-quote-builder";
 import { QuotationWizardDialog } from "@/components/views/quotation-wizard";
+import { AgentQuotationDialog } from "@/components/views/agent-quotation-dialog";
 import {
   downloadQuotationPdf,
   getQuotationLineItems,
@@ -772,6 +773,7 @@ export function QuotationsView() {
   const [productQuoteOpen, setProductQuoteOpen] = useState(false);
   const [intlQuoteOpen, setIntlQuoteOpen] = useState(false);
   const [quickQuoteOpen, setQuickQuoteOpen] = useState(false);
+  const [agentQuoteOpen, setAgentQuoteOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [sort, setSort] = useState("latest");
@@ -847,9 +849,13 @@ export function QuotationsView() {
     <PageShell>
       <PageHeader
         title="Quotation Management"
-        subtitle="Enquiry → draft → approval → send → revise → accept → convert to booking"
+        subtitle={isAgent ? "Browse packages, add markup, and send branded PDFs to customers instantly" : "Enquiry → draft → approval → send → revise → accept → convert to booking"}
         action={
-          !isAgent ? (
+          isAgent ? (
+            <Button className="bg-teal-600 hover:bg-teal-700" onClick={() => setAgentQuoteOpen(true)}>
+              <Plus className="w-4 h-4 mr-1" /> Create quotation
+            </Button>
+          ) : !isAgent ? (
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 className="bg-teal-600 hover:bg-teal-700"
@@ -1042,7 +1048,7 @@ export function QuotationsView() {
                   </TableRow>
                 ))}
                 {filtered.length === 0 && (
-                  <TableRow><TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-8">No quotations found. Create a quote with the wizard to start.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-8">{isAgent ? "No quotations yet. Create one from a published package." : "No quotations found. Create a quote with the wizard to start."}</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -1056,6 +1062,11 @@ export function QuotationsView() {
         onOpenChange={setWizardOpen}
         quotationId={editWizardId}
         onSaved={(q) => upsertQuotation(q)}
+      />
+      <AgentQuotationDialog
+        open={agentQuoteOpen}
+        onOpenChange={setAgentQuoteOpen}
+        onCreated={(q) => upsertQuotation(q)}
       />
     </PageShell>
   );

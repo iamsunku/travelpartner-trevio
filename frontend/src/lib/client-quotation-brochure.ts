@@ -76,6 +76,13 @@ const COMPANY = {
   brand: "TREVIO",
 };
 
+export type ClientBrochureOptions = {
+  showPrices?: boolean;
+  showLogo?: boolean;
+  /** When true, emphasize agency branding over platform identity on the cover/footer. */
+  agentBranding?: boolean;
+};
+
 function openPrint(html: string, title: string) {
   const win = window.open("", "_blank");
   if (!win) return false;
@@ -96,7 +103,13 @@ async function loadBranding(): Promise<AgencyBrandingRecord | null> {
 }
 
 /** Customer-facing brochure. Never include cost, supplier, profit, or internal notes. */
-export async function downloadClientQuotationBrochure(quote: Quotation): Promise<boolean> {
+export async function downloadClientQuotationBrochure(
+  quote: Quotation,
+  options: ClientBrochureOptions = {},
+): Promise<boolean> {
+  const showPrices = options.showPrices !== false;
+  const showLogo = options.showLogo !== false;
+  const agentBranding = options.agentBranding === true;
   const pkg = selectedPackage(quote);
   const branding = await loadBranding();
   const currency = quote.currency || "INR";
@@ -107,8 +120,11 @@ export async function downloadClientQuotationBrochure(quote: Quotation): Promise
   const itinerary = asArr(pkg?.itinerary);
   const inclusions = (pkg?.inclusions?.length ? pkg.inclusions : quote.packageIncludes) || [];
   const exclusions = (pkg?.exclusions?.length ? pkg.exclusions : quote.packageExcludes) || [];
-  const logo = isImgUrl(branding?.logo) ? str(branding?.logo) : `${window.location.origin}/trevio-logo.png`;
-  const brandName = COMPANY.brand;
+  const logo = showLogo && isImgUrl(branding?.logo) ? str(branding?.logo) : showLogo ? `${window.location.origin}/trevio-logo.png` : "";
+  const agencyBrand = str(branding?.footerText, "").split("•")[0].trim() || "Your Travel Partner";
+  const brandName = agentBranding ? agencyBrand : COMPANY.brand;
+  const coverLegal = agentBranding ? agencyBrand : COMPANY.legal;
+  const coverPhone = COMPANY.phone;
   const code = (quote.quoteNo || "TG").replace(/[^A-Za-z0-9]/g, "_").slice(0, 18);
   const pax = Math.max(1, Number(quote.adults || 0) + Number(quote.children || 0));
   const flightSell = flights.reduce((s, f) => s + selling(f), 0);
@@ -129,7 +145,15 @@ export async function downloadClientQuotationBrochure(quote: Quotation): Promise
   const watermark = isImgUrl(branding?.watermark)
     ? `<img class="watermark" src="${escapeHtml(str(branding?.watermark))}" alt="" />`
     : "";
-  const footBrand = escapeHtml(str(branding?.footerText, "Trevio Global").split("•")[0].trim() || "Trevio Global");
+  const footBrand = escapeHtml(agentBranding ? agencyBrand : str(branding?.footerText, "Trevio Global").split("•")[0].trim() || "Trevio Global");
+
+  const priceRows = showPrices
+    ? `
+      <tr><th>Land cost</th><td>${escapeHtml(money(landSell, currency))}${pax > 1 ? ` for ${pax} travellers` : ""}</td></tr>
+      ${flightSell ? `<tr><th>Flight cost</th><td>${escapeHtml(money(flightSell, currency))} (tentative)</td></tr>` : ""}
+      ${quote.agentMarkup ? `<tr><th>Service fee</th><td>${escapeHtml(money(Number(quote.agentMarkup), currency))}</td></tr>` : ""}
+      <tr><th>Total</th><td><strong>${escapeHtml(money(Number(quote.total || 0), currency))} · ${escapeHtml(money(perPax, currency))} per pax</strong></td></tr>`
+    : `<tr><th>Package</th><td>Custom itinerary — contact your travel advisor for pricing.</td></tr>`;
 
   const highlightCards = activities
     .filter((a) => str(a.description) || str(a.activityName) || isImgUrl(a.imageUrl))
@@ -258,9 +282,9 @@ export async function downloadClientQuotationBrochure(quote: Quotation): Promise
 <body>
   <section class="page cover">
     <div>
-      <img src="${escapeHtml(logo)}" alt="${escapeHtml(brandName)}" style="height:48px;background:#fff;padding:6px 10px;border-radius:4px" />
-      <p class="legal" style="margin-top:16px">${escapeHtml(COMPANY.legal)}</p>
-      <p class="addr">${escapeHtml(COMPANY.address)}<br/>| ${escapeHtml(COMPANY.phone)} |</p>
+      ${logo ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(brandName)}" style="height:48px;background:#fff;padding:6px 10px;border-radius:4px" />` : ""}
+      <p class="legal" style="margin-top:16px">${escapeHtml(coverLegal)}</p>
+      <p class="addr">${agentBranding ? "" : `${escapeHtml(COMPANY.address)}<br/>`}| ${escapeHtml(coverPhone)} |</p>
     </div>
     <div>
       <p class="greet">Greetings from</p>
@@ -281,9 +305,7 @@ export async function downloadClientQuotationBrochure(quote: Quotation): Promise
       <tr><th>Dates</th><td>${escapeHtml(formatDates(quote))}</td></tr>
       <tr><th>Property (or similar)</th><td>${escapeHtml(hotelLine)}</td></tr>
       <tr><th>Room type</th><td>${escapeHtml(roomTypes)}</td></tr>
-      <tr><th>Land cost</th><td>${escapeHtml(money(landSell, currency))}${pax > 1 ? ` for ${pax} travellers` : ""}</td></tr>
-      ${flightSell ? `<tr><th>Flight cost</th><td>${escapeHtml(money(flightSell, currency))} (tentative)</td></tr>` : ""}
-      <tr><th>Total</th><td><strong>${escapeHtml(money(Number(quote.total || 0), currency))} · ${escapeHtml(money(perPax, currency))} per pax</strong></td></tr>
+      ${priceRows}
     </table>
     <div class="note">
       <p><strong>Note</strong></p>

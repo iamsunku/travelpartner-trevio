@@ -191,7 +191,11 @@ export function sanitizeQuotationForRole<T extends Record<string, unknown>>(quot
   delete clone.profitMargin;
   delete clone.discountType;
   delete clone.discountValue;
-  // keep discountAmount as customer-facing if needed — hide cost internals
+  // Agents see their markup and platform base price, not internal cost/profit
+  if (clone.agentMarkup == null) clone.agentMarkup = 0;
+  if (clone.baseSellingTotal == null && clone.total != null) {
+    clone.baseSellingTotal = Math.max(0, Number(clone.total) - Number(clone.agentMarkup || 0));
+  }
   if (Array.isArray(clone.packages)) {
     clone.packages = (clone.packages as Record<string, unknown>[]).map((p) => sanitizePackage(p));
   }

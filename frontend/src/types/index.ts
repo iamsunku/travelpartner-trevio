@@ -31,6 +31,7 @@ export interface User {
   branchId?: string;
   designation?: string;
   permissions?: Module[] | null;
+  productAccess?: { flights: boolean; hotels: boolean; packages: boolean };
 }
 
 export interface Agency {
@@ -224,10 +225,13 @@ export interface BookingServiceItem {
   status: string;
   confirmationNo?: string | null;
   supplierName?: string | null;
+  supplierRef?: string | null;
   voucherUrl?: string | null;
   ticketUrl?: string | null;
   costPrice: number;
+  quotedCostPrice?: number;
   sellingPrice: number;
+  driverDetails?: { driverName?: string; vehicleNumber?: string; driverPhone?: string } | null;
   notes?: string | null;
 }
 
@@ -258,6 +262,8 @@ export interface Booking {
   paymentMethod?: string;
   agent: string;
   agency: string;
+  agentAgencyName?: string;
+  agentAgencyLogo?: string | null;
   createdAt: string;
   quotationId?: string | null;
   quoteNo?: string | null;
@@ -287,8 +293,52 @@ export interface Booking {
   services?: BookingServiceItem[];
   changeRequests?: ChangeRequestItem[];
   addOns?: { id: string; addOnType: string; title: string; amount: number }[];
-  invoices?: { id: string; invoiceNo: string; invoiceType: string; total: number; status: string }[];
+  invoices?: { id: string; invoiceNo: string; invoiceType: string; total: number; status: string; amount?: number; gst?: number; taxableAmount?: number; cgst?: number; sgst?: number; igst?: number; gstRate?: number; gstNumber?: string | null; amountPaid?: number; balanceAmount?: number; lineItems?: { description: string; amount: number }[]; notes?: string | null; createdAt?: string }[];
   documents?: { id: string; docType: string; fileName: string; fileUrl: string }[];
+  costDeviationApprovals?: CostDeviationApproval[];
+  travelDetails?: TravelDetailsRecord | null;
+  itinerary?: Array<Record<string, unknown>>;
+}
+
+export interface TravelDetailsRecord {
+  flights?: {
+    airline?: string;
+    flightNumber?: string;
+    from?: string;
+    to?: string;
+    date?: string;
+    time?: string;
+    pnr?: string;
+    selfBooked?: boolean;
+  }[];
+  hotel?: {
+    name?: string;
+    checkIn?: string;
+    checkOut?: string;
+    confirmationNo?: string;
+    roomCategory?: string;
+    mealPlan?: string;
+    selfBooked?: boolean;
+  };
+}
+
+export interface CostDeviationApproval {
+  id: string;
+  bookingId: string;
+  bookingServiceId?: string | null;
+  deviationType: "service_cost" | "selling_price_increase";
+  quotedCost: number;
+  proposedCost: number;
+  deltaAmount: number;
+  currentPackageValue: number;
+  proposedPackageValue?: number | null;
+  status: "Pending" | "Approved" | "Rejected";
+  reason?: string | null;
+  requestedByName?: string | null;
+  decidedBy?: string | null;
+  decidedAt?: string | null;
+  decisionNotes?: string | null;
+  createdAt: string;
 }
 
 export interface Payment {
@@ -460,6 +510,8 @@ export interface Quotation {
   wizardStep?: number;
   enquiryRef?: string;
   selectedPackageId?: string | null;
+  agentMarkup?: number;
+  baseSellingTotal?: number;
   convertedBookingId?: string | null;
   packages?: QuotationPackage[];
   versions?: Array<{
@@ -1050,4 +1102,29 @@ export type ViewKey =
   | "branches"
   | "api-marketplace"
   | "monitoring"
-  | "analytics";
+  | "analytics"
+  | "suppliers";
+
+export interface SupplierRecord {
+  id: string;
+  name: string;
+  contactPerson?: string | null;
+  email?: string | null;
+  phoneCountryCode?: string | null;
+  phone?: string | null;
+  country?: string | null;
+  city?: string | null;
+  type: string;
+  status: string;
+  documentUrl?: string | null;
+  documentName?: string | null;
+  bankName?: string | null;
+  accountHolder?: string | null;
+  accountNumber?: string | null;
+  ifscCode?: string | null;
+  swiftCode?: string | null;
+  bankCountry?: string | null;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}

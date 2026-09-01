@@ -22,6 +22,11 @@ import {
 } from "../lib/quotations.js";
 import { sendHtmlEmail } from "../lib/email.js";
 import { escapeHtml } from "../lib/html.js";
+import {
+  buildQuotationPackageFromTravelPackage,
+  loadPublishedPackage,
+  totalsWithAgentMarkup,
+} from "../lib/package-to-quotation.js";
 
 type ScopeFn = (req: AuthRequest) => Record<string, unknown>;
 type OwnAgencyFn = (req: AuthRequest, fallback?: string) => string | undefined;
@@ -133,6 +138,18 @@ function applyCostingToQuote(
   };
 }
 
+async function loadAgentQuote(req: AuthRequest, agencyScope: ScopeFn) {
+  return db.quotation.findFirst({
+    where: {
+      id: paramId(req),
+      deletedAt: null,
+      ...agencyScope(req),
+      OR: [{ createdById: req.auth?.userId }, { agentId: req.auth?.userId }],
+    },
+    include: QUOTE_INCLUDE,
+  });
+}
+
 export function mountQuotationRoutes(
   app: Express,
   agencyScope: ScopeFn,
@@ -187,6 +204,19 @@ export function mountQuotationRoutes(
           { agentName: { contains: q, mode: "insensitive" } },
           { salesExecutiveName: { contains: q, mode: "insensitive" } },
           { enquiryRef: { contains: q, mode: "insensitive" } },
+        ];
+      }
+
+      if (isAgentLike(req.auth?.role)) {
+        where.AND = [
+          ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
+          {
+            OR: [
+              { createdById: req.auth?.userId },
+              { agentId: req.auth?.userId },
+              { status: { in: ["Sent to Agent", "Customer Reviewing", "Accepted", "Revision Requested"] } },
+            ],
+          },
         ];
       }
 
@@ -1149,6 +1179,8 @@ export function mountQuotationRoutes(
         });
       } else if (existing.status === "Sent to Agent") {
         await db.quotation.update({ where: { id: existing.id }, data: { status: "Customer Reviewing" } });
+      } else if (isAgentLike(req.auth?.role) && ["Draft", "In Progress"].includes(existing.status)) {
+        await db.quotation.update({ where: { id: existing.id }, data: { status: "Customer Reviewing" } });
       }
       await writeQuoteAudit({
         req,
@@ -1248,6 +1280,231 @@ export function mountQuotationRoutes(
         updatedValue: { bookingId: req.body?.bookingId },
       });
       res.json({ quotation });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // ── Agent: create quotation from published package ───────────────────────
+  app.post("/api/quotations/agent/from-package", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+    try {
+      if (!isAgentLike(req.auth?.role)) {
+        res.status(403).json({ error: "Only travel agents can use this endpoint" });
+        return;
+      }
+      const body = req.body || {};
+      const packageId = String(body.packageId || "");
+      if (!packageId) {
+        res.status(400).json({ error: "packageId is required" });
+        return;
+      }
+      const pkg = await loadPublishedPackage(packageId, ownAgencyId(req));
+      if (!pkg) {
+        res.status(404).json({ error: "Published package not found" });
+        return;
+      }
+
+      const { packagePayload, meta } = buildQuotationPackageFromTravelPackage(pkg);
+      const agentMarkup = Math.max(0, Math.round(Number(body.agentMarkup || 0)));
+      const adults = Number(body.adults ?? 2);
+      const children = Number(body.children ?? 0);
+      const totals = totalsWithAgentMarkup(meta.baseSellingTotal, agentMarkup, adults, children);
+      const customerName = String(body.customerName || "Guest").trim() || "Guest";
+      const quoteNo = await nextQuoteNo();
+      const validTill = body.validTill || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+
+      const quote = await db.quotation.create({
+        data: {
+          quoteNo,
+          agencyId: ownAgencyId(req),
+          branchId: ownBranchId(req),
+          customerName,
+          service: "Holiday",
+          items: 1,
+          amount: totals.amount,
+          gst: totals.gst,
+          total: totals.total,
+          totalNetCost: packagePayload.totalNetCost,
+          totalSelling: totals.totalSelling,
+          grossProfit: packagePayload.grossProfit + agentMarkup,
+          perPersonCost: totals.perPersonCost,
+          status: customerName === "Guest" ? "In Progress" : "Customer Reviewing",
+          validTill,
+          quoteDate: new Date().toISOString().slice(0, 10),
+          createdById: req.auth?.userId,
+          createdBy: req.auth?.email || "Agent",
+          agentId: req.auth?.userId,
+          agentName: body.agentName || req.auth?.email || "Agent",
+          contactPerson: body.contactPerson || customerName,
+          contactEmail: body.contactEmail || null,
+          contactPhone: body.contactPhone || null,
+          destination: meta.destination,
+          country: meta.country,
+          coverImage: meta.coverImage,
+          nights: meta.nights,
+          days: meta.days,
+          adults,
+          children,
+          currency: meta.currency,
+          packageIncludes: meta.packageIncludes,
+          packageExcludes: meta.packageExcludes,
+          selectedPackageId: packageId,
+          agentMarkup: totals.agentMarkup,
+          baseSellingTotal: totals.baseSellingTotal,
+          specialRequests: body.specialRequests || null,
+          travelStartDate: body.travelStartDate || null,
+          travelEndDate: body.travelEndDate || null,
+          travelDates: body.travelStartDate || null,
+          taxRate: 18,
+          approvalStatus: "Approved",
+        },
+      });
+
+      await db.quotationPackage.create({
+        data: {
+          quotationId: quote.id,
+          ...packagePayload,
+          total: totals.total,
+          totalSelling: totals.totalSelling,
+          perPersonCost: totals.perPersonCost,
+        },
+      });
+
+      await writeQuoteAudit({
+        req,
+        agencyId: quote.agencyId,
+        quotationId: quote.id,
+        action: "Agent Quote Created",
+        updatedValue: { packageId, agentMarkup },
+      });
+
+      const full = await db.quotation.findUnique({ where: { id: quote.id }, include: QUOTE_INCLUDE });
+      res.status(201).json({ quotation: sanitizeQuotationForRole(full as unknown as Record<string, unknown>, req.auth?.role) });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // ── Agent: update customer details & markup ──────────────────────────────
+  app.patch("/api/quotations/:id/agent", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+    try {
+      if (!isAgentLike(req.auth?.role)) {
+        res.status(403).json({ error: "Only travel agents can use this endpoint" });
+        return;
+      }
+      const existing = await loadAgentQuote(req, agencyScope);
+      if (!existing) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      if (["Converted to Booking", "Archived"].includes(existing.status)) {
+        res.status(400).json({ error: "Cannot edit this quotation" });
+        return;
+      }
+
+      const body = req.body || {};
+      const data: Record<string, unknown> = {};
+      if (body.customerName != null) data.customerName = String(body.customerName).trim() || existing.customerName;
+      if (body.contactPerson != null) data.contactPerson = body.contactPerson;
+      if (body.contactEmail != null) data.contactEmail = body.contactEmail;
+      if (body.contactPhone != null) data.contactPhone = body.contactPhone;
+      if (body.specialRequests != null) data.specialRequests = body.specialRequests;
+      if (body.travelStartDate != null) data.travelStartDate = body.travelStartDate;
+      if (body.travelEndDate != null) data.travelEndDate = body.travelEndDate;
+      if (body.travelStartDate != null) data.travelDates = body.travelStartDate;
+      if (body.adults != null) data.adults = Number(body.adults);
+      if (body.children != null) data.children = Number(body.children);
+
+      const baseSelling = existing.baseSellingTotal || Math.max(0, existing.total - (existing.agentMarkup || 0));
+      const agentMarkup = body.agentMarkup != null ? Math.max(0, Math.round(Number(body.agentMarkup))) : (existing.agentMarkup || 0);
+      const totals = totalsWithAgentMarkup(
+        baseSelling,
+        agentMarkup,
+        Number(body.adults ?? existing.adults ?? 2),
+        Number(body.children ?? existing.children ?? 0),
+      );
+      data.agentMarkup = totals.agentMarkup;
+      data.baseSellingTotal = totals.baseSellingTotal;
+      data.amount = totals.amount;
+      data.gst = totals.gst;
+      data.total = totals.total;
+      data.perPersonCost = totals.perPersonCost;
+      data.totalSelling = totals.totalSelling;
+
+      await db.quotation.update({ where: { id: existing.id }, data });
+      const pkg = existing.packages.find((p) => p.isSelected) || existing.packages[0];
+      if (pkg) {
+        await db.quotationPackage.update({
+          where: { id: pkg.id },
+          data: { total: totals.total, totalSelling: totals.totalSelling, perPersonCost: totals.perPersonCost },
+        });
+      }
+
+      await writeQuoteAudit({
+        req,
+        agencyId: existing.agencyId,
+        quotationId: existing.id,
+        action: "Agent Quote Updated",
+        updatedValue: { agentMarkup: totals.agentMarkup, total: totals.total },
+      });
+
+      const full = await db.quotation.findUnique({ where: { id: existing.id }, include: QUOTE_INCLUDE });
+      res.json({ quotation: sanitizeQuotationForRole(full as unknown as Record<string, unknown>, req.auth?.role) });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // ── Agent: request help (creates ops task) ───────────────────────────────
+  app.post("/api/quotations/:id/request-help", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+    try {
+      const quote = await db.quotation.findFirst({
+        where: { id: paramId(req), deletedAt: null, ...agencyScope(req) },
+      });
+      if (!quote) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const helpType = String(req.body?.helpType || "Other").trim();
+      const description = String(req.body?.description || "").trim();
+      if (!description) {
+        res.status(400).json({ error: "Please describe what help you need" });
+        return;
+      }
+      const due = new Date();
+      due.setDate(due.getDate() + 1);
+      const task = await db.task.create({
+        data: {
+          agencyId: quote.agencyId,
+          branchId: quote.branchId,
+          title: `Quote help: ${helpType}`,
+          description: `${quote.quoteNo} (${quote.destination || "trip"}) — ${description}`,
+          assignedTo: "Operations",
+          assignedBy: req.auth?.email || "Agent",
+          department: "Operations",
+          priority: "High",
+          status: "To Do",
+          dueDate: due.toISOString().slice(0, 10),
+          relatedTo: quote.quoteNo,
+        },
+      });
+      await notifyQuote({
+        agencyId: quote.agencyId,
+        title: "Quotation help requested",
+        message: `${quote.quoteNo}: ${helpType}`,
+        priority: "high",
+      });
+      await writeQuoteAudit({
+        req,
+        agencyId: quote.agencyId,
+        quotationId: quote.id,
+        action: "Help Requested",
+        updatedValue: { helpType, description, taskId: task.id },
+      });
+      res.status(201).json({ task });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });

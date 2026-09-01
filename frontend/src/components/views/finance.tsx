@@ -10,7 +10,7 @@ import {
   Building2, Plane, ShoppingBag, Zap, Users, FileDown,
   CheckCircle2, Clock, AlertCircle, Calculator,
 } from "lucide-react";
-import { api, apiFetchBlob } from "@/lib/api";
+import { api, apiFetchBlob, type SupplierPayoutRecord } from "@/lib/api";
 import { mapApiFinance, type MappedFinance } from "@/lib/api-mappers";
 import {
   formatINR, formatFullINR, StatusBadge, PageShell, PageHeader, MetricCard, SectionHeader, BrandHero,
@@ -814,6 +814,104 @@ function ExpensesTab({ data, onRefresh }: { data: MappedFinance | null; onRefres
   );
 }
 
+function PayoutsTab() {
+  const { toast } = useToast();
+  const [payouts, setPayouts] = useState<SupplierPayoutRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("All");
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const refresh = () => {
+    setLoading(true);
+    api.getSupplierPayouts()
+      .then((res) => setPayouts(res.payouts || []))
+      .catch(() => setPayouts([]))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { refresh(); }, []);
+
+  const filtered = payouts.filter((p) => filter === "All" || p.status === filter);
+
+  async function markPaid(p: SupplierPayoutRecord) {
+    setBusyId(p.id);
+    try {
+      await api.updateSupplierPayout(p.id, {
+        amountPaid: p.amount,
+        paymentDate: new Date().toISOString().slice(0, 10),
+        paymentMode: "NEFT",
+      });
+      toast({ title: "Payout marked paid" });
+      refresh();
+    } catch {
+      toast({ title: "Update failed", variant: "destructive" });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 items-center justify-between">
+        <SectionHeader title="Supplier payouts" description="Due dates, reminders, and payment status for supplier invoices" />
+        <Select value={filter} onValueChange={setFilter}>
+          <SelectTrigger className="w-36 h-8"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {["All", "Pending", "Partial", "Overdue", "Scheduled", "Paid"].map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Supplier</TableHead>
+                <TableHead>Booking</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Due</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading && (
+                <TableRow><TableCell colSpan={6} className="text-center text-xs py-8 text-muted-foreground">Loading…</TableCell></TableRow>
+              )}
+              {!loading && filtered.map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell className="text-xs">
+                    <p className="font-medium">{p.supplierName}</p>
+                    {p.serviceType && <p className="text-muted-foreground">{p.serviceType}</p>}
+                  </TableCell>
+                  <TableCell className="text-xs">{p.booking?.bookingRef || "—"}</TableCell>
+                  <TableCell className="text-xs">
+                    {formatFullINR(p.amountPaid)} / {formatFullINR(p.amount)}
+                  </TableCell>
+                  <TableCell className="text-xs">{p.dueDate || "—"}</TableCell>
+                  <TableCell><StatusBadge status={p.status} /></TableCell>
+                  <TableCell>
+                    {p.status !== "Paid" && (
+                      <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => markPaid(p)}>
+                        Mark paid
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {!loading && filtered.length === 0 && (
+                <TableRow><TableCell colSpan={6} className="text-center text-xs py-8 text-muted-foreground">No payouts yet</TableCell></TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function FinanceView() {
   const [data, setData] = useState<MappedFinance | null>(null);
 
@@ -839,12 +937,14 @@ export function FinanceView() {
           <TabsTrigger value="gst">GST</TabsTrigger>
           <TabsTrigger value="tds">TDS</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
+          <TabsTrigger value="payouts">Payouts</TabsTrigger>
           <TabsTrigger value="expenses">Expenses</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4"><OverviewTab data={data} /></TabsContent>
         <TabsContent value="gst" className="mt-4"><GstTab data={data} /></TabsContent>
         <TabsContent value="tds" className="mt-4"><TdsTab data={data} onRefresh={refresh} /></TabsContent>
         <TabsContent value="invoices" className="mt-4"><InvoicesTab data={data} onRefresh={refresh} /></TabsContent>
+        <TabsContent value="payouts" className="mt-4"><PayoutsTab /></TabsContent>
         <TabsContent value="expenses" className="mt-4"><ExpensesTab data={data} onRefresh={refresh} /></TabsContent>
       </Tabs>
     </PageShell>

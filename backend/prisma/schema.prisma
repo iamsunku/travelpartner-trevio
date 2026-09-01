@@ -24,6 +24,7 @@ model User {
   avatar       String?
   status       String   @default("Active")
   permissions  Json?    // null = use role default; array of module keys = explicit override
+  productAccess Json?   // { flights, hotels, packages } — travel_agent overrides
   lastLogin    DateTime?
   resetToken       String?
   resetTokenExpires DateTime?
@@ -166,6 +167,8 @@ model Booking {
   packageIncludes    Json    @default("[]")
   packageExcludes    Json    @default("[]")
   currency           String  @default("INR")
+  travelDetails      Json?
+  itinerary          Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -186,6 +189,7 @@ model Booking {
   addOns        BookingAddOn[]
   supplierPayouts SupplierPayout[]
   modifications BookingModification[]
+  costDeviationApprovals CostDeviationApproval[]
 
   @@index([agencyId])
   @@index([customerId])
@@ -328,6 +332,8 @@ model Quotation {
   wizardStep      Int      @default(1)
   enquiryRef      String?
   selectedPackageId String?
+  agentMarkup     Int      @default(0)
+  baseSellingTotal Int     @default(0)
   acceptedByName  String?
   acceptedByEmail String?
   acceptedAt      DateTime?
@@ -778,22 +784,37 @@ model Settings {
 // ── Product Catalog ──────────────────────────────────────────────────────────
 
 model Supplier {
-  id          String   @id @default(cuid())
-  agencyId    String?
-  name        String
-  contactPerson String?
-  email       String?
-  phone       String?
-  type        String   // Hotel|Activity|Transfer|General
-  status      String   @default("Active")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  agencyId        String?
+  name            String
+  contactPerson   String?
+  email           String?
+  phoneCountryCode String? @default("+91")
+  phone           String?
+  country         String?
+  city            String?
+  type            String   // Hotel|Transfer|Attraction|Restaurant|DMC|Activity|General|Other
+  status          String   @default("Active")
+  documentUrl     String?
+  documentName    String?
+  bankName        String?
+  accountHolder   String?
+  accountNumber   String?
+  ifscCode        String?
+  swiftCode       String?
+  bankCountry     String?
+  notes           String?  @db.Text
+  createdById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   hotels      HotelProduct[]
   activities  ActivityProduct[]
   transfers   TransferProduct[]
 
   @@index([agencyId])
+  @@index([type])
+  @@index([country, city])
 }
 
 model HotelProduct {
@@ -1577,17 +1598,51 @@ model BookingService {
   supplierName     String?
   supplierRef      String?
   costPrice        Int      @default(0)
+  quotedCostPrice  Int      @default(0)
   sellingPrice     Int      @default(0)
   voucherUrl       String?
   ticketUrl        String?
   notes            String?
+  driverDetails    Json?    // { driverName, vehicleNumber, driverPhone }
   confirmedAt      DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   booking          Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  costDeviations   CostDeviationApproval[]
 
   @@index([bookingId])
+}
+
+model CostDeviationApproval {
+  id                   String   @id @default(cuid())
+  bookingId            String
+  agencyId             String?
+  bookingServiceId     String?
+  deviationType        String   // service_cost | selling_price_increase
+  quotedCost           Int      @default(0)
+  proposedCost         Int      @default(0)
+  deltaAmount          Int      @default(0)
+  currentPackageValue  Int      @default(0)
+  proposedPackageValue Int?
+  status               String   @default("Pending") // Pending|Approved|Rejected
+  reason               String?
+  payload              Json?
+  requestedById        String?
+  requestedByName      String?
+  decidedBy            String?
+  decidedAt            DateTime?
+  decisionNotes        String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  booking              Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingService       BookingService? @relation(fields: [bookingServiceId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId])
+  @@index([agencyId])
+  @@index([status])
+  @@index([bookingServiceId])
 }
 
 model BookingSupplierLine {
@@ -1639,6 +1694,15 @@ model BookingInvoice {
   invoiceType   String   // Proforma|Tax Invoice|Credit Note|Debit Note
   amount        Int
   gst           Int      @default(0)
+  taxableAmount Int      @default(0)
+  cgst          Int      @default(0)
+  sgst          Int      @default(0)
+  igst          Int      @default(0)
+  gstRate       Int      @default(5)
+  gstNumber     String?
+  amountPaid    Int      @default(0)
+  balanceAmount Int      @default(0)
+  lineItems     Json?
   total         Int
   status        String   @default("Issued") // Draft|Issued|Cancelled
   notes         String?
@@ -1652,26 +1716,38 @@ model BookingInvoice {
 }
 
 model SupplierPayout {
-  id            String   @id @default(cuid())
-  bookingId     String?
-  agencyId      String?
-  supplierName  String
-  amount        Int
-  currency      String   @default("INR")
-  paymentMode   String?  // NEFT|RTGS|UPI|Cheque|Cash|Wallet
-  utr           String?
-  paymentDate   String?
-  paymentTime   String?
-  status        String   @default("Pending") // Pending|Processing|Paid|Failed
-  notes         String?
-  createdByName String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  bookingId          String?
+  agencyId           String?
+  supplierId         String?
+  bookingServiceId   String?
+  serviceType        String?
+  supplierName       String
+  amount             Int
+  amountPaid         Int      @default(0)
+  currency           String   @default("INR")
+  paymentMode        String?  // NEFT|RTGS|UPI|Cheque|Cash|Wallet
+  utr                String?
+  paymentDate        String?
+  paymentTime        String?
+  dueDate            String?
+  reminderDaysBefore Int      @default(2)
+  scheduledPayDate   String?
+  invoiceUrl         String?
+  status             String   @default("Pending") // Pending|Partial|Paid|Overdue|Scheduled|Processing|Failed
+  reminderSentAt     DateTime?
+  notes              String?
+  createdById        String?
+  createdByName      String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  booking       Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  booking            Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
   @@index([bookingId])
   @@index([agencyId])
+  @@index([dueDate])
+  @@index([status])
 }
 
 model BookingAddOn {

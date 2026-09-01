@@ -732,26 +732,6 @@ export function mountProductRoutes(app: Express, agencyScope: ScopeFn) {
   registerActivityRoutes(app, agencyScope);
   registerTransferRoutes(app, agencyScope);
 
-  app.get("/api/suppliers", requireAuth, requirePermission("suppliers"), async (req: AuthRequest, res: Response) => {
-    try {
-      const suppliers = await db.supplier.findMany({ where: agencyScope(req), orderBy: { createdAt: "desc" } });
-      res.json({ suppliers, total: suppliers.length });
-    } catch (e) {
-      logger.error(e);
-      res.status(500).json({ error: "Server error" });
-    }
-  });
-
-  app.post("/api/suppliers", requireAuth, requirePermission("suppliers"), async (req: AuthRequest, res: Response) => {
-    try {
-      const supplier = await db.supplier.create({ data: { ...req.body, agencyId: req.auth?.agencyId } });
-      res.status(201).json({ supplier });
-    } catch (e) {
-      logger.error(e);
-      res.status(500).json({ error: "Server error" });
-    }
-  });
-
   app.get("/api/employees/activity", requireAuth, requirePermission("employees"), async (req: AuthRequest, res: Response) => {
     try {
       const snapshots = await db.employeeActivitySnapshot.findMany({

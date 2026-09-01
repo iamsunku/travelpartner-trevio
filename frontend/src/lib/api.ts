@@ -17,7 +17,9 @@ export { API_BASE };
 export class ApiError extends Error {
   constructor(
     message: string,
-    public status: number
+    public status: number,
+    public code?: string,
+    public body?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -59,9 +61,13 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     let message = res.statusText || "Request failed";
+    let code: string | undefined;
+    let body: Record<string, unknown> | undefined;
     try {
-      const body = await res.json();
-      message = body.error || body.message || message;
+      const parsed = await res.json();
+      body = parsed as Record<string, unknown>;
+      message = (parsed.error || parsed.message || message) as string;
+      code = parsed.code as string | undefined;
     } catch {
       /* ignore */
     }
@@ -70,7 +76,7 @@ export async function apiFetch<T>(
     else if (res.status >= 500 && message === (res.statusText || "Request failed")) {
       message = "Something went wrong on our end. Please try again shortly.";
     }
-    throw new ApiError(message, res.status);
+    throw new ApiError(message, res.status, code, body);
   }
 
   return res.json() as Promise<T>;
@@ -201,6 +207,27 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  requestSellingPriceIncrease: (bookingId: string, body: Record<string, unknown>) =>
+    apiFetch<{ approval: CostDeviationApproval }>(`/api/bookings/${bookingId}/request-selling-price-increase`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  approveCostDeviation: (id: string, body?: Record<string, unknown>) =>
+    apiFetch<{ approval: CostDeviationApproval; booking?: ApiBooking }>(`/api/cost-deviations/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify(body || {}),
+    }),
+
+  rejectCostDeviation: (id: string, body?: Record<string, unknown>) =>
+    apiFetch<{ approval: CostDeviationApproval }>(`/api/cost-deviations/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify(body || {}),
+    }),
+
+  listCostDeviations: (status = "Pending") =>
+    apiFetch<{ approvals: CostDeviationApproval[] }>(`/api/cost-deviations?status=${encodeURIComponent(status)}`),
+
   createBookingInvoice: (bookingId: string, body: Record<string, unknown>) =>
     apiFetch<{ invoice: unknown }>(`/api/bookings/${bookingId}/invoices`, {
       method: "POST",
@@ -226,12 +253,79 @@ export const api = {
     }),
 
   createSupplierPayout: (body: Record<string, unknown>) =>
-    apiFetch<{ payout: unknown }>("/api/supplier-payouts", {
+    apiFetch<{ payout: SupplierPayoutRecord }>("/api/supplier-payouts", {
       method: "POST",
       body: JSON.stringify(body),
     }),
 
-  getSupplierPayouts: () => apiFetch<{ payouts: unknown[] }>("/api/supplier-payouts"),
+  updateSupplierPayout: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ payout: SupplierPayoutRecord }>(`/api/supplier-payouts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  getSupplierPayouts: (status?: string) =>
+    apiFetch<{ payouts: SupplierPayoutRecord[] }>(
+      `/api/supplier-payouts${status ? `?status=${encodeURIComponent(status)}` : ""}`,
+    ),
+
+  saveBookingTravelDetails: (bookingId: string, travelDetails: Record<string, unknown>) =>
+    apiFetch<{ booking: ApiBooking; travelComplete: boolean; missing: string[] }>(
+      `/api/bookings/${bookingId}/travel-details`,
+      { method: "PUT", body: JSON.stringify({ travelDetails }) },
+    ),
+
+  saveBookingItinerary: (bookingId: string, itinerary: unknown[]) =>
+    apiFetch<{ booking: ApiBooking }>(`/api/bookings/${bookingId}/itinerary`, {
+      method: "PUT",
+      body: JSON.stringify({ itinerary }),
+    }),
+
+  getAgents: () =>
+    apiFetch<{ agents: ApiAgent[] }>("/api/agents"),
+
+  updateAgentProductAccess: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ agent: ApiAgent }>(`/api/agents/${id}/product-access`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  adjustBookingSellingPrice: (bookingId: string, body: Record<string, unknown>) =>
+    apiFetch<{ booking: ApiBooking }>(`/api/bookings/${bookingId}/adjust-selling-price`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  requestQuotationHelp: (quotationId: string, body: Record<string, unknown>) =>
+    apiFetch<{ task: unknown }>(`/api/quotations/${quotationId}/request-help`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getSuppliers: (params?: Record<string, string>) => {
+    const q = params ? `?${new URLSearchParams(params)}` : "";
+    return apiFetch<{ suppliers: import("@/types").SupplierRecord[]; total: number }>(`/api/suppliers${q}`);
+  },
+
+  getSupplier: (id: string) =>
+    apiFetch<{ supplier: import("@/types").SupplierRecord }>(`/api/suppliers/${id}`),
+
+  createSupplier: (body: Record<string, unknown>) =>
+    apiFetch<{ supplier: import("@/types").SupplierRecord }>("/api/suppliers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateSupplier: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ supplier: import("@/types").SupplierRecord }>(`/api/suppliers/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  deleteSupplier: (id: string) =>
+    apiFetch<{ success: boolean; deactivated?: boolean; message?: string }>(`/api/suppliers/${id}`, {
+      method: "DELETE",
+    }),
 
   createBookingModification: (bookingId: string, body: Record<string, unknown>) =>
     apiFetch<{ modification: unknown; booking: ApiBooking }>(`/api/bookings/${bookingId}/modifications`, {
@@ -376,6 +470,18 @@ export const api = {
 
   createQuotationWizard: (body: Record<string, unknown>) =>
     apiFetch<{ quotation: ApiQuotation }>("/api/quotations/wizard", { method: "POST", body: JSON.stringify(body) }),
+
+  createAgentQuotationFromPackage: (body: Record<string, unknown>) =>
+    apiFetch<{ quotation: ApiQuotation }>("/api/quotations/agent/from-package", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateAgentQuotation: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/agent`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
 
   saveQuotationWizard: (id: string, body: Record<string, unknown>) =>
     apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/wizard`, { method: "PUT", body: JSON.stringify(body) }),
@@ -671,6 +777,7 @@ export interface ApiUser {
   agencyId?: string | null;
   branchId?: string | null;
   permissions?: string[] | null;
+  productAccess?: { flights: boolean; hotels: boolean; packages: boolean } | null;
 }
 
 export interface ApiBooking {
@@ -687,6 +794,9 @@ export interface ApiBooking {
   paymentMethod?: string | null;
   agentName: string;
   agencyName: string;
+  agentAgencyName?: string;
+  agentAgencyLogo?: string | null;
+  agent?: { name?: string; agency?: { name?: string; logo?: string | null } | null } | null;
   createdAt: string;
   quotationId?: string | null;
   quoteNo?: string | null;
@@ -718,6 +828,85 @@ export interface ApiBooking {
   addOns?: unknown[];
   invoices?: unknown[];
   documents?: unknown[];
+  costDeviationApprovals?: CostDeviationApproval[];
+  travelDetails?: TravelDetailsRecord | null;
+  itinerary?: Array<Record<string, unknown>>;
+}
+
+export interface TravelDetailsRecord {
+  flights?: {
+    airline?: string;
+    flightNumber?: string;
+    from?: string;
+    to?: string;
+    date?: string;
+    time?: string;
+    pnr?: string;
+    selfBooked?: boolean;
+  }[];
+  hotel?: {
+    name?: string;
+    checkIn?: string;
+    checkOut?: string;
+    confirmationNo?: string;
+    roomCategory?: string;
+    mealPlan?: string;
+    selfBooked?: boolean;
+  };
+}
+
+export interface SupplierPayoutRecord {
+  id: string;
+  bookingId?: string | null;
+  supplierId?: string | null;
+  bookingServiceId?: string | null;
+  serviceType?: string | null;
+  supplierName: string;
+  amount: number;
+  amountPaid: number;
+  currency: string;
+  paymentMode?: string | null;
+  utr?: string | null;
+  paymentDate?: string | null;
+  dueDate?: string | null;
+  reminderDaysBefore?: number;
+  scheduledPayDate?: string | null;
+  invoiceUrl?: string | null;
+  status: string;
+  notes?: string | null;
+  createdAt: string;
+  booking?: { bookingRef: string; customerName: string; destination?: string | null };
+}
+
+export interface ApiAgent {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  status: string;
+  productAccess: { flights: boolean; hotels: boolean; packages: boolean };
+  createdAt?: string;
+}
+
+export interface CostDeviationApproval {
+  id: string;
+  bookingId: string;
+  bookingServiceId?: string | null;
+  deviationType: "service_cost" | "selling_price_increase";
+  quotedCost: number;
+  proposedCost: number;
+  deltaAmount: number;
+  currentPackageValue: number;
+  proposedPackageValue?: number | null;
+  status: "Pending" | "Approved" | "Rejected";
+  reason?: string | null;
+  requestedByName?: string | null;
+  decidedBy?: string | null;
+  decidedAt?: string | null;
+  decisionNotes?: string | null;
+  createdAt: string;
+  booking?: { bookingRef: string; customerName: string; destination?: string | null };
+  bookingService?: { serviceType: string; title: string };
 }
 
 export interface ApiCustomer {

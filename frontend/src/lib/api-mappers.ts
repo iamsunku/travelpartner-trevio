@@ -19,6 +19,7 @@ export function mapApiUser(u: ApiUser): User {
     agencyId: u.agencyId || undefined,
     branchId: u.branchId || undefined,
     permissions: (u.permissions as Module[] | null | undefined) ?? undefined,
+    productAccess: u.productAccess as User["productAccess"],
   };
 }
 
@@ -64,6 +65,8 @@ export function mapApiBooking(b: ApiBooking): Booking {
     paymentMethod: b.paymentMethod || undefined,
     agent: b.agentName,
     agency: b.agencyName,
+    agentAgencyName: b.agentAgencyName || b.agent?.agency?.name,
+    agentAgencyLogo: b.agentAgencyLogo ?? b.agent?.agency?.logo ?? null,
     createdAt: b.createdAt.slice(0, 10),
     quotationId: b.quotationId,
     quoteNo: b.quoteNo,
@@ -95,6 +98,9 @@ export function mapApiBooking(b: ApiBooking): Booking {
     addOns: b.addOns as Booking["addOns"],
     invoices: b.invoices as Booking["invoices"],
     documents: b.documents as Booking["documents"],
+    costDeviationApprovals: b.costDeviationApprovals as Booking["costDeviationApprovals"],
+    travelDetails: b.travelDetails as Booking["travelDetails"],
+    itinerary: b.itinerary as Booking["itinerary"],
   };
 }
 
@@ -227,6 +233,8 @@ export function mapApiQuotation(q: ApiQuotation): Quotation {
     wizardStep: (q as { wizardStep?: number }).wizardStep,
     enquiryRef: (q as { enquiryRef?: string }).enquiryRef,
     selectedPackageId: (q as { selectedPackageId?: string | null }).selectedPackageId,
+    agentMarkup: (q as { agentMarkup?: number }).agentMarkup,
+    baseSellingTotal: (q as { baseSellingTotal?: number }).baseSellingTotal,
     convertedBookingId: (q as { convertedBookingId?: string | null }).convertedBookingId,
     salesExecutiveName: (q as { salesExecutiveName?: string }).salesExecutiveName,
     packages: (q as { packages?: Quotation["packages"] }).packages,

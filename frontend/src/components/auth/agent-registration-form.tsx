@@ -16,6 +16,7 @@ import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { mapApiUser } from "@/lib/api-mappers";
 import { COUNTRY_CODES, COUNTRIES, CITIES_BY_COUNTRY, INDIAN_STATES } from "@/lib/location-options";
+import { stateFromGstin } from "@/lib/gst-state";
 import { cn } from "@/lib/utils";
 
 const MAX_PROOF_BYTES = 5 * 1024 * 1024;
@@ -256,7 +257,16 @@ export function AgentRegistrationForm({
               </div>
             </Field>
             <Field label="GST / VAT No.">
-              <Input placeholder="GST / VAT No." value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} />
+              <Input
+                placeholder="GST / VAT No."
+                value={gstNumber}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  const derived = stateFromGstin(next);
+                  setGstNumber(next);
+                  if (derived && country === "India" && !state) setState(derived);
+                }}
+              />
             </Field>
           </div>
 

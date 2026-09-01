@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { Module, Role, User, ViewKey } from "@/types";
 import { hasPermission } from "@/lib/permissions";
+import { canBookProduct } from "@/lib/product-access";
 import { isMockInventoryEnabled, isStubModulesEnabled } from "@/lib/runtime-mode";
 
 export interface NavItem {
@@ -87,6 +88,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: "employees", label: "Employees", icon: UserCog, module: "employees" },
       { key: "attendance", label: "Attendance & Leave", icon: CalendarCheck, module: "attendance" },
       { key: "tasks", label: "Task Management", icon: CheckSquare, module: "tasks" },
+      { key: "suppliers", label: "Suppliers", icon: Building2, module: "suppliers" },
       { key: "support", label: "Support", icon: LifeBuoy, module: "support" },
       { key: "notifications", label: "Notifications", icon: Bell, module: "notifications" },
     ],
@@ -114,7 +116,7 @@ export const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-export function getNavForUser(user: Pick<User, "role" | "permissions">): NavSection[] {
+export function getNavForUser(user: Pick<User, "role" | "permissions" | "productAccess">): NavSection[] {
   const mockOk = isMockInventoryEnabled();
   const stubsOk = isStubModulesEnabled();
   return NAV_SECTIONS.map((section) => ({
@@ -123,12 +125,17 @@ export function getNavForUser(user: Pick<User, "role" | "permissions">): NavSect
       if (item.mockInventoryOnly && !mockOk) return false;
       if (item.stubOnly && !stubsOk) return false;
       if (item.roles && !item.roles.includes(user.role)) return false;
+      if (user.role === "travel_agent") {
+        if (item.key === "flights" && !canBookProduct(user, "flights")) return false;
+        if (item.key === "hotels" && !canBookProduct(user, "hotels")) return false;
+        if ((item.key === "holiday" || item.key === "packages") && !canBookProduct(user, "packages")) return false;
+      }
       return !item.module || hasPermission(user, item.module);
     }),
   })).filter((section) => section.items.length > 0);
 }
 
-export function canAccessView(user: Pick<User, "role" | "permissions">, view: ViewKey): boolean {
+export function canAccessView(user: Pick<User, "role" | "permissions" | "productAccess">, view: ViewKey): boolean {
   const mockOk = isMockInventoryEnabled();
   const stubsOk = isStubModulesEnabled();
   return NAV_SECTIONS.some((section) =>
@@ -137,6 +144,11 @@ export function canAccessView(user: Pick<User, "role" | "permissions">, view: Vi
       if (item.mockInventoryOnly && !mockOk) return false;
       if (item.stubOnly && !stubsOk) return false;
       if (item.roles && !item.roles.includes(user.role)) return false;
+      if (user.role === "travel_agent") {
+        if (item.key === "flights" && !canBookProduct(user, "flights")) return false;
+        if (item.key === "hotels" && !canBookProduct(user, "hotels")) return false;
+        if ((item.key === "holiday" || item.key === "packages") && !canBookProduct(user, "packages")) return false;
+      }
       return !item.module || hasPermission(user, item.module);
     })
   );

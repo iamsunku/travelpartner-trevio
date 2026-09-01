@@ -127,12 +127,15 @@ function downloadClassicQuotationPdf(quote: Quotation): boolean {
 }
 
 /** Open print/Save-as-PDF. Wizard quotes use the Trevio client brochure (no cost/profit). */
-export async function downloadQuotationPdf(quote: Quotation): Promise<boolean> {
+export async function downloadQuotationPdf(
+  quote: Quotation,
+  brochureOptions?: import("@/lib/client-quotation-brochure").ClientBrochureOptions,
+): Promise<boolean> {
   const hasBrochure =
     Boolean(quote.packages?.length) ||
     Boolean(quote.destination && (quote.travelStartDate || quote.travelDates));
   if (hasBrochure || quote.service === "Holiday" || quote.service === "International") {
-    return downloadClientQuotationBrochure(quote);
+    return downloadClientQuotationBrochure(quote, brochureOptions);
   }
   const lines = quoteLines(quote);
   const hasProductImages = lines.some((l) => l.imageUrl || (l.type && ["hotel", "activity", "transfer"].includes(l.type)));

@@ -28,6 +28,21 @@ import {
   razorpayKeysForAgency,
 } from "../lib/razorpay.js";
 import { isOfflinePaymentMethod } from "../lib/payments.js";
+import {
+  applyServiceUpdate,
+  approveCostDeviation,
+  baselineServiceCost,
+  canApproveCostDeviation,
+  createSellingPriceIncreaseRequest,
+  createServiceCostDeviation,
+  extractServiceUpdatePayload,
+  findPendingServiceDeviation,
+  isCostOverBaseline,
+  rejectCostDeviation,
+} from "../lib/cost-deviation.js";
+import { derivePayoutStatus, processPayoutReminders } from "../lib/supplier-payouts.js";
+import { seedTravelDetailsFromServices, travelDetailsComplete } from "../lib/travel-details.js";
+import { buildInvoiceLineItems, computeTravelGst } from "../lib/booking-invoice.js";
 
 type ScopeFn = (req: AuthRequest) => Record<string, unknown>;
 type OwnAgencyFn = (req: AuthRequest, fallback?: string) => string | undefined;
@@ -74,6 +89,7 @@ async function copySelectedPackageToBooking(
         title: (title || serviceType).slice(0, 240),
         status: "Pending",
         costPrice: Math.round(Number(line.costPrice || 0)),
+        quotedCostPrice: Math.round(Number(line.costPrice || 0)),
         sellingPrice: Math.round(Number(line.sellingPrice || line.fare || 0)),
         supplierName: line.supplier ? String(line.supplier) : undefined,
         confirmationNo: String(line.confirmationNumber || line.pnr || line.policyNumber || "") || undefined,
@@ -427,6 +443,21 @@ export function mountBmsRoutes(
 
         if (selected) {
           await copySelectedPackageToBooking(booking.id, selected);
+          const itinerary = jsonArr(selected.itinerary);
+          if (itinerary.length > 0) {
+            await db.booking.update({
+              where: { id: booking.id },
+              data: { itinerary },
+            });
+          }
+        }
+
+        const services = await db.bookingService.findMany({ where: { bookingId: booking.id } });
+        if (services.length > 0) {
+          await db.booking.update({
+            where: { id: booking.id },
+            data: { travelDetails: seedTravelDetailsFromServices(services) as object },
+          });
         }
 
         await db.quotation.update({
@@ -893,34 +924,70 @@ export function mountBmsRoutes(
           res.status(404).json({ error: "Service not found" });
           return;
         }
-        const data: Record<string, unknown> = {};
-        for (const k of ["status", "confirmationNo", "supplierName", "supplierRef", "voucherUrl", "ticketUrl", "notes"] as const) {
-          if (req.body?.[k] !== undefined) data[k] = req.body[k];
+
+        const proposedCost = req.body?.costPrice !== undefined ? Number(req.body.costPrice) : svc.costPrice;
+        const baseline = baselineServiceCost(svc);
+        const payload = extractServiceUpdatePayload(req.body || {}, proposedCost);
+        const approvedDeviationId = req.body?.approvedDeviationId as string | undefined;
+
+        if (isCostOverBaseline(proposedCost, baseline)) {
+          if (approvedDeviationId) {
+            const approval = await db.costDeviationApproval.findFirst({
+              where: {
+                id: approvedDeviationId,
+                bookingId: booking.id,
+                bookingServiceId: svc.id,
+                status: "Approved",
+                deviationType: "service_cost",
+              },
+            });
+            if (!approval || approval.proposedCost !== proposedCost) {
+              res.status(400).json({ error: "Invalid or mismatched approved deviation" });
+              return;
+            }
+          } else if (!canApproveCostDeviation(req.auth?.role)) {
+            const existing = await findPendingServiceDeviation(booking.id, svc.id);
+            if (existing) {
+              res.status(409).json({
+                code: "APPROVAL_REQUIRED",
+                error: "Cost exceeds quoted amount — super admin approval required",
+                approval: existing,
+              });
+              return;
+            }
+            const approval = await createServiceCostDeviation({
+              bookingId: booking.id,
+              agencyId: booking.agencyId,
+              bookingServiceId: svc.id,
+              serviceType: svc.serviceType,
+              bookingRef: booking.bookingRef,
+              baseline,
+              proposedCost,
+              payload,
+              requestedById: req.auth?.userId,
+              requestedByName: req.auth?.email,
+            });
+            res.status(409).json({
+              code: "APPROVAL_REQUIRED",
+              error: "Cost exceeds quoted amount — sent for super admin approval",
+              approval,
+            });
+            return;
+          }
         }
-        if (req.body?.costPrice !== undefined) data.costPrice = Number(req.body.costPrice);
-        if (req.body?.sellingPrice !== undefined) data.sellingPrice = Number(req.body.sellingPrice);
-        if (data.status === "Confirmed" || data.status === "Issued") data.confirmedAt = new Date();
-        const updated = await db.bookingService.update({ where: { id: svc.id }, data });
 
-        const all = await db.bookingService.findMany({ where: { bookingId: booking.id } });
-        const confirmed = all.filter((s) => s.status === "Confirmed" || s.status === "Issued").length;
-        let bookingStatus = booking.status;
-        if (confirmed === 0) bookingStatus = booking.status;
-        else if (confirmed < all.length) bookingStatus = "Partially Confirmed";
-        else bookingStatus = "Confirmed";
+        if (req.body?.sellingPrice !== undefined && booking.pricingLocked) {
+          res.status(400).json({ error: "Selling price is locked on this booking" });
+          return;
+        }
 
-        const costPrice = all.reduce((s, x) => s + (x.id === updated.id ? Number(updated.costPrice) : x.costPrice), 0);
-        await db.booking.update({
-          where: { id: booking.id },
-          data: {
-            status: ["Completed", "Cancelled", "Travel Documents Ready"].includes(booking.status)
-              ? booking.status
-              : bookingStatus,
-            costPrice,
-            grossProfit: booking.amount - costPrice,
-            netProfit: Math.round((booking.amount - costPrice) * 0.9),
-          },
-        });
+        let updated = await applyServiceUpdate(svc.id, booking.id, payload);
+        if (req.body?.driverDetails !== undefined) {
+          updated = await db.bookingService.update({
+            where: { id: svc.id },
+            data: { driverDetails: req.body.driverDetails },
+          });
+        }
 
         await writeAudit({
           req,
@@ -1023,15 +1090,39 @@ export function mountBmsRoutes(
       try {
         const booking = await db.booking.findFirst({
           where: { id: paramId(req), ...agencyScope(req) },
+          include: {
+            addOns: true,
+            agency: { select: { state: true, gstNumber: true, name: true } },
+            agent: { include: { agency: { select: { state: true, gstNumber: true, name: true } } } },
+          },
         });
         if (!booking) {
           res.status(404).json({ error: "Not found" });
           return;
         }
         const invoiceType = req.body?.invoiceType || "Tax Invoice";
-        const amount = Number(req.body?.amount) || booking.amount;
-        const gst = Number(req.body?.gst) ?? Math.round(amount * 0.18 / 1.18);
-        const total = Number(req.body?.total) || amount;
+        if (invoiceType === "Tax Invoice" && booking.paymentStatus !== "Paid") {
+          res.status(400).json({
+            error: "Tax invoice can only be generated after the booking is fully paid",
+          });
+          return;
+        }
+        const lineItems = buildInvoiceLineItems(booking);
+        const recipientState = booking.agent?.agency?.state;
+        const recipientGst = booking.agent?.agency?.gstNumber;
+        const supplierState = booking.agency?.state;
+        const supplierGst = booking.agency?.gstNumber;
+        const gstBreakdown = computeTravelGst(
+          booking.packageValue ?? booking.amount,
+          supplierState,
+          recipientState,
+          5,
+          recipientGst,
+          supplierGst,
+        );
+        const amount = gstBreakdown.taxableAmount;
+        const gst = gstBreakdown.totalGst;
+        const total = gstBreakdown.total;
         const invoice = await db.bookingInvoice.create({
           data: {
             bookingId: booking.id,
@@ -1040,8 +1131,21 @@ export function mountBmsRoutes(
             invoiceType,
             amount,
             gst,
+            taxableAmount: gstBreakdown.taxableAmount,
+            cgst: gstBreakdown.cgst,
+            sgst: gstBreakdown.sgst,
+            igst: gstBreakdown.igst,
+            gstRate: gstBreakdown.gstRate,
+            gstNumber: recipientGst || booking.agency?.gstNumber || undefined,
+            amountPaid: booking.amountPaid ?? 0,
+            balanceAmount: booking.balanceAmount ?? 0,
+            lineItems: lineItems as object[],
             total,
-            notes: req.body?.notes,
+            notes: [
+              req.body?.notes,
+              gstBreakdown.gstType === "intra" ? "CGST + SGST (same state)" : "IGST (inter-state)",
+              recipientGst ? `Bill to GSTIN: ${recipientGst}` : "",
+            ].filter(Boolean).join(" · ") || undefined,
             createdByName: req.auth?.email,
           },
         });
@@ -1070,23 +1174,37 @@ export function mountBmsRoutes(
   app.post(
     "/api/supplier-payouts",
     requireAuth,
-    requireAnyPermission("finance", "suppliers"),
-    requireRole("super_admin", "agency_admin", "accountant"),
+    requireAnyPermission("finance", "suppliers", "bookings"),
+    requireRole("super_admin", "agency_admin", "accountant", "operations"),
     async (req: AuthRequest, res: Response) => {
       try {
+        const amount = Number(req.body?.amount) || 0;
+        const amountPaid = Number(req.body?.amountPaid) || 0;
+        const dueDate = req.body?.dueDate ? String(req.body.dueDate) : null;
+        const scheduledPayDate = req.body?.scheduledPayDate ? String(req.body.scheduledPayDate) : null;
+        const status = derivePayoutStatus(amount, amountPaid, dueDate, scheduledPayDate);
         const payout = await db.supplierPayout.create({
           data: {
             bookingId: req.body?.bookingId || null,
             agencyId: ownAgencyId(req, req.body?.agencyId),
+            supplierId: req.body?.supplierId || null,
+            bookingServiceId: req.body?.bookingServiceId || null,
+            serviceType: req.body?.serviceType || null,
             supplierName: req.body?.supplierName || "Supplier",
-            amount: Number(req.body?.amount) || 0,
+            amount,
+            amountPaid,
             currency: req.body?.currency || "INR",
             paymentMode: req.body?.paymentMode,
             utr: req.body?.utr,
             paymentDate: req.body?.paymentDate,
             paymentTime: req.body?.paymentTime,
-            status: req.body?.status || "Pending",
+            dueDate,
+            reminderDaysBefore: Number(req.body?.reminderDaysBefore) || 2,
+            scheduledPayDate,
+            invoiceUrl: req.body?.invoiceUrl || null,
+            status: req.body?.status || status,
             notes: req.body?.notes,
+            createdById: req.auth?.userId,
             createdByName: req.auth?.email,
           },
         });
@@ -1106,18 +1224,166 @@ export function mountBmsRoutes(
     },
   );
 
+  app.patch(
+    "/api/supplier-payouts/:id",
+    requireAuth,
+    requireAnyPermission("finance", "suppliers"),
+    requireRole("super_admin", "agency_admin", "accountant"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const existing = await db.supplierPayout.findFirst({
+          where: { id: paramId(req), ...agencyScope(req) },
+        });
+        if (!existing) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const amount = req.body?.amount !== undefined ? Number(req.body.amount) : existing.amount;
+        const amountPaid = req.body?.amountPaid !== undefined ? Number(req.body.amountPaid) : existing.amountPaid;
+        const dueDate = req.body?.dueDate !== undefined ? req.body.dueDate : existing.dueDate;
+        const scheduledPayDate =
+          req.body?.scheduledPayDate !== undefined ? req.body.scheduledPayDate : existing.scheduledPayDate;
+        const data: Record<string, unknown> = {
+          amount,
+          amountPaid,
+          status: derivePayoutStatus(amount, amountPaid, dueDate, scheduledPayDate),
+        };
+        for (const k of [
+          "paymentMode", "utr", "paymentDate", "paymentTime", "dueDate",
+          "reminderDaysBefore", "scheduledPayDate", "invoiceUrl", "notes",
+        ] as const) {
+          if (req.body?.[k] !== undefined) data[k] = req.body[k];
+        }
+        const payout = await db.supplierPayout.update({ where: { id: existing.id }, data });
+        await writeAudit({
+          req,
+          agencyId: payout.agencyId,
+          bookingId: payout.bookingId,
+          action: "Supplier Payout Updated",
+          module: "finance",
+          previousValue: existing,
+          updatedValue: payout,
+        });
+        res.json({ payout });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/supplier-payouts/process-reminders",
+    requireAuth,
+    requireAnyPermission("finance", "bookings"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const reminded = await processPayoutReminders(agencyScope(req));
+        res.json({ reminded });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
   app.get(
     "/api/supplier-payouts",
     requireAuth,
-    requireAnyPermission("finance", "suppliers"),
+    requireAnyPermission("finance", "suppliers", "bookings"),
     async (req: AuthRequest, res: Response) => {
       try {
+        await processPayoutReminders(agencyScope(req));
+        const status = req.query.status as string | undefined;
         const payouts = await db.supplierPayout.findMany({
-          where: agencyScope(req),
-          orderBy: { createdAt: "desc" },
+          where: {
+            ...agencyScope(req),
+            ...(status ? { status } : {}),
+          },
+          orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
           take: 200,
+          include: {
+            booking: { select: { bookingRef: true, customerName: true, destination: true } },
+          },
         });
         res.json({ payouts });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
+  // ── Itinerary (ops edit) ─────────────────────────────────────────────────
+  app.put(
+    "/api/bookings/:id/itinerary",
+    requireAuth,
+    requireAnyPermission("bookings", "holiday"),
+    requireRole("super_admin", "agency_admin", "operations"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const booking = await db.booking.findFirst({
+          where: { id: paramId(req), ...agencyScope(req) },
+        });
+        if (!booking) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const itinerary = Array.isArray(req.body?.itinerary) ? req.body.itinerary : req.body?.days;
+        if (!Array.isArray(itinerary)) {
+          res.status(400).json({ error: "itinerary array is required" });
+          return;
+        }
+        const bookingUpdated = await db.booking.update({
+          where: { id: booking.id },
+          data: { itinerary },
+          include: BOOKING_INCLUDE,
+        });
+        await writeAudit({
+          req,
+          agencyId: booking.agencyId,
+          bookingId: booking.id,
+          action: "Itinerary Updated",
+          updatedValue: { days: itinerary.length },
+        });
+        res.json({ booking: bookingUpdated });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
+  // ── Travel details ───────────────────────────────────────────────────────
+  app.put(
+    "/api/bookings/:id/travel-details",
+    requireAuth,
+    requireAnyPermission("bookings", "holiday"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const booking = await db.booking.findFirst({
+          where: { id: paramId(req), ...agencyScope(req) },
+          include: { services: true },
+        });
+        if (!booking) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const travelDetails = req.body?.travelDetails ?? req.body;
+        const bookingUpdated = await db.booking.update({
+          where: { id: booking.id },
+          data: { travelDetails },
+          include: BOOKING_INCLUDE,
+        });
+        const check = travelDetailsComplete(travelDetails, bookingUpdated.services);
+        await writeAudit({
+          req,
+          agencyId: booking.agencyId,
+          bookingId: booking.id,
+          action: "Travel Details Updated",
+          updatedValue: { travelDetails, complete: check.ok },
+        });
+        res.json({ booking: bookingUpdated, travelComplete: check.ok, missing: check.missing });
       } catch (e) {
         logger.error(e);
         res.status(500).json({ error: "Server error" });
@@ -1179,6 +1445,26 @@ export function mountBmsRoutes(
           return;
         }
         const priceDelta = Number(req.body?.priceDelta) || 0;
+        if (booking.pricingLocked && priceDelta > 0) {
+          const current = booking.packageValue ?? booking.amount;
+          const proposed = current + priceDelta;
+          const approval = await createSellingPriceIncreaseRequest({
+            bookingId: booking.id,
+            agencyId: booking.agencyId,
+            bookingRef: booking.bookingRef,
+            currentPackageValue: current,
+            proposedPackageValue: proposed,
+            reason: req.body?.description ? String(req.body.description) : undefined,
+            requestedById: req.auth?.userId,
+            requestedByName: req.auth?.email,
+          });
+          res.status(409).json({
+            code: "APPROVAL_REQUIRED",
+            error: "Selling price increase requires super admin approval",
+            approval,
+          });
+          return;
+        }
         const mod = await db.bookingModification.create({
           data: {
             bookingId: booking.id,
@@ -1256,6 +1542,24 @@ export function mountBmsRoutes(
             cancellationCharges: Number(req.body?.cancellationCharges) || 0,
             supportingDocs: req.body?.supportingDocs || [],
             status: "Submitted",
+          },
+        });
+        const due = new Date();
+        due.setDate(due.getDate() + 2);
+        await db.task.create({
+          data: {
+            agencyId: booking.agencyId,
+            branchId: booking.branchId,
+            bookingId: booking.id,
+            title: `Change request: ${requestType}`,
+            description: req.body?.description || `${requestType} on ${booking.bookingRef}`,
+            assignedTo: "Operations",
+            assignedBy: req.auth?.email || "System",
+            department: "Operations",
+            priority: cr.priority === "High" ? "High" : "Medium",
+            status: "To Do",
+            dueDate: due.toISOString().slice(0, 10),
+            relatedTo: cr.requestRef,
           },
         });
         await writeAudit({
@@ -1515,6 +1819,202 @@ export function mountBmsRoutes(
               .slice(0, 20),
           },
         });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
+  // ── Super admin selling price adjustment ─────────────────────────────────
+  app.post(
+    "/api/bookings/:id/adjust-selling-price",
+    requireAuth,
+    requireRole("super_admin", "agency_admin"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const booking = await db.booking.findFirst({
+          where: { id: paramId(req), ...agencyScope(req) },
+        });
+        if (!booking) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const newPackageValue = Number(req.body?.packageValue);
+        if (!newPackageValue || newPackageValue < 0) {
+          res.status(400).json({ error: "Valid package value is required" });
+          return;
+        }
+        const previous = booking.packageValue ?? booking.amount;
+        const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+        if (newPackageValue < previous && !reason) {
+          res.status(400).json({ error: "Reason is required when applying a discount (price decrease)" });
+          return;
+        }
+        await db.bookingModification.create({
+          data: {
+            bookingId: booking.id,
+            modType: "Selling Price Adjustment",
+            description: reason || (newPackageValue < previous ? "Admin discount" : "Super admin price adjustment"),
+            previousValue: { packageValue: previous },
+            updatedValue: { packageValue: newPackageValue },
+            priceDelta: newPackageValue - previous,
+            performedBy: req.auth?.email,
+          },
+        });
+        await db.booking.update({
+          where: { id: booking.id },
+          data: { packageValue: newPackageValue },
+        });
+        const refreshed = await refreshBookingTotals(booking.id);
+        await writeAudit({
+          req,
+          agencyId: booking.agencyId,
+          bookingId: booking.id,
+          action: "Selling Price Adjusted",
+          previousValue: { packageValue: previous },
+          updatedValue: { packageValue: newPackageValue },
+          details: req.body?.reason,
+        });
+        res.json({ booking: refreshed });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
+  // ── Cost deviation approvals ─────────────────────────────────────────────
+  app.post(
+    "/api/bookings/:id/request-selling-price-increase",
+    requireAuth,
+    requireAnyPermission("bookings", "finance", "holiday"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const booking = await db.booking.findFirst({
+          where: { id: paramId(req), ...agencyScope(req) },
+        });
+        if (!booking) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const proposedPackageValue = Number(req.body?.proposedPackageValue);
+        const current = booking.packageValue ?? booking.amount;
+        if (!proposedPackageValue || proposedPackageValue <= current) {
+          res.status(400).json({ error: "Proposed selling price must be higher than current package value" });
+          return;
+        }
+        const approval = await createSellingPriceIncreaseRequest({
+          bookingId: booking.id,
+          agencyId: booking.agencyId,
+          bookingRef: booking.bookingRef,
+          currentPackageValue: current,
+          proposedPackageValue,
+          reason: req.body?.reason ? String(req.body.reason) : undefined,
+          requestedById: req.auth?.userId,
+          requestedByName: req.auth?.email,
+        });
+        res.status(201).json({ approval });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/cost-deviations/:id/approve",
+    requireAuth,
+    requireRole("super_admin", "agency_admin"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const id = paramId(req);
+        const approval = await db.costDeviationApproval.findFirst({
+          where: { id, ...agencyScope(req) },
+          include: { booking: true },
+        });
+        if (!approval) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const result = await approveCostDeviation(id, req.auth?.email || "admin", req.body?.notes);
+        if ("error" in result) {
+          res.status(400).json({ error: result.error });
+          return;
+        }
+        let booking = await db.booking.findUnique({
+          where: { id: approval.bookingId },
+          include: BOOKING_INCLUDE,
+        });
+        if (approval.deviationType === "selling_price_increase") {
+          booking = await refreshBookingTotals(approval.bookingId);
+        }
+        await writeAudit({
+          req,
+          agencyId: approval.agencyId,
+          bookingId: approval.bookingId,
+          action: "Cost Deviation Approved",
+          updatedValue: result.approval,
+        });
+        res.json({ approval: result.approval, booking });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/cost-deviations/:id/reject",
+    requireAuth,
+    requireRole("super_admin", "agency_admin"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const id = paramId(req);
+        const approval = await db.costDeviationApproval.findFirst({
+          where: { id, ...agencyScope(req) },
+        });
+        if (!approval) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const result = await rejectCostDeviation(id, req.auth?.email || "admin", req.body?.notes);
+        if ("error" in result) {
+          res.status(400).json({ error: result.error });
+          return;
+        }
+        await writeAudit({
+          req,
+          agencyId: approval.agencyId,
+          bookingId: approval.bookingId,
+          action: "Cost Deviation Rejected",
+          updatedValue: result.approval,
+        });
+        res.json({ approval: result.approval });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/cost-deviations",
+    requireAuth,
+    requireRole("super_admin", "agency_admin"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const status = (req.query.status as string) || "Pending";
+        const approvals = await db.costDeviationApproval.findMany({
+          where: { status, ...agencyScope(req) },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+          include: {
+            booking: { select: { bookingRef: true, customerName: true, destination: true } },
+            bookingService: { select: { serviceType: true, title: true } },
+          },
+        });
+        res.json({ approvals });
       } catch (e) {
         logger.error(e);
         res.status(500).json({ error: "Server error" });

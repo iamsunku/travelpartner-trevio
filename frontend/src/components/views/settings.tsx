@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PageShell, PageHeader, DemoModuleBanner, DemoDataBadge } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
 import { api, apiFetch } from "@/lib/api";
+import { stateFromGstin } from "@/lib/gst-state";
 import { useAuthStore } from "@/store/app-store";
 import {
   MODULE_LABELS, ROLE_CRUD,
@@ -95,6 +96,7 @@ export function SettingsView() {
         <TabsList className="w-full sm:w-auto overflow-x-auto">
           <TabsTrigger value="company"><Building2 className="w-3.5 h-3.5 mr-1.5" /> Company</TabsTrigger>
           <TabsTrigger value="users"><Users className="w-3.5 h-3.5 mr-1.5" /> Users & Roles</TabsTrigger>
+          <TabsTrigger value="agents"><Plane className="w-3.5 h-3.5 mr-1.5" /> Travel Agents</TabsTrigger>
           <TabsTrigger value="api-keys"><KeyRound className="w-3.5 h-3.5 mr-1.5" /> API Keys & Integrations</TabsTrigger>
           <TabsTrigger value="system"><Cog className="w-3.5 h-3.5 mr-1.5" /> System</TabsTrigger>
           <TabsTrigger value="security"><Shield className="w-3.5 h-3.5 mr-1.5" /> Security</TabsTrigger>
@@ -102,6 +104,7 @@ export function SettingsView() {
 
         <TabsContent value="company" className="mt-4"><CompanyTab /></TabsContent>
         <TabsContent value="users" className="mt-4"><UsersTab /></TabsContent>
+        <TabsContent value="agents" className="mt-4"><AgentsTab /></TabsContent>
         <TabsContent value="api-keys" className="mt-4"><ApiKeysTab /></TabsContent>
         <TabsContent value="system" className="mt-4"><SystemTab /></TabsContent>
         <TabsContent value="security" className="mt-4"><SecurityTab /></TabsContent>
@@ -121,6 +124,7 @@ function CompanyTab() {
     email: "",
     phone: "",
     address: "",
+    state: "",
     gstNumber: "",
     panNumber: "",
     logo: "",
@@ -136,6 +140,7 @@ function CompanyTab() {
           email: res.email || "",
           phone: res.phone || "",
           address: res.address || "",
+          state: res.state || "",
           gstNumber: res.gstNumber || "",
           panNumber: res.panNumber || "",
           logo: res.logo || "",
@@ -189,6 +194,7 @@ function CompanyTab() {
         email: form.email,
         phone: form.phone,
         address: form.address,
+        state: form.state,
         gstNumber: form.gstNumber,
         panNumber: form.panNumber,
         logo: form.logo,
@@ -273,7 +279,24 @@ function CompanyTab() {
             </div>
             <div className="space-y-1.5">
               <Label>GST Number</Label>
-              <Input value={form.gstNumber} onChange={(e) => setForm({ ...form, gstNumber: e.target.value })} className="font-mono" />
+              <Input
+                value={form.gstNumber}
+                onChange={(e) => {
+                  const gstNumber = e.target.value;
+                  const derived = stateFromGstin(gstNumber);
+                  setForm((prev) => ({
+                    ...prev,
+                    gstNumber,
+                    state: prev.state || derived || "",
+                  }));
+                }}
+                className="font-mono"
+              />
+              <p className="text-[10px] text-muted-foreground">State auto-fills from GSTIN when left blank.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>State</Label>
+              <Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} placeholder="e.g. Maharashtra" />
             </div>
             <div className="space-y-1.5">
               <Label>PAN Number</Label>
@@ -1195,5 +1218,115 @@ function ApiKeysTab() {
         </Button>
       </div>
     </div>
+  );
+}
+
+function AgentsTab() {
+  const { toast } = useToast();
+  const user = useAuthStore((s) => s.user);
+  const canManage = user && ["super_admin", "agency_admin"].includes(user.role);
+  const [agents, setAgents] = useState<Array<{
+    id: string;
+    name: string;
+    email: string;
+    status: string;
+    productAccess: { flights: boolean; hotels: boolean; packages: boolean };
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canManage) return;
+    api.getAgents()
+      .then((res) => setAgents(res.agents || []))
+      .catch(() => setAgents([]))
+      .finally(() => setLoading(false));
+  }, [canManage]);
+
+  if (!canManage) {
+    return <p className="text-sm text-muted-foreground">Only admins can manage travel agent product access.</p>;
+  }
+
+  async function saveAccess(agentId: string, patch: Partial<{ flights: boolean; hotels: boolean; packages: boolean }>) {
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) return;
+    const next = { ...agent.productAccess, ...patch };
+    setSavingId(agentId);
+    try {
+      await api.updateAgentProductAccess(agentId, next);
+      setAgents((prev) => prev.map((a) => (a.id === agentId ? { ...a, productAccess: next } : a)));
+      toast({ title: "Agent access updated" });
+    } catch {
+      toast({ title: "Update failed", variant: "destructive" });
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Travel agent product access</CardTitle>
+        <CardDescription>
+          Control which products each B2B agent can book. Flight access is off by default for trusted agents only.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">Loading agents…</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Agent</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-center">Flights</TableHead>
+                <TableHead className="text-center">Hotels</TableHead>
+                <TableHead className="text-center">Packages</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {agents.map((a) => (
+                <TableRow key={a.id}>
+                  <TableCell>
+                    <p className="text-sm font-medium">{a.name}</p>
+                    <p className="text-xs text-muted-foreground">{a.email}</p>
+                  </TableCell>
+                  <TableCell><Badge variant="secondary">{a.status}</Badge></TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox
+                      checked={a.productAccess.flights}
+                      disabled={savingId === a.id}
+                      onCheckedChange={(v) => saveAccess(a.id, { flights: Boolean(v) })}
+                    />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox
+                      checked={a.productAccess.hotels}
+                      disabled={savingId === a.id}
+                      onCheckedChange={(v) => saveAccess(a.id, { hotels: Boolean(v) })}
+                    />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Checkbox
+                      checked={a.productAccess.packages}
+                      disabled={savingId === a.id}
+                      onCheckedChange={(v) => saveAccess(a.id, { packages: Boolean(v) })}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+              {agents.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">
+                    No travel agents registered yet.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
   );
 }

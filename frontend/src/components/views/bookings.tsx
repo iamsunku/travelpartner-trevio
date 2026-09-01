@@ -8,7 +8,7 @@ import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore } from "@/store/app-store";
 import { api, ApiError } from "@/lib/api";
 import { mapApiBooking } from "@/lib/api-mappers";
-import type { Booking, BookingPassenger } from "@/types";
+import type { Booking, BookingPassenger, CostDeviationApproval, TravelDetailsRecord } from "@/types";
 import {
   formatINR, formatFullINR, StatusBadge, PageHeader, PageShell,
 } from "@/components/shared/ui-helpers";
@@ -32,6 +32,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
+import { supplierTypesForService } from "@/lib/supplier-taxonomy";
+import { downloadBookingInvoice, downloadBookingItinerary } from "@/lib/booking-documents";
+import type { SupplierRecord } from "@/types";
 
 const SERVICE_ICON: Record<string, React.ElementType> = {
   Flight: Plane, Hotel: Building2, Holiday: Palmtree,
@@ -74,7 +77,7 @@ const ADDON_TYPES = [
   "Private Transfer", "Meal Upgrade", "Airport Assistance", "Visa",
 ];
 
-type TabKey = "overview" | "passengers" | "payments" | "ops" | "requests" | "finance";
+type TabKey = "overview" | "passengers" | "payments" | "travel" | "itinerary" | "ops" | "requests" | "finance";
 
 function BookingDetailDialog({
   bookingId,
@@ -102,9 +105,30 @@ function BookingDetailDialog({
   const [addonType, setAddonType] = useState(ADDON_TYPES[0]);
   const [addonAmount, setAddonAmount] = useState("2500");
   const [busy, setBusy] = useState(false);
+  const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
+  const [opsForm, setOpsForm] = useState<Record<string, { supplierId: string; costPrice: string; confirmationNo: string }>>({});
+  const [proposedSelling, setProposedSelling] = useState("");
+  const [sellingReason, setSellingReason] = useState("");
+  const [travelForm, setTravelForm] = useState<TravelDetailsRecord>({ flights: [{}], hotel: {} });
+  const [payoutDueDate, setPayoutDueDate] = useState("");
+  const [payoutReminderDays, setPayoutReminderDays] = useState("2");
+  const [payoutInvoiceUrl, setPayoutInvoiceUrl] = useState("");
+  const [payoutServiceId, setPayoutServiceId] = useState("");
+  const [itineraryDays, setItineraryDays] = useState<Array<Record<string, unknown>>>([]);
+  const [driverForms, setDriverForms] = useState<Record<string, { driverName: string; vehicleNumber: string; driverPhone: string }>>({});
+  const [adjustPrice, setAdjustPrice] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
 
   const canFinance = user && (hasPermission(user, "finance") || ["super_admin", "agency_admin", "accountant"].includes(user.role));
   const canOps = user && (hasPermission(user, "bookings") || user.role === "operations");
+  const canApproveDeviation = user && ["super_admin", "agency_admin"].includes(user.role);
+  const canAdjustPrice = user && ["super_admin", "agency_admin"].includes(user.role);
+  const isAgent = user?.role === "travel_agent";
+  const canDownloadVouchers = !isAgent || booking?.paymentStatus === "Paid";
+  const pendingDeviations = useMemo(
+    () => (booking?.costDeviationApprovals || []).filter((d) => d.status === "Pending"),
+    [booking?.costDeviationApprovals],
+  );
 
   async function reload() {
     if (!bookingId) return;
@@ -117,6 +141,12 @@ function BookingDetailDialog({
       setPoliciesOk(Boolean(mapped.policiesAcceptedAt));
       setTasks((res.tasks || []) as typeof tasks);
       setAudits((res.audits || []) as typeof audits);
+      const td = (mapped.travelDetails || { flights: [{}], hotel: {} }) as TravelDetailsRecord;
+      setTravelForm({
+        flights: td.flights?.length ? td.flights : [{}],
+        hotel: td.hotel || {},
+      });
+      setItineraryDays(Array.isArray(mapped.itinerary) ? [...mapped.itinerary] : []);
       upsertBooking(mapped);
     } catch (e) {
       toast({
@@ -137,17 +167,50 @@ function BookingDetailDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, bookingId]);
 
+  useEffect(() => {
+    if (!open || tab !== "ops") return;
+    api.getSuppliers({ status: "Active" })
+      .then((res) => setSuppliers(res.suppliers || []))
+      .catch(() => setSuppliers([]));
+  }, [open, tab]);
+
   if (!bookingId) return null;
 
-  async function run(label: string, fn: () => Promise<void>) {
+  async function run(label: string, fn: () => Promise<void>, opts?: { approvalOk?: boolean }) {
     setBusy(true);
     try {
       await fn();
       toast({ title: label });
       await reload();
     } catch (e) {
+      if (opts?.approvalOk && e instanceof ApiError && e.code === "APPROVAL_REQUIRED") {
+        toast({
+          title: "Sent for super admin approval",
+          description: e.message,
+        });
+        await reload();
+        return;
+      }
       toast({
         title: label + " failed",
+        description: e instanceof ApiError ? e.message : "Error",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function decideDeviation(dev: CostDeviationApproval, approve: boolean) {
+    setBusy(true);
+    try {
+      if (approve) await api.approveCostDeviation(dev.id);
+      else await api.rejectCostDeviation(dev.id);
+      toast({ title: approve ? "Deviation approved" : "Deviation rejected" });
+      await reload();
+    } catch (e) {
+      toast({
+        title: "Action failed",
         description: e instanceof ApiError ? e.message : "Error",
         variant: "destructive",
       });
@@ -187,6 +250,8 @@ function BookingDetailDialog({
                 ["overview", "Overview"],
                 ["passengers", "Passengers"],
                 ["payments", "Payments"],
+                ["travel", "Travel"],
+                ...(canOps ? [["itinerary", "Itinerary"] as const] : []),
                 ["ops", "Operations"],
                 ["requests", "Requests"],
                 ["finance", "Finance"],
@@ -282,6 +347,36 @@ function BookingDetailDialog({
                     </CardContent>
                   </Card>
                 </div>
+
+                {(booking.services || []).some((s) => s.voucherUrl || s.ticketUrl) && (
+                  <div className="rounded-lg border p-3 space-y-2">
+                    <p className="text-xs font-semibold">Vouchers & tickets</p>
+                    {!canDownloadVouchers && (
+                      <p className="text-[10px] text-amber-600">Available after booking is fully paid</p>
+                    )}
+                    {(booking.services || []).filter((s) => s.voucherUrl || s.ticketUrl).map((svc) => (
+                      <div key={svc.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span>{svc.serviceType}: {svc.title}</span>
+                        {canDownloadVouchers ? (
+                          <div className="flex gap-2">
+                            {svc.voucherUrl && (
+                              <Button size="sm" variant="outline" asChild>
+                                <a href={svc.voucherUrl} target="_blank" rel="noreferrer">Voucher</a>
+                              </Button>
+                            )}
+                            {svc.ticketUrl && (
+                              <Button size="sm" variant="outline" asChild>
+                                <a href={svc.ticketUrl} target="_blank" rel="noreferrer">Ticket</a>
+                              </Button>
+                            )}
+                          </div>
+                        ) : (
+                          <Badge variant="secondary">Locked</Badge>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => run("Documents marked ready", () => api.markBookingDocumentsReady(booking.id).then(() => undefined))}>
@@ -493,35 +588,318 @@ function BookingDetailDialog({
               </div>
             )}
 
+            {tab === "travel" && (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Flight and hotel details are required before the booking can be marked fully confirmed (for airport transfers).
+                </p>
+                <div className="border rounded-lg p-3 space-y-2">
+                  <p className="text-xs font-semibold">Flight details</p>
+                  {(travelForm.flights || [{}]).map((f, idx) => (
+                    <div key={idx} className="grid gap-2 sm:grid-cols-3">
+                      <Field label="From" value={f.from || ""} onChange={(v) => {
+                        const flights = [...(travelForm.flights || [])];
+                        flights[idx] = { ...flights[idx], from: v };
+                        setTravelForm((prev) => ({ ...prev, flights }));
+                      }} />
+                      <Field label="To" value={f.to || ""} onChange={(v) => {
+                        const flights = [...(travelForm.flights || [])];
+                        flights[idx] = { ...flights[idx], to: v };
+                        setTravelForm((prev) => ({ ...prev, flights }));
+                      }} />
+                      <Field label="Date" value={f.date || ""} onChange={(v) => {
+                        const flights = [...(travelForm.flights || [])];
+                        flights[idx] = { ...flights[idx], date: v };
+                        setTravelForm((prev) => ({ ...prev, flights }));
+                      }} placeholder="YYYY-MM-DD" />
+                      <Field label="Airline" value={f.airline || ""} onChange={(v) => {
+                        const flights = [...(travelForm.flights || [])];
+                        flights[idx] = { ...flights[idx], airline: v };
+                        setTravelForm((prev) => ({ ...prev, flights }));
+                      }} />
+                      <Field label="Flight no." value={f.flightNumber || ""} onChange={(v) => {
+                        const flights = [...(travelForm.flights || [])];
+                        flights[idx] = { ...flights[idx], flightNumber: v };
+                        setTravelForm((prev) => ({ ...prev, flights }));
+                      }} />
+                      <Field label="PNR" value={f.pnr || ""} onChange={(v) => {
+                        const flights = [...(travelForm.flights || [])];
+                        flights[idx] = { ...flights[idx], pnr: v };
+                        setTravelForm((prev) => ({ ...prev, flights }));
+                      }} />
+                    </div>
+                  ))}
+                </div>
+                <div className="border rounded-lg p-3 space-y-2">
+                  <p className="text-xs font-semibold">Hotel details</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Field label="Hotel name *" value={travelForm.hotel?.name || ""} onChange={(v) => setTravelForm((prev) => ({
+                      ...prev,
+                      hotel: { ...prev.hotel, name: v },
+                    }))} />
+                    <Field label="Confirmation no." value={travelForm.hotel?.confirmationNo || ""} onChange={(v) => setTravelForm((prev) => ({
+                      ...prev,
+                      hotel: { ...prev.hotel, confirmationNo: v },
+                    }))} />
+                    <Field label="Check-in" value={travelForm.hotel?.checkIn || ""} onChange={(v) => setTravelForm((prev) => ({
+                      ...prev,
+                      hotel: { ...prev.hotel, checkIn: v },
+                    }))} placeholder="YYYY-MM-DD" />
+                    <Field label="Check-out" value={travelForm.hotel?.checkOut || ""} onChange={(v) => setTravelForm((prev) => ({
+                      ...prev,
+                      hotel: { ...prev.hotel, checkOut: v },
+                    }))} placeholder="YYYY-MM-DD" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="self-hotel"
+                      checked={Boolean(travelForm.hotel?.selfBooked)}
+                      onCheckedChange={(v) => setTravelForm((prev) => ({
+                        ...prev,
+                        hotel: { ...prev.hotel, selfBooked: Boolean(v) },
+                      }))}
+                    />
+                    <Label htmlFor="self-hotel" className="text-xs">Self-booked hotel (guest arranged separately)</Label>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => run("Travel details saved", async () => {
+                    const res = await api.saveBookingTravelDetails(booking.id, travelForm as Record<string, unknown>);
+                    if (!res.travelComplete) {
+                      toast({
+                        title: "Saved — still incomplete",
+                        description: `Missing: ${res.missing.join(", ")}`,
+                      });
+                    }
+                  })}
+                >
+                  Save travel details
+                </Button>
+              </div>
+            )}
+
+            {tab === "itinerary" && canOps && (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Ops can shuffle days, update pickup/drop locations and timings. Changes are saved to the customer itinerary.
+                </p>
+                {itineraryDays.length === 0 && (
+                  <p className="text-xs text-muted-foreground border rounded p-3">No itinerary on this booking yet.</p>
+                )}
+                {itineraryDays.map((day, di) => {
+                  const items = Array.isArray(day.items) ? (day.items as Array<Record<string, unknown>>) : [];
+                  return (
+                    <div key={di} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex flex-wrap gap-2 items-center justify-between">
+                        <Input
+                          className="h-8 text-xs font-semibold flex-1 min-w-[140px]"
+                          value={String(day.title || `Day ${di + 1}`)}
+                          onChange={(e) => {
+                            const days = [...itineraryDays];
+                            days[di] = { ...days[di], title: e.target.value, day: di + 1 };
+                            setItineraryDays(days);
+                          }}
+                        />
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="outline" disabled={di === 0 || busy} onClick={() => {
+                            const days = [...itineraryDays];
+                            [days[di - 1], days[di]] = [days[di], days[di - 1]];
+                            setItineraryDays(days.map((d, i) => ({ ...d, day: i + 1 })));
+                          }}>↑</Button>
+                          <Button size="sm" variant="outline" disabled={di === itineraryDays.length - 1 || busy} onClick={() => {
+                            const days = [...itineraryDays];
+                            [days[di], days[di + 1]] = [days[di + 1], days[di]];
+                            setItineraryDays(days.map((d, i) => ({ ...d, day: i + 1 })));
+                          }}>↓</Button>
+                        </div>
+                      </div>
+                      {items.map((item, ii) => (
+                        <div key={ii} className="grid gap-2 sm:grid-cols-3 text-xs">
+                          <Field label="Activity" value={String(item.activityName || item.title || "")} onChange={(v) => {
+                            const days = [...itineraryDays];
+                            const rowItems = [...items];
+                            rowItems[ii] = { ...rowItems[ii], activityName: v, title: v };
+                            days[di] = { ...days[di], items: rowItems };
+                            setItineraryDays(days);
+                          }} />
+                          <Field label="Pickup / location" value={String(item.pickupLocation || item.location || "")} onChange={(v) => {
+                            const days = [...itineraryDays];
+                            const rowItems = [...items];
+                            rowItems[ii] = { ...rowItems[ii], pickupLocation: v, location: v };
+                            days[di] = { ...days[di], items: rowItems };
+                            setItineraryDays(days);
+                          }} />
+                          <Field label="Time" value={String(item.time || item.startTime || "")} onChange={(v) => {
+                            const days = [...itineraryDays];
+                            const rowItems = [...items];
+                            rowItems[ii] = { ...rowItems[ii], time: v, startTime: v };
+                            days[di] = { ...days[di], items: rowItems };
+                            setItineraryDays(days);
+                          }} />
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+                {itineraryDays.length > 0 && (
+                  <div className="flex gap-2">
+                    <Button size="sm" disabled={busy} onClick={() => run("Itinerary saved", async () => {
+                      await api.saveBookingItinerary(booking.id, itineraryDays);
+                    })}>
+                      Save itinerary
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => {
+                      const ok = downloadBookingItinerary(booking);
+                      if (!ok) toast({ title: "Popup blocked", description: "Allow popups to print itinerary", variant: "destructive" });
+                    }}>
+                      Download PDF
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {tab === "ops" && (
               <div className="space-y-3">
-                <p className="text-xs text-muted-foreground">Confirm services and upload vouchers / tickets.</p>
-                {(booking.services || []).map((svc) => (
-                  <div key={svc.id} className="border rounded-lg p-3 flex flex-wrap items-center gap-2 justify-between">
-                    <div className="text-xs">
-                      <p className="font-semibold">{svc.serviceType}: {svc.title}</p>
-                      <p className="text-muted-foreground">Status: {svc.status}</p>
-                    </div>
-                    {canOps && (
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy}
-                          onClick={() => run(`${svc.serviceType} confirmed`, async () => {
-                            await api.updateBookingService(booking.id, svc.id, {
-                              status: "Confirmed",
-                              confirmationNo: `CNF-${Date.now().toString().slice(-6)}`,
-                              voucherUrl: `/vouchers/${booking.bookingRef}-${svc.serviceType}.pdf`,
-                            });
-                          })}
-                        >
-                          Confirm + Voucher
-                        </Button>
+                <p className="text-xs text-muted-foreground">
+                  Confirm each component with the supplier and actual cost (total invoice amount).
+                </p>
+                <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                  Complete the Travel tab (flight from/to/date + hotel name) before the booking can reach Confirmed status.
+                </p>
+                {(booking.services || []).map((svc) => {
+                  const allowedTypes = supplierTypesForService(svc.serviceType);
+                  const filtered = suppliers.filter((s) => allowedTypes.includes(s.type as typeof allowedTypes[number]));
+                  const form = opsForm[svc.id] || {
+                    supplierId: "",
+                    costPrice: String(svc.costPrice || ""),
+                    confirmationNo: svc.confirmationNo || "",
+                  };
+                  const selectedSupplier = suppliers.find((s) => s.id === form.supplierId);
+                  const quotedCost = svc.quotedCostPrice ?? svc.costPrice ?? 0;
+                  const enteredCost = Number(form.costPrice) || 0;
+                  const overQuoted = enteredCost > quotedCost;
+                  const pendingSvc = pendingDeviations.find((d) => d.bookingServiceId === svc.id);
+                  return (
+                    <div key={svc.id} className="border rounded-lg p-3 space-y-2">
+                      <div className="flex flex-wrap justify-between gap-2">
+                        <div className="text-xs">
+                          <p className="font-semibold">{svc.serviceType}: {svc.title}</p>
+                          <p className="text-muted-foreground">Status: {svc.status}</p>
+                          <p className="text-muted-foreground">Quoted cost: {formatFullINR(quotedCost)}</p>
+                          {svc.supplierName && <p className="text-muted-foreground">Supplier: {svc.supplierName}</p>}
+                        </div>
+                        <div className="flex gap-1 flex-wrap">
+                          {svc.status === "Confirmed" && <Badge variant="secondary">Confirmed</Badge>}
+                          {pendingSvc && <Badge variant="outline">Awaiting approval</Badge>}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {canOps && svc.status !== "Confirmed" && !pendingSvc && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div className="sm:col-span-2 space-y-1">
+                            <Label className="text-[10px]">Confirm with supplier *</Label>
+                            <Select
+                              value={form.supplierId || "none"}
+                              onValueChange={(v) => {
+                                setOpsForm((prev) => ({
+                                  ...prev,
+                                  [svc.id]: {
+                                    ...form,
+                                    supplierId: v === "none" ? "" : v,
+                                  },
+                                }));
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Search supplier…" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Select supplier…</SelectItem>
+                                {filtered.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.name} · {s.type} · {s.city}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Total cost (invoice)</Label>
+                            <Input
+                              className="h-8 text-xs"
+                              type="number"
+                              min={0}
+                              value={form.costPrice}
+                              onChange={(e) => setOpsForm((prev) => ({
+                                ...prev,
+                                [svc.id]: { ...form, costPrice: e.target.value },
+                              }))}
+                              placeholder="e.g. 600"
+                            />
+                            {overQuoted && (
+                              <p className="text-[10px] text-amber-600">
+                                Exceeds quoted cost by {formatFullINR(enteredCost - quotedCost)} — super admin approval required
+                              </p>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px]">Confirmation no.</Label>
+                            <Input
+                              className="h-8 text-xs"
+                              value={form.confirmationNo}
+                              onChange={(e) => setOpsForm((prev) => ({
+                                ...prev,
+                                [svc.id]: { ...form, confirmationNo: e.target.value },
+                              }))}
+                              placeholder="Hotel / DMC ref"
+                            />
+                          </div>
+                          {svc.serviceType === "Transfer" && (
+                            <div className="sm:col-span-2 grid gap-2 sm:grid-cols-3 border-t pt-2">
+                              <p className="sm:col-span-3 text-[10px] font-semibold text-muted-foreground">Driver details (optional — shown on itinerary)</p>
+                              {(() => {
+                                const d = driverForms[svc.id] || {
+                                  driverName: svc.driverDetails?.driverName || "",
+                                  vehicleNumber: svc.driverDetails?.vehicleNumber || "",
+                                  driverPhone: svc.driverDetails?.driverPhone || "",
+                                };
+                                return (
+                                  <>
+                                    <Field label="Driver name" value={d.driverName} onChange={(v) => setDriverForms((p) => ({ ...p, [svc.id]: { ...d, driverName: v } }))} />
+                                    <Field label="Vehicle no." value={d.vehicleNumber} onChange={(v) => setDriverForms((p) => ({ ...p, [svc.id]: { ...d, vehicleNumber: v } }))} />
+                                    <Field label="Driver phone" value={d.driverPhone} onChange={(v) => setDriverForms((p) => ({ ...p, [svc.id]: { ...d, driverPhone: v } }))} />
+                                  </>
+                                );
+                              })()}
+                            </div>
+                          )}
+                          <div className="sm:col-span-2">
+                            <Button
+                              size="sm"
+                              disabled={busy || !form.supplierId || !form.costPrice}
+                              onClick={() => run(`${svc.serviceType} confirmed`, async () => {
+                                const sup = selectedSupplier || suppliers.find((s) => s.id === form.supplierId);
+                                if (!sup) throw new Error("Select a supplier");
+                                const d = driverForms[svc.id];
+                                await api.updateBookingService(booking.id, svc.id, {
+                                  status: "Confirmed",
+                                  supplierName: sup.name,
+                                  supplierRef: sup.id,
+                                  costPrice: Number(form.costPrice),
+                                  confirmationNo: form.confirmationNo || `CNF-${Date.now().toString().slice(-6)}`,
+                                  voucherUrl: `/vouchers/${booking.bookingRef}-${svc.serviceType}.pdf`,
+                                  ...(svc.serviceType === "Transfer" && d ? { driverDetails: d } : {}),
+                                });
+                              }, { approvalOk: true })}
+                            >
+                              Confirm with {selectedSupplier?.name || "supplier"}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 <Separator />
                 <p className="text-xs font-semibold">Operational Tasks</p>
                 <div className="space-y-1 max-h-48 overflow-y-auto">
@@ -594,6 +972,104 @@ function BookingDetailDialog({
                   <SummaryCell label="Gross Profit" value={formatFullINR(booking.grossProfit ?? 0)} />
                   <SummaryCell label="Net Profit" value={formatFullINR(booking.netProfit ?? 0)} />
                 </div>
+                {(pendingDeviations.length > 0 || canApproveDeviation) && (
+                  <div className="border rounded-lg p-3 space-y-2">
+                    <p className="text-xs font-semibold">Cost deviation approvals</p>
+                    {pendingDeviations.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No pending approvals for this booking</p>
+                    )}
+                    {pendingDeviations.map((dev) => (
+                      <div key={dev.id} className="text-xs border rounded p-2 space-y-1">
+                        <p className="font-medium">
+                          {dev.deviationType === "service_cost" ? "Supplier cost overrun" : "Selling price increase"}
+                        </p>
+                        <p className="text-muted-foreground">
+                          {dev.deviationType === "service_cost"
+                            ? `Quoted ${formatFullINR(dev.quotedCost)} → proposed ${formatFullINR(dev.proposedCost)} (+${formatFullINR(dev.deltaAmount)})`
+                            : `${formatFullINR(dev.currentPackageValue)} → ${formatFullINR(dev.proposedPackageValue ?? dev.proposedCost)}`}
+                        </p>
+                        {dev.reason && <p className="text-muted-foreground">{dev.reason}</p>}
+                        {dev.requestedByName && <p className="text-muted-foreground">Requested by {dev.requestedByName}</p>}
+                        {canApproveDeviation && (
+                          <div className="flex gap-2 pt-1">
+                            <Button size="sm" disabled={busy} onClick={() => decideDeviation(dev, true)}>Approve</Button>
+                            <Button size="sm" variant="outline" disabled={busy} onClick={() => decideDeviation(dev, false)}>Reject</Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {canAdjustPrice && (
+                  <div className="border rounded-lg p-3 space-y-2 border-violet-200 bg-violet-50/40">
+                    <p className="text-xs font-semibold">Adjust selling price (admin)</p>
+                    <p className="text-[10px] text-muted-foreground">Change customer package value without altering supplier costs. A reason is required for discounts.</p>
+                    <div className="flex flex-wrap gap-2 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">New package value</Label>
+                        <Input className="h-8 w-36 text-xs" type="number" value={adjustPrice} onChange={(e) => setAdjustPrice(e.target.value)} placeholder={String(booking.packageValue ?? booking.amount)} />
+                      </div>
+                      <Input className="h-8 flex-1 min-w-[140px] text-xs" value={adjustReason} onChange={(e) => setAdjustReason(e.target.value)} placeholder="Reason (required for discount)" />
+                      <Button size="sm" disabled={busy || !adjustPrice || (Number(adjustPrice) < (booking.packageValue ?? booking.amount) && !adjustReason.trim())} onClick={() => run("Selling price adjusted", async () => {
+                        await api.adjustBookingSellingPrice(booking.id, {
+                          packageValue: Number(adjustPrice),
+                          reason: adjustReason || undefined,
+                        });
+                        setAdjustPrice("");
+                        setAdjustReason("");
+                      })}>
+                        Apply
+                      </Button>
+                    </div>
+                    {adjustPrice && !Number.isNaN(Number(adjustPrice)) && (
+                      <p className={`text-[10px] ${Number(adjustPrice) - (booking.packageValue ?? booking.amount) < 0 ? "text-emerald-700" : Number(adjustPrice) - (booking.packageValue ?? booking.amount) > 0 ? "text-amber-700" : "text-muted-foreground"}`}>
+                        {formatFullINR(booking.packageValue ?? booking.amount)} → {formatFullINR(Number(adjustPrice))}
+                        {" "}({Number(adjustPrice) - (booking.packageValue ?? booking.amount) >= 0 ? "+" : ""}{formatFullINR(Number(adjustPrice) - (booking.packageValue ?? booking.amount))})
+                      </p>
+                    )}
+                  </div>
+                )}
+                {(booking.grossProfit ?? 0) < 0 && canFinance && (
+                  <div className="border rounded-lg p-3 space-y-2 border-amber-200 bg-amber-50/50">
+                    <p className="text-xs font-semibold text-amber-800">Margin eaten — request selling price increase</p>
+                    <p className="text-[10px] text-amber-700">
+                      Supplier costs exceed selling price. Customer price stays locked until super admin approves an increase.
+                    </p>
+                    <div className="flex flex-wrap gap-2 items-end">
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">New package value</Label>
+                        <Input
+                          className="h-8 w-36 text-xs"
+                          type="number"
+                          min={(booking.packageValue ?? booking.amount) + 1}
+                          value={proposedSelling}
+                          onChange={(e) => setProposedSelling(e.target.value)}
+                          placeholder={String((booking.packageValue ?? booking.amount) + 5000)}
+                        />
+                      </div>
+                      <Input
+                        className="h-8 flex-1 min-w-[140px] text-xs"
+                        value={sellingReason}
+                        onChange={(e) => setSellingReason(e.target.value)}
+                        placeholder="Reason for increase"
+                      />
+                      <Button
+                        size="sm"
+                        disabled={busy || !proposedSelling}
+                        onClick={() => run("Selling price increase requested", async () => {
+                          await api.requestSellingPriceIncrease(booking.id, {
+                            proposedPackageValue: Number(proposedSelling),
+                            reason: sellingReason || undefined,
+                          });
+                          setProposedSelling("");
+                          setSellingReason("");
+                        })}
+                      >
+                        Request approval
+                      </Button>
+                    </div>
+                  </div>
+                )}
                 {canFinance && (
                   <div className="flex flex-wrap gap-2">
                     {["Proforma", "Tax Invoice", "Credit Note", "Debit Note"].map((t) => (
@@ -601,7 +1077,8 @@ function BookingDetailDialog({
                         key={t}
                         size="sm"
                         variant="outline"
-                        disabled={busy}
+                        disabled={busy || (t === "Tax Invoice" && booking.paymentStatus !== "Paid")}
+                        title={t === "Tax Invoice" && booking.paymentStatus !== "Paid" ? "Requires full payment" : undefined}
                         onClick={() => run(`${t} generated`, async () => {
                           await api.createBookingInvoice(booking.id, { invoiceType: t });
                         })}
@@ -647,9 +1124,17 @@ function BookingDetailDialog({
                 <div>
                   <p className="text-xs font-semibold mb-1">Invoices</p>
                   {(booking.invoices || []).map((inv) => (
-                    <div key={inv.id} className="text-xs flex justify-between border-b py-1">
+                    <div key={inv.id} className="text-xs flex flex-wrap justify-between gap-2 border-b py-1 items-center">
                       <span>{inv.invoiceNo} · {inv.invoiceType}</span>
-                      <span>{formatFullINR(inv.total)}</span>
+                      <div className="flex items-center gap-2">
+                        <span>{formatFullINR(inv.total)}</span>
+                        <Button size="sm" variant="ghost" className="h-7 text-[10px]" onClick={() => {
+                          const ok = downloadBookingInvoice(booking, inv);
+                          if (!ok) toast({ title: "Popup blocked", variant: "destructive" });
+                        }}>
+                          PDF
+                        </Button>
+                      </div>
                     </div>
                   ))}
                   {(booking.invoices || []).length === 0 && (
@@ -657,25 +1142,67 @@ function BookingDetailDialog({
                   )}
                 </div>
                 {canFinance && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => run("Supplier payout created", async () => {
-                      await api.createSupplierPayout({
-                        bookingId: booking.id,
-                        supplierName: "Primary Supplier",
-                        amount: booking.costPrice || Math.round(booking.amount * 0.7),
-                        currency: "INR",
-                        paymentMode: "NEFT",
-                        utr: `UTR${Date.now().toString().slice(-10)}`,
-                        paymentDate: new Date().toISOString().slice(0, 10),
-                        status: "Paid",
-                      });
-                    })}
-                  >
-                    Record Supplier Payout
-                  </Button>
+                  <div className="border rounded-lg p-3 space-y-2">
+                    <p className="text-xs font-semibold">Create supplier payout</p>
+                    <p className="text-[10px] text-muted-foreground">Set due date and reminder — finance gets notified before payment is due.</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Confirmed service</Label>
+                        <Select value={payoutServiceId || "none"} onValueChange={setPayoutServiceId}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select…" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Select service…</SelectItem>
+                            {(booking.services || []).filter((s) => s.status === "Confirmed").map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.serviceType}: {s.title}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Due date</Label>
+                        <Input className="h-8 text-xs" type="date" value={payoutDueDate} onChange={(e) => setPayoutDueDate(e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Remind (days before)</Label>
+                        <Select value={payoutReminderDays} onValueChange={setPayoutReminderDays}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {["1", "2", "3", "5"].map((d) => <SelectItem key={d} value={d}>{d} day(s)</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Invoice URL (optional)</Label>
+                        <Input className="h-8 text-xs" value={payoutInvoiceUrl} onChange={(e) => setPayoutInvoiceUrl(e.target.value)} placeholder="https://…" />
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={busy || !payoutServiceId || payoutServiceId === "none" || !payoutDueDate}
+                      onClick={() => run("Supplier payout created", async () => {
+                        const svc = (booking.services || []).find((s) => s.id === payoutServiceId);
+                        if (!svc) throw new Error("Select a confirmed service");
+                        await api.createSupplierPayout({
+                          bookingId: booking.id,
+                          bookingServiceId: svc.id,
+                          serviceType: svc.serviceType,
+                          supplierName: svc.supplierName || "Supplier",
+                          supplierId: svc.supplierRef || undefined,
+                          amount: svc.costPrice,
+                          currency: "INR",
+                          dueDate: payoutDueDate,
+                          reminderDaysBefore: Number(payoutReminderDays) || 2,
+                          invoiceUrl: payoutInvoiceUrl || undefined,
+                          status: "Pending",
+                        });
+                        setPayoutServiceId("");
+                        setPayoutDueDate("");
+                        setPayoutInvoiceUrl("");
+                      })}
+                    >
+                      Create payout
+                    </Button>
+                  </div>
                 )}
               </div>
             )}

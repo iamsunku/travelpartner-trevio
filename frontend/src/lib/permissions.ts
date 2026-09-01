@@ -65,7 +65,7 @@ export const ROLE_CRUD: Record<Role, Record<string, CrudAction[]>> = {
   employee: Object.fromEntries(MODULES.map((m) => [m, SALES])),
   accountant: Object.fromEntries(MODULES.map((m) => [m, ["payments", "wallet", "commission", "finance", "reports"].includes(m) ? SALES : READ])),
   sales_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "destinations", "packages", "suppliers"].includes(m) ? READ : SALES])),
-  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers"].includes(m) ? FULL : m === "quotations" ? SALES : READ])),
+  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "destinations", "packages"].includes(m) ? FULL : m === "suppliers" ? READ : m === "quotations" ? SALES : READ])),
   operations: Object.fromEntries(MODULES.map((m) => [m, ["bookings", "suppliers", "tasks", "holiday", "hotels", "activities", "transfers"].includes(m) ? SALES : READ])),
   travel_agent: Object.fromEntries(MODULES.map((m) => [m, ["bookings", "quotations", "payments", "customers"].includes(m) ? SALES : READ])),
   management: Object.fromEntries(MODULES.map((m) => [m, READ])),

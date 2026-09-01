@@ -281,6 +281,13 @@ export const BOOKING_INCLUDE = {
   supplierPayouts: { orderBy: { createdAt: "desc" as const } },
   modifications: { orderBy: { createdAt: "desc" as const } },
   payments: { orderBy: { date: "desc" as const } },
+  costDeviationApprovals: { orderBy: { createdAt: "desc" as const } },
+  agent: {
+    select: {
+      name: true,
+      agency: { select: { name: true, logo: true } },
+    },
+  },
 } as const;
 
 export function categoryForRequestType(requestType: string): string {

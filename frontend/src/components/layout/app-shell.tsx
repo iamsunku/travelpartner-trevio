@@ -56,6 +56,7 @@ const HotelProductsView = lazy(() => import("@/components/views/hotel-products")
 const ActivityPackagesView = lazy(() => import("@/components/views/activity-packages"), "ActivityPackagesView");
 const ProductApprovalsView = lazy(() => import("@/components/views/product-approvals"), "ProductApprovalsView");
 const AttendanceLeaveView = lazy(() => import("@/components/views/attendance-leave"), "AttendanceLeaveView");
+const SuppliersView = lazy(() => import("@/components/views/suppliers"), "SuppliersView");
 
 const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   dashboard: DashboardView,
@@ -95,6 +96,7 @@ const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   "audit-logs": AuditLogsView,
   analytics: AnalyticsView,
   attendance: AttendanceLeaveView,
+  suppliers: SuppliersView,
 };
 
 export function AppShell() {

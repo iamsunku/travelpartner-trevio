@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import { pinoHttp } from "pino-http";
 import type { Prisma } from "@prisma/client";
 import { validateEnv } from "./lib/env.js";
+import { resolveGstState } from "./lib/gst-state.js";
 import { logger } from "./lib/logger.js";
 import { db } from "./lib/db.js";
 import { signToken } from "./lib/jwt.js";
@@ -20,6 +21,7 @@ import { generateFlights, generateHotels } from "./lib/mock-data.js";
 import { searchAmadeusFlights, searchAmadeusHotels } from "./lib/amadeus.js";
 import { effectivePermissions } from "./lib/permissions.js";
 import { mountProductRoutes } from "./routes/products.js";
+import { mountSupplierRoutes } from "./routes/suppliers.js";
 import { mountDestinationRoutes } from "./routes/destinations.js";
 import { mountPackageRoutes } from "./routes/packages.js";
 import { mountTripPlannerRoutes } from "./routes/trip-planner.js";
@@ -487,7 +489,7 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
           status: "Trial",
           address: body.address,
           country: body.country,
-          state: body.state,
+          state: body.state || resolveGstState(null, body.gstNumber) || undefined,
           city: body.city,
           panNumber: body.panNumber || null,
           gstNumber: body.gstNumber || null,
@@ -1749,6 +1751,70 @@ app.patch("/api/employees/:id", requireAuth, requireRole("super_admin", "agency_
   }
 });
 
+// ── Travel agents & product access ───────────────────────────────────────────
+app.get("/api/agents", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
+  try {
+    const agents = await db.user.findMany({
+      where: { role: "travel_agent", ...agencyScope(req) },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        status: true,
+        productAccess: true,
+        createdAt: true,
+      },
+      orderBy: { name: "asc" },
+    });
+    const { parseProductAccess } = await import("./lib/booking-invoice.js");
+    res.json({
+      agents: agents.map((a) => ({
+        ...a,
+        productAccess: parseProductAccess(a.productAccess, "travel_agent"),
+      })),
+    });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.patch("/api/agents/:id/product-access", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
+  try {
+    const id = routeParamId(req);
+    const existing = await db.user.findFirst({
+      where: { id, role: "travel_agent", ...agencyScope(req) },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Agent not found" });
+      return;
+    }
+    const { flights, hotels, packages } = req.body || {};
+    const productAccess = {
+      flights: Boolean(flights),
+      hotels: hotels !== false,
+      packages: packages !== false,
+    };
+    const agent = await db.user.update({
+      where: { id: existing.id },
+      data: { productAccess },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        status: true,
+        productAccess: true,
+      },
+    });
+    res.json({ agent });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // ── POST /api/branches ────────────────────────────────────────────────────────
 app.post("/api/branches", requireAuth, requireRole("super_admin", "agency_admin"), validate(branchSchema), async (req: AuthRequest, res) => {
   try {
@@ -2686,6 +2752,9 @@ app.put("/api/settings/company", requireAuth, requireRole("super_admin", "agency
     const agencyId = await resolveSettingsAgencyId(req, res);
     if (!agencyId) return;
     const body = req.body ?? {};
+    const nextGst = typeof body.gstNumber === "string" ? body.gstNumber : undefined;
+    const nextState = typeof body.state === "string" ? body.state : undefined;
+    const derivedState = resolveGstState(nextState, nextGst);
     const agency = await db.agency.update({
       where: { id: agencyId },
       data: {
@@ -2695,9 +2764,9 @@ app.put("/api/settings/company", requireAuth, requireRole("super_admin", "agency
         ...(typeof body.phone === "string" ? { phone: body.phone } : {}),
         ...(typeof body.address === "string" ? { address: body.address } : {}),
         ...(typeof body.city === "string" ? { city: body.city } : {}),
-        ...(typeof body.state === "string" ? { state: body.state } : {}),
         ...(typeof body.country === "string" ? { country: body.country } : {}),
-        ...(typeof body.gstNumber === "string" ? { gstNumber: body.gstNumber } : {}),
+        ...(nextState !== undefined ? { state: nextState || derivedState || "" } : nextGst !== undefined && derivedState ? { state: derivedState } : {}),
+        ...(nextGst !== undefined ? { gstNumber: nextGst } : {}),
         ...(typeof body.panNumber === "string" ? { panNumber: body.panNumber } : {}),
         ...(typeof body.logo === "string" ? { logo: body.logo } : {}),
       },
@@ -3020,6 +3089,7 @@ app.patch("/api/leaves/:id", requireAuth, requireRole("super_admin", "agency_adm
 });
 
 mountProductRoutes(app, agencyScope);
+mountSupplierRoutes(app, agencyScope);
 mountDestinationRoutes(app, agencyScope);
 mountPackageRoutes(app, agencyScope);
 mountTripPlannerRoutes(app, agencyScope);
