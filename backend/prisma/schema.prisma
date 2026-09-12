@@ -20,6 +20,7 @@ model User {
   designation  String?
   agencyId     String?
   branchId     String?
+  agentCode    String?  @unique // e.g. WAN-AGT-0001 — auto for travel_agent
   avatar       String?
   status       String   @default("Active")
   permissions  Json?    // null = use role default; array of module keys = explicit override
@@ -47,11 +48,13 @@ model User {
 
   @@index([agencyId])
   @@index([branchId])
+  @@index([agentCode])
 }
 
 model Agency {
   id              String   @id @default(cuid())
   name            String
+  code            String?  @unique // e.g. WAN — auto from company name
   owner           String
   email           String
   phone           String
@@ -306,6 +309,8 @@ model Quotation {
   travelEndDate   String?
   agentName       String?
   agentId         String?
+  agentCode       String?  // snapshot e.g. WAN-AGT-0001
+  agencyCode      String?  // snapshot e.g. WAN
   specialRequests String?  @db.Text
   internalNotes   String?  @db.Text
   refundPolicy    String?  @db.Text

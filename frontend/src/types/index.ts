@@ -30,6 +30,9 @@ export interface User {
   agencyId?: string;
   branchId?: string;
   designation?: string;
+  agentCode?: string;
+  agencyCode?: string;
+  agencyName?: string;
   permissions?: Module[] | null;
   productAccess?: { flights: boolean; hotels: boolean; packages: boolean };
 }
@@ -37,6 +40,7 @@ export interface User {
 export interface Agency {
   id: string;
   name: string;
+  code?: string;
   owner: string;
   email: string;
   phone: string;
@@ -496,6 +500,8 @@ export interface Quotation {
   travelStartDate?: string;
   travelEndDate?: string;
   agentName?: string;
+  agentCode?: string;
+  agencyCode?: string;
   specialRequests?: string;
   internalNotes?: string;
   totalNetCost?: number;

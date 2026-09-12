@@ -139,10 +139,14 @@ export function QuotationWizardDialog({
     coverImage: "",
     budget: 0,
     service: "Holiday",
+    agentCode: "",
+    agencyCode: "",
   });
   const [packages, setPackages] = useState<QuotationPackage[]>([emptyPackage("Standard", true)]);
   const [destinationId, setDestinationId] = useState("");
   const [visaHint, setVisaHint] = useState("");
+  const [planId, setPlanId] = useState("");
+  const [suggestedNights, setSuggestedNights] = useState<number | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -213,6 +217,17 @@ export function QuotationWizardDialog({
     }
   }, [open, quotationId, prefill, toast]);
 
+  useEffect(() => {
+    if (!open || !user || quotationId) return;
+    setForm((f) => ({
+      ...f,
+      agentName: f.agentName || user.name || user.email || "",
+      agentCode: user.agentCode || f.agentCode || "",
+      agencyCode: user.agencyCode || f.agencyCode || "",
+      salesExecutiveName: f.salesExecutiveName || user.name || user.email || "",
+    }));
+  }, [open, user, quotationId]);
+
   const nights = useMemo(() => {
     if (!form.travelStartDate || !form.travelEndDate) return null;
     const a = new Date(form.travelStartDate);
@@ -220,6 +235,7 @@ export function QuotationWizardDialog({
     if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b < a) return null;
     return Math.round((b.getTime() - a.getTime()) / 86400000);
   }, [form.travelStartDate, form.travelEndDate]);
+  const tripDays = nights != null ? nights + 1 : null;
 
   const selected = packages.find((p) => p.isSelected) || packages[0];
 
@@ -283,17 +299,74 @@ export function QuotationWizardDialog({
     patchPkg(idx >= 0 ? idx : 0, patch);
   }
 
-  function applyDestinationPlan(planId: string) {
-    const plan = getDestinationQuotePlan(planId);
+  function applyDestinationBasics(selectedPlanId: string) {
+    const plan = getDestinationQuotePlan(selectedPlanId);
     if (!plan) return;
+    setPlanId(selectedPlanId);
+    setSuggestedNights(plan.suggestedNights ?? null);
+    setForm((f) => {
+      const next = {
+        ...f,
+        destination: plan.form.destination,
+        country: plan.form.country,
+        isInternational: plan.form.isInternational,
+        coverImage: f.coverImage || plan.form.coverImage || "",
+        currency: plan.form.currency || f.currency,
+      };
+      if (f.travelStartDate && plan.suggestedNights && !f.travelEndDate) {
+        const d = new Date(f.travelStartDate);
+        d.setDate(d.getDate() + plan.suggestedNights);
+        next.travelEndDate = d.toISOString().slice(0, 10);
+      }
+      return next;
+    });
+    toast({
+      title: `${plan.label} selected`,
+      description: `Only destination is set${plan.suggestedNights ? ` · suggested ${plan.suggestedNights} nights / ${plan.suggestedNights + 1} days` : ""}. Use “Load full sample” if you want hotels & itinerary.`,
+    });
+  }
+
+  function loadFullSamplePackage() {
+    const plan = getDestinationQuotePlan(planId);
+    if (!plan) {
+      toast({ title: "Pick a destination plan first", variant: "destructive" });
+      return;
+    }
     setForm((f) => ({
       ...f,
-      ...plan.form,
+      destination: plan.form.destination,
+      country: plan.form.country,
+      isInternational: plan.form.isInternational,
+      coverImage: plan.form.coverImage || f.coverImage,
+      specialRequests: plan.form.specialRequests || f.specialRequests,
+      termsAndConditions: plan.form.termsAndConditions || f.termsAndConditions,
+      paymentTerms: plan.form.paymentTerms || f.paymentTerms,
+      cancellationPolicy: plan.form.cancellationPolicy || f.cancellationPolicy,
+      refundPolicy: plan.form.refundPolicy || f.refundPolicy,
+      adults: plan.form.adults ?? f.adults,
+      children: plan.form.children ?? f.children,
+      infants: plan.form.infants ?? f.infants,
+      currency: plan.form.currency || f.currency,
     }));
     setPackages(plan.packages.map((p) => ({ ...p })));
+    setSuggestedNights(plan.suggestedNights ?? null);
     toast({
-      title: `${plan.label} loaded`,
-      description: "Hotels, flights, itinerary, highlights and terms are filled. Change dates, customer and prices, then preview the client PDF before sending.",
+      title: "Full sample loaded",
+      description: "Hotels, flights, itinerary and terms filled. Edit dates and prices before sending.",
+    });
+  }
+
+  function onStartDateChange(v: string) {
+    setForm((f) => {
+      let end = f.travelEndDate;
+      if (!v) end = "";
+      else if (end && end < v) end = "";
+      else if (v && !end && suggestedNights) {
+        const d = new Date(v);
+        d.setDate(d.getDate() + suggestedNights);
+        end = d.toISOString().slice(0, 10);
+      }
+      return { ...f, travelStartDate: v, travelEndDate: end };
     });
   }
 
@@ -311,12 +384,16 @@ export function QuotationWizardDialog({
       const payload = {
         ...form,
         nights: nights ?? undefined,
+        days: tripDays ?? undefined,
         travelDates: form.travelStartDate,
         wizardStep: nextStep + 1,
         packages: packages.map((p, i) => ({ ...p, sortOrder: i })),
         service: form.service || (form.isInternational ? "International" : "Holiday"),
         leadId: leadId || undefined,
         budget: form.budget || undefined,
+        agentCode: form.agentCode || user?.agentCode || undefined,
+        agencyCode: form.agencyCode || user?.agencyCode || undefined,
+        agentId: user?.role === "travel_agent" ? user.id : undefined,
       };
       let quotation: Quotation;
       if (!id) {
@@ -375,7 +452,7 @@ export function QuotationWizardDialog({
               </DialogTitle>
               <DialogDescription className="mt-1">
                 {STEPS[step].label}
-                {nights != null ? ` · ${nights} nights` : ""}
+                {nights != null ? ` · ${nights}N / ${tripDays}D` : ""}
                 {" · "}
                 Step {step + 1} of {STEPS.length}
               </DialogDescription>
@@ -463,27 +540,38 @@ export function QuotationWizardDialog({
           <div className="space-y-4">
             <FormSection
               title="Start from a plan (optional)"
-              description="Pick a ready brochure plan, then edit customer, dates, and prices. Customer PDF hides cost & profit."
+              description="Sets destination + suggested duration only. Does not fill hotels, flights, or full itinerary unless you load the sample."
             >
-              <div className="sm:col-span-2">
-                <Select onValueChange={applyDestinationPlan}>
-                  <SelectTrigger className="h-10"><SelectValue placeholder="Choose a destination plan…" /></SelectTrigger>
+              <div className="sm:col-span-2 flex flex-col sm:flex-row gap-2">
+                <Select value={planId || undefined} onValueChange={applyDestinationBasics}>
+                  <SelectTrigger className="h-10 flex-1"><SelectValue placeholder="Choose a destination plan…" /></SelectTrigger>
                   <SelectContent>
                     {DESTINATION_QUOTE_PLANS.map((p) => (
                       <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <Button type="button" variant="outline" className="h-10 shrink-0" disabled={!planId} onClick={loadFullSamplePackage}>
+                  Load full sample
+                </Button>
               </div>
             </FormSection>
 
-            <FormSection title="Customer" description="Who this quote is for.">
+            <FormSection title="Customer & agent codes" description="Agency and agent codes are system-generated.">
               <Field label="Customer *" value={form.customerName} onChange={(v) => setForm({ ...form, customerName: v })} />
               <Field label="Contact person" value={form.contactPerson} onChange={(v) => setForm({ ...form, contactPerson: v })} />
               <Field label="Email" value={form.contactEmail} onChange={(v) => setForm({ ...form, contactEmail: v })} />
               <Field label="Phone" value={form.contactPhone} onChange={(v) => setForm({ ...form, contactPhone: v })} />
               <Field label="Travel agent" value={form.agentName} onChange={(v) => setForm({ ...form, agentName: v })} />
               <Field label="Sales executive" value={form.salesExecutiveName} onChange={(v) => setForm({ ...form, salesExecutiveName: v })} />
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Agency code</Label>
+                <Input className="h-10 bg-muted/40 font-mono" value={form.agencyCode || "—"} readOnly />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Agent code</Label>
+                <Input className="h-10 bg-muted/40 font-mono" value={form.agentCode || "—"} readOnly />
+              </div>
             </FormSection>
 
             <FormSection title="Destination" description="City for the trip and cover image for the customer PDF.">
@@ -521,9 +609,36 @@ export function QuotationWizardDialog({
               </div>
             </FormSection>
 
-            <FormSection title="Travel dates & guests">
-              <Field label="Start date" type="date" value={form.travelStartDate} onChange={(v) => setForm({ ...form, travelStartDate: v })} />
-              <Field label="End date" type="date" value={form.travelEndDate} onChange={(v) => setForm({ ...form, travelEndDate: v })} />
+            <FormSection title="Travel dates & guests" description="Set start date first. End date unlocks after that. Nights / days are calculated automatically.">
+              <Field label="Start date" type="date" value={form.travelStartDate} onChange={onStartDateChange} />
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">End date</Label>
+                <Input
+                  type="date"
+                  className="h-10"
+                  value={form.travelEndDate}
+                  min={form.travelStartDate || undefined}
+                  disabled={!form.travelStartDate}
+                  onChange={(e) => setForm({ ...form, travelEndDate: e.target.value })}
+                />
+                {!form.travelStartDate && (
+                  <p className="text-[11px] text-muted-foreground">Choose a start date before selecting the end date.</p>
+                )}
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Nights</p>
+                <p className="text-lg font-semibold">{nights != null ? nights : "—"}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Days</p>
+                <p className="text-lg font-semibold">{tripDays != null ? tripDays : "—"}</p>
+              </div>
+              {suggestedNights != null && nights == null && (
+                <p className="sm:col-span-2 text-xs text-muted-foreground">
+                  Suggested duration from plan: {suggestedNights} nights / {suggestedNights + 1} days
+                  {form.travelStartDate ? " (end date can auto-fill from start)." : "."}
+                </p>
+              )}
               <Field label="Adults" type="number" value={String(form.adults)} onChange={(v) => setForm({ ...form, adults: Math.max(0, Number(v) || 0) })} />
               <Field label="Children" type="number" value={String(form.children)} onChange={(v) => setForm({ ...form, children: Math.max(0, Number(v) || 0) })} />
               <Field label="Infants" type="number" value={String(form.infants)} onChange={(v) => setForm({ ...form, infants: Math.max(0, Number(v) || 0) })} />

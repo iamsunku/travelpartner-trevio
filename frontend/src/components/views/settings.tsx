@@ -1230,6 +1230,7 @@ function AgentsTab() {
     name: string;
     email: string;
     status: string;
+    agentCode?: string | null;
     productAccess: { flights: boolean; hotels: boolean; packages: boolean };
   }>>([]);
   const [loading, setLoading] = useState(true);
@@ -1279,6 +1280,7 @@ function AgentsTab() {
             <TableHeader>
               <TableRow>
                 <TableHead>Agent</TableHead>
+                <TableHead>Code</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-center">Flights</TableHead>
                 <TableHead className="text-center">Hotels</TableHead>
@@ -1292,6 +1294,7 @@ function AgentsTab() {
                     <p className="text-sm font-medium">{a.name}</p>
                     <p className="text-xs text-muted-foreground">{a.email}</p>
                   </TableCell>
+                  <TableCell className="font-mono text-xs">{a.agentCode || "—"}</TableCell>
                   <TableCell><Badge variant="secondary">{a.status}</Badge></TableCell>
                   <TableCell className="text-center">
                     <Checkbox
@@ -1318,7 +1321,7 @@ function AgentsTab() {
               ))}
               {agents.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-8">
                     No travel agents registered yet.
                   </TableCell>
                 </TableRow>

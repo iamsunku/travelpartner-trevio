@@ -18,6 +18,9 @@ export function mapApiUser(u: ApiUser): User {
     designation: u.designation || undefined,
     agencyId: u.agencyId || undefined,
     branchId: u.branchId || undefined,
+    agentCode: u.agentCode || undefined,
+    agencyCode: u.agency?.code || undefined,
+    agencyName: u.agency?.name || undefined,
     permissions: (u.permissions as Module[] | null | undefined) ?? undefined,
     productAccess: u.productAccess as User["productAccess"],
   };
@@ -219,6 +222,8 @@ export function mapApiQuotation(q: ApiQuotation): Quotation {
     travelStartDate: (q as { travelStartDate?: string }).travelStartDate,
     travelEndDate: (q as { travelEndDate?: string }).travelEndDate,
     agentName: (q as { agentName?: string }).agentName,
+    agentCode: (q as { agentCode?: string }).agentCode,
+    agencyCode: (q as { agencyCode?: string }).agencyCode,
     specialRequests: (q as { specialRequests?: string }).specialRequests,
     internalNotes: (q as { internalNotes?: string }).internalNotes,
     totalNetCost: (q as { totalNetCost?: number }).totalNetCost,
@@ -314,6 +319,7 @@ export function mapApiAgency(a: ApiAgency): Agency {
   return {
     id: a.id,
     name: a.name,
+    code: a.code || undefined,
     owner: a.owner,
     email: a.email,
     phone: a.phone,

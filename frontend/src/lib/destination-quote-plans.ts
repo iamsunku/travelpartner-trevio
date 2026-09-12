@@ -3,6 +3,8 @@ import type { QuotationPackage } from "@/types";
 export type DestinationQuotePlan = {
   id: string;
   label: string;
+  /** Suggested hotel nights when only start date is set (end = start + nights). */
+  suggestedNights?: number;
   form: {
     destination: string;
     country: string;
@@ -60,6 +62,7 @@ const THAILAND_EXCLUSIONS = [
 export const THAILAND_4N_PLAN: DestinationQuotePlan = {
   id: "thailand-4n-phuket-krabi",
   label: "Thailand 4N 5D — Phuket + Krabi",
+  suggestedNights: 4,
   form: {
     destination: "Phuket & Krabi",
     country: "Thailand",

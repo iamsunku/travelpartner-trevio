@@ -811,8 +811,10 @@ export interface ApiUser {
   designation?: string | null;
   agencyId?: string | null;
   branchId?: string | null;
+  agentCode?: string | null;
   permissions?: string[] | null;
   productAccess?: { flights: boolean; hotels: boolean; packages: boolean } | null;
+  agency?: { id?: string; name?: string; code?: string | null } | null;
 }
 
 export interface ApiBooking {
@@ -920,8 +922,10 @@ export interface ApiAgent {
   email: string;
   phone?: string | null;
   status: string;
+  agentCode?: string | null;
   productAccess: { flights: boolean; hotels: boolean; packages: boolean };
   createdAt?: string;
+  agency?: { id?: string; name?: string; code?: string | null } | null;
 }
 
 export interface CostDeviationApproval {
@@ -964,6 +968,7 @@ export interface ApiCustomer {
 export interface ApiAgency {
   id: string;
   name: string;
+  code?: string | null;
   owner: string;
   email: string;
   phone: string;

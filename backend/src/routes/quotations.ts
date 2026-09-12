@@ -329,6 +329,16 @@ export function mountQuotationRoutes(
         return;
       }
       const body = req.body || {};
+      let agencyCode = body.agencyCode || null;
+      let agentCode = body.agentCode || null;
+      try {
+        const { ensureAgencyCode, ensureUserAgentCode } = await import("../lib/agent-codes.js");
+        const agencyId = ownAgencyId(req, body.agencyId);
+        if (agencyId) agencyCode = (await ensureAgencyCode(agencyId)) || agencyCode;
+        if (body.agentId) agentCode = (await ensureUserAgentCode(String(body.agentId))) || agentCode;
+      } catch {
+        /* non-fatal */
+      }
       const quoteNo = await nextQuoteNo();
       const nights = nightsBetween(body.travelStartDate, body.travelEndDate) ?? body.nights ?? null;
       const quote = await db.quotation.create({
@@ -368,6 +378,8 @@ export function mountQuotationRoutes(
           exchangeRate: Number(body.exchangeRate || 1),
           agentName: body.agentName,
           agentId: body.agentId,
+          agentCode,
+          agencyCode,
           salesExecutiveName: body.salesExecutiveName || req.auth?.email,
           salesExecutivePhone: body.salesExecutivePhone,
           salesExecutiveEmail: body.salesExecutiveEmail,
@@ -481,7 +493,7 @@ export function mountQuotationRoutes(
         "customerName", "service", "contactPerson", "contactEmail", "contactPhone",
         "destination", "country", "coverImage", "departureCity", "travelDates", "travelStartDate", "travelEndDate",
         "returnDate", "adults", "children", "infants", "currency", "baseCurrency",
-        "agentName", "agentId", "salesExecutiveName", "salesExecutivePhone", "salesExecutiveEmail",
+        "agentName", "agentId", "agentCode", "agencyCode", "salesExecutiveName", "salesExecutivePhone", "salesExecutiveEmail",
         "specialRequests", "internalNotes", "enquiryRef", "validTill", "quoteDate",
         "leadId", "termsAndConditions", "paymentTerms", "cancellationPolicy", "refundPolicy",
         "hotelTerms", "flightTerms", "visaTerms", "insuranceTerms", "forceMajeure", "travelDisclaimer",
@@ -1320,6 +1332,12 @@ export function mountQuotationRoutes(
         return;
       }
 
+      const { ensureUserAgentCode, ensureAgencyCode } = await import("../lib/agent-codes.js");
+      let agentCode = body.agentCode ? String(body.agentCode) : null;
+      let agencyCode = body.agencyCode ? String(body.agencyCode) : null;
+      if (req.auth?.userId) agentCode = (await ensureUserAgentCode(req.auth.userId)) || agentCode;
+      if (req.auth?.agencyId) agencyCode = (await ensureAgencyCode(req.auth.agencyId)) || agencyCode;
+
       const { packagePayload, meta } = buildQuotationPackageFromTravelPackage(pkg);
       const agentMarkup = Math.max(0, Math.round(Number(body.agentMarkup || 0)));
       const adults = Number(body.adults ?? 2);
@@ -1351,6 +1369,8 @@ export function mountQuotationRoutes(
           createdBy: req.auth?.email || "Agent",
           agentId: req.auth?.userId,
           agentName: body.agentName || req.auth?.email || "Agent",
+          agentCode,
+          agencyCode,
           contactPerson: body.contactPerson || customerName,
           contactEmail: body.contactEmail || null,
           contactPhone: body.contactPhone || null,
@@ -1415,6 +1435,12 @@ export function mountQuotationRoutes(
         res.status(400).json({ error: "Add at least one flight, hotel, transfer, or activity line" });
         return;
       }
+      const { ensureUserAgentCode, ensureAgencyCode } = await import("../lib/agent-codes.js");
+      let agentCode = body.agentCode ? String(body.agentCode) : null;
+      let agencyCode = body.agencyCode ? String(body.agencyCode) : null;
+      if (req.auth?.userId) agentCode = (await ensureUserAgentCode(req.auth.userId)) || agentCode;
+      if (req.auth?.agencyId) agencyCode = (await ensureAgencyCode(req.auth.agencyId)) || agencyCode;
+
       const customerName = String(body.customerName || "Guest").trim() || "Guest";
       const agentMarkup = Math.max(0, Math.round(Number(body.agentMarkup || 0)));
       const adults = Number(body.adults ?? 2);
@@ -1483,6 +1509,8 @@ export function mountQuotationRoutes(
           createdBy: req.auth?.email || "Agent",
           agentId: req.auth?.userId,
           agentName: body.agentName || req.auth?.email || "Agent",
+          agentCode,
+          agencyCode,
           contactPerson: body.contactPerson || customerName,
           contactEmail: body.contactEmail || null,
           contactPhone: body.contactPhone || null,

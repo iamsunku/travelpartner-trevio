@@ -333,7 +333,20 @@ app.post("/api/auth/login", authLimiter, validate(loginSchema), async (req, res)
       branchId: user.branchId,
       permissions: Array.isArray(user.permissions) ? (user.permissions as string[]) : null,
     });
-    const { password: _password, ...safeUser } = user;
+    if (user.agencyId) {
+      try {
+        const { ensureAgencyCode, ensureUserAgentCode } = await import("./lib/agent-codes.js");
+        await ensureAgencyCode(user.agencyId, user.agency?.name);
+        if (user.role === "travel_agent") await ensureUserAgentCode(user.id);
+      } catch {
+        /* non-fatal */
+      }
+    }
+    const refreshed = await db.user.findUnique({
+      where: { id: user.id },
+      include: { agency: true, branch: true },
+    });
+    const { password: _password, ...safeUser } = refreshed || user;
     res.json({ user: safeUser, token });
   } catch (e) {
     logger.error(e);
@@ -351,7 +364,20 @@ app.get("/api/auth/me", requireAuth, async (req: AuthRequest, res) => {
       res.status(404).json({ error: "User not found" });
       return;
     }
-    const { password: _password, ...safeUser } = user;
+    if (user.agencyId) {
+      try {
+        const { ensureAgencyCode, ensureUserAgentCode } = await import("./lib/agent-codes.js");
+        await ensureAgencyCode(user.agencyId, user.agency?.name);
+        if (user.role === "travel_agent") await ensureUserAgentCode(user.id);
+      } catch {
+        /* non-fatal */
+      }
+    }
+    const refreshed = await db.user.findUnique({
+      where: { id: user.id },
+      include: { agency: true, branch: true },
+    });
+    const { password: _password, ...safeUser } = refreshed || user;
     res.json({ user: safeUser });
   } catch (e) {
     logger.error(e);
@@ -1097,6 +1123,12 @@ app.post("/api/employees", requireAuth, requireRole("super_admin", "agency_admin
     try {
       tempPassword = generateTempPassword();
       const passwordHash = await bcrypt.hash(tempPassword, 10);
+      let agentCode: string | undefined;
+      if (role === "travel_agent" && agencyId) {
+        const { allocateAgentCode, ensureAgencyCode } = await import("./lib/agent-codes.js");
+        await ensureAgencyCode(agencyId);
+        agentCode = await allocateAgentCode(agencyId);
+      }
       await db.user.create({
         data: {
           name: body.name,
@@ -1108,6 +1140,7 @@ app.post("/api/employees", requireAuth, requireRole("super_admin", "agency_admin
           agencyId,
           branchId,
           permissions: permissions ?? undefined,
+          agentCode: agentCode || null,
         },
       });
       emailedCredentials = await sendEmail({
@@ -1754,6 +1787,15 @@ app.patch("/api/employees/:id", requireAuth, requireRole("super_admin", "agency_
 // ── Travel agents & product access ───────────────────────────────────────────
 app.get("/api/agents", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
   try {
+    if (req.auth?.agencyId) {
+      const { ensureAgencyCode, ensureUserAgentCode } = await import("./lib/agent-codes.js");
+      await ensureAgencyCode(req.auth.agencyId);
+      const missing = await db.user.findMany({
+        where: { role: "travel_agent", agencyId: req.auth.agencyId, agentCode: null },
+        select: { id: true },
+      });
+      for (const m of missing) await ensureUserAgentCode(m.id);
+    }
     const agents = await db.user.findMany({
       where: { role: "travel_agent", ...agencyScope(req) },
       select: {
@@ -1762,8 +1804,10 @@ app.get("/api/agents", requireAuth, requireRole("super_admin", "agency_admin"), 
         email: true,
         phone: true,
         status: true,
+        agentCode: true,
         productAccess: true,
         createdAt: true,
+        agency: { select: { id: true, name: true, code: true } },
       },
       orderBy: { name: "asc" },
     });
@@ -1877,6 +1921,12 @@ app.post("/api/agencies", requireAuth, requireRole("super_admin"), validate(agen
         address: body.address,
       },
     });
+    try {
+      const { ensureAgencyCode } = await import("./lib/agent-codes.js");
+      await ensureAgencyCode(agency.id, agency.name);
+    } catch {
+      /* non-fatal */
+    }
 
     let tempPassword: string | undefined;
     let emailedCredentials = false;
