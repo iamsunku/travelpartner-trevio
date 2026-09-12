@@ -337,7 +337,7 @@ export function mountQuotationRoutes(
           agencyId: ownAgencyId(req, body.agencyId),
           branchId: ownBranchId(req),
           customerName: body.customerName || "Customer",
-          service: body.service || "Holiday",
+          service: body.service || (body.isInternational ? "International" : "Holiday"),
           items: 1,
           amount: 0,
           gst: 0,
@@ -373,7 +373,9 @@ export function mountQuotationRoutes(
           salesExecutiveEmail: body.salesExecutiveEmail,
           specialRequests: body.specialRequests,
           internalNotes: body.internalNotes,
-          enquiryRef: body.enquiryRef,
+          enquiryRef: body.enquiryRef || (body.leadId ? `LEAD-${String(body.leadId).slice(-6)}` : undefined),
+          leadId: body.leadId || null,
+          budget: body.budget != null ? Number(body.budget) : undefined,
           packageIncludes: body.packageIncludes || [],
           packageExcludes: body.packageExcludes || [],
           termsAndConditions: body.termsAndConditions,
@@ -385,6 +387,18 @@ export function mountQuotationRoutes(
           isInternational: Boolean(body.isInternational),
         },
       });
+
+      if (body.leadId) {
+        const lead = await db.lead.findFirst({
+          where: { id: String(body.leadId), ...agencyScope(req) },
+        });
+        if (lead && !["Won", "Lost", "Quotation Sent"].includes(lead.stage)) {
+          await db.lead.update({
+            where: { id: lead.id },
+            data: { stage: "Quotation Sent" },
+          });
+        }
+      }
 
       if (Array.isArray(body.packages) && body.packages.length) {
         for (const pkg of body.packages) {
@@ -469,13 +483,14 @@ export function mountQuotationRoutes(
         "returnDate", "adults", "children", "infants", "currency", "baseCurrency",
         "agentName", "agentId", "salesExecutiveName", "salesExecutivePhone", "salesExecutiveEmail",
         "specialRequests", "internalNotes", "enquiryRef", "validTill", "quoteDate",
-        "termsAndConditions", "paymentTerms", "cancellationPolicy", "refundPolicy",
+        "leadId", "termsAndConditions", "paymentTerms", "cancellationPolicy", "refundPolicy",
         "hotelTerms", "flightTerms", "visaTerms", "insuranceTerms", "forceMajeure", "travelDisclaimer",
         "discountType", "hotelStarPreference", "roomTypePreference", "mealPlanPreference",
       ] as const;
       for (const k of scalarKeys) {
         if (body[k] !== undefined) data[k] = body[k];
       }
+      if (body.budget != null) data.budget = Number(body.budget);
       if (body.exchangeRate != null) data.exchangeRate = Number(body.exchangeRate);
       if (body.taxRate != null) data.taxRate = Number(body.taxRate);
       if (body.discountValue != null) data.discountValue = Number(body.discountValue);
@@ -1377,6 +1392,145 @@ export function mountQuotationRoutes(
         quotationId: quote.id,
         action: "Agent Quote Created",
         updatedValue: { packageId, agentMarkup },
+      });
+
+      const full = await db.quotation.findUnique({ where: { id: quote.id }, include: QUOTE_INCLUDE });
+      res.status(201).json({ quotation: sanitizeQuotationForRole(full as unknown as Record<string, unknown>, req.auth?.role) });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // ── Agent: multi-service trip composer ────────────────────────────────────
+  app.post("/api/quotations/agent/trip", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+    try {
+      if (!isAgentLike(req.auth?.role)) {
+        res.status(403).json({ error: "Only travel agents can use this endpoint" });
+        return;
+      }
+      const body = req.body || {};
+      const lines = Array.isArray(body.lines) ? body.lines : [];
+      if (!lines.length) {
+        res.status(400).json({ error: "Add at least one flight, hotel, transfer, or activity line" });
+        return;
+      }
+      const customerName = String(body.customerName || "Guest").trim() || "Guest";
+      const agentMarkup = Math.max(0, Math.round(Number(body.agentMarkup || 0)));
+      const adults = Number(body.adults ?? 2);
+      const children = Number(body.children ?? 0);
+      const taxRate = Number(body.taxRate ?? 18);
+
+      const lineItems = lines.map((l: Record<string, unknown>, i: number) => {
+        const qty = Math.max(1, Number(l.qty || 1));
+        const price = Math.max(0, Math.round(Number(l.sellingPrice || l.price || 0)));
+        return {
+          id: `line-${i + 1}`,
+          type: String(l.type || "Service"),
+          description: String(l.description || l.type || "Service"),
+          qty,
+          price,
+          amount: qty * price,
+        };
+      });
+      const baseSelling = lineItems.reduce((s: number, l: { amount: number }) => s + l.amount, 0) + agentMarkup;
+      const amount = Math.round(baseSelling / (1 + taxRate / 100));
+      const gst = baseSelling - amount;
+      const total = baseSelling;
+      const quoteNo = await nextQuoteNo();
+      const validTill = body.validTill || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+
+      const hotels = lineItems.filter((l: { type: string }) => /hotel/i.test(l.type)).map((l: { description: string; amount: number }) => ({
+        name: l.description,
+        sellingPrice: l.amount,
+        costPrice: 0,
+      }));
+      const flights = lineItems.filter((l: { type: string }) => /flight/i.test(l.type)).map((l: { description: string; amount: number }) => ({
+        airline: l.description,
+        sellingPrice: l.amount,
+        costPrice: 0,
+      }));
+      const transfers = lineItems.filter((l: { type: string }) => /transfer/i.test(l.type)).map((l: { description: string; amount: number }) => ({
+        title: l.description,
+        sellingPrice: l.amount,
+        costPrice: 0,
+      }));
+      const activities = lineItems.filter((l: { type: string }) => /activit/i.test(l.type)).map((l: { description: string; amount: number }) => ({
+        title: l.description,
+        sellingPrice: l.amount,
+        costPrice: 0,
+      }));
+
+      const quote = await db.quotation.create({
+        data: {
+          quoteNo,
+          agencyId: ownAgencyId(req),
+          branchId: ownBranchId(req),
+          customerName,
+          service: "Holiday",
+          items: lineItems.length,
+          amount,
+          gst,
+          total,
+          totalSelling: total,
+          totalNetCost: 0,
+          grossProfit: agentMarkup,
+          perPersonCost: Math.round(total / Math.max(1, adults + children)),
+          status: customerName === "Guest" ? "In Progress" : "Customer Reviewing",
+          validTill,
+          quoteDate: new Date().toISOString().slice(0, 10),
+          createdById: req.auth?.userId,
+          createdBy: req.auth?.email || "Agent",
+          agentId: req.auth?.userId,
+          agentName: body.agentName || req.auth?.email || "Agent",
+          contactPerson: body.contactPerson || customerName,
+          contactEmail: body.contactEmail || null,
+          contactPhone: body.contactPhone || null,
+          destination: body.destination || "Custom trip",
+          adults,
+          children,
+          currency: "INR",
+          lineItems,
+          agentMarkup,
+          baseSellingTotal: baseSelling - agentMarkup,
+          specialRequests: body.specialRequests || null,
+          travelStartDate: body.travelStartDate || null,
+          travelEndDate: body.travelEndDate || null,
+          travelDates: body.travelStartDate || null,
+          taxRate,
+          approvalStatus: "Approved",
+          leadId: body.leadId || null,
+        },
+      });
+
+      await db.quotationPackage.create({
+        data: {
+          quotationId: quote.id,
+          name: "Custom Trip",
+          isSelected: true,
+          sortOrder: 0,
+          hotels,
+          flights,
+          transfers,
+          activities,
+          meals: [],
+          addOns: [],
+          itinerary: [],
+          totalNetCost: 0,
+          totalSelling: total,
+          grossProfit: agentMarkup,
+          gst,
+          total,
+          perPersonCost: Math.round(total / Math.max(1, adults + children)),
+        },
+      });
+
+      await writeQuoteAudit({
+        req,
+        agencyId: quote.agencyId,
+        quotationId: quote.id,
+        action: "Agent Trip Composer",
+        updatedValue: { lines: lineItems.length, agentMarkup },
       });
 
       const full = await db.quotation.findUnique({ where: { id: quote.id }, include: QUOTE_INCLUDE });

@@ -118,12 +118,16 @@ function BookingDetailDialog({
   const [driverForms, setDriverForms] = useState<Record<string, { driverName: string; vehicleNumber: string; driverPhone: string }>>({});
   const [adjustPrice, setAdjustPrice] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
+  const [opsAssigneeName, setOpsAssigneeName] = useState("");
+  const [payMethod, setPayMethod] = useState("Bank Transfer");
+  const [teamEmployees, setTeamEmployees] = useState<{ id: string; name: string; role: string }[]>([]);
 
-  const canFinance = user && (hasPermission(user, "finance") || ["super_admin", "agency_admin", "accountant"].includes(user.role));
-  const canOps = user && (hasPermission(user, "bookings") || user.role === "operations");
+  const isAgent = user?.role === "travel_agent";
+  const canFinance = user && !isAgent && (hasPermission(user, "finance") || ["super_admin", "agency_admin", "accountant"].includes(user.role));
+  const canOps = user && !isAgent && (user.role === "operations" || user.role === "operations_executive" || ["super_admin", "agency_admin", "branch_manager"].includes(user.role) || hasPermission(user, "suppliers"));
+  const canAssign = Boolean(user && !isAgent && (canOps || ["sales_executive", "agency_admin", "branch_manager", "super_admin"].includes(user.role)));
   const canApproveDeviation = user && ["super_admin", "agency_admin"].includes(user.role);
   const canAdjustPrice = user && ["super_admin", "agency_admin"].includes(user.role);
-  const isAgent = user?.role === "travel_agent";
   const canDownloadVouchers = !isAgent || booking?.paymentStatus === "Paid";
   const pendingDeviations = useMemo(
     () => (booking?.costDeviationApprovals || []).filter((d) => d.status === "Pending"),
@@ -166,6 +170,17 @@ function BookingDetailDialog({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, bookingId]);
+
+  useEffect(() => {
+    if (!open || !canAssign) return;
+    api.getEmployees(user?.agencyId || undefined)
+      .then((res) => setTeamEmployees(res.employees.map((e) => ({ id: e.id, name: e.name, role: e.role }))))
+      .catch(() => undefined);
+  }, [open, canAssign, user?.agencyId]);
+
+  useEffect(() => {
+    if (booking?.operationsExecutiveName) setOpsAssigneeName(booking.operationsExecutiveName);
+  }, [booking?.operationsExecutiveName]);
 
   useEffect(() => {
     if (!open || tab !== "ops") return;
@@ -252,9 +267,9 @@ function BookingDetailDialog({
                 ["payments", "Payments"],
                 ["travel", "Travel"],
                 ...(canOps ? [["itinerary", "Itinerary"] as const] : []),
-                ["ops", "Operations"],
+                ...(canOps ? [["ops", "Operations"] as const] : []),
                 ["requests", "Requests"],
-                ["finance", "Finance"],
+                ...(canFinance || !isAgent ? [["finance", "Finance"] as const] : []),
               ] as [TabKey, string][]).map(([k, label]) => (
                 <Button
                   key={k}
@@ -283,6 +298,39 @@ function BookingDetailDialog({
                   <SummaryCell label="Sales" value={booking.salesExecutiveName || booking.agent} />
                   <SummaryCell label="Operations" value={booking.operationsExecutiveName || "—"} />
                 </div>
+
+                {canAssign && (
+                  <div className="flex flex-wrap items-end gap-2 border rounded-lg p-3">
+                    <div className="min-w-[200px]">
+                      <Label className="text-xs">Assign operations</Label>
+                      <Select
+                        value={opsAssigneeName || "__none"}
+                        onValueChange={(v) => setOpsAssigneeName(v === "__none" ? "" : v)}
+                      >
+                        <SelectTrigger className="h-8"><SelectValue placeholder="Select ops" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none">Unassigned</SelectItem>
+                          {teamEmployees.map((e) => (
+                              <SelectItem key={e.id} value={e.name}>{e.name} ({e.role})</SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={busy || !opsAssigneeName}
+                      onClick={() => run("Operations assigned", async () => {
+                        const emp = teamEmployees.find((e) => e.name === opsAssigneeName);
+                        await api.assignBookingExecutives(booking.id, {
+                          operationsExecutiveName: opsAssigneeName,
+                          operationsExecutiveId: emp?.id,
+                        });
+                      })}
+                    >
+                      Save assignment
+                    </Button>
+                  </div>
+                )}
 
                 <div className="rounded-lg border p-3">
                   <p className="text-[11px] font-semibold text-muted-foreground uppercase mb-2">Booking Timeline</p>
@@ -562,16 +610,29 @@ function BookingDetailDialog({
                         <TableCell><StatusBadge status={pr.status} /></TableCell>
                         <TableCell>
                           {pr.status !== "Paid" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={busy}
-                              onClick={() => run("Payment recorded", async () => {
-                                await api.payPaymentRequest(pr.id, { amount: pr.amount - pr.amountPaid, method: "Razorpay" });
-                              })}
-                            >
-                              Pay
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Select value={payMethod} onValueChange={setPayMethod}>
+                                <SelectTrigger className="h-7 w-32 text-[10px]"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  {["Bank Transfer", "Cash", "Cheque", "Wallet"].map((m) => (
+                                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={busy}
+                                onClick={() => run("Payment recorded", async () => {
+                                  await api.payPaymentRequest(pr.id, {
+                                    amount: pr.amount - pr.amountPaid,
+                                    method: payMethod,
+                                  });
+                                })}
+                              >
+                                Pay
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       </TableRow>
@@ -968,9 +1029,13 @@ function BookingDetailDialog({
               <div className="space-y-3">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
                   <SummaryCell label="Selling" value={formatFullINR(booking.amount)} />
-                  <SummaryCell label="Cost" value={formatFullINR(booking.costPrice ?? 0)} />
-                  <SummaryCell label="Gross Profit" value={formatFullINR(booking.grossProfit ?? 0)} />
-                  <SummaryCell label="Net Profit" value={formatFullINR(booking.netProfit ?? 0)} />
+                  {canFinance && (
+                    <>
+                      <SummaryCell label="Cost" value={formatFullINR(booking.costPrice ?? 0)} />
+                      <SummaryCell label="Gross Profit" value={formatFullINR(booking.grossProfit ?? 0)} />
+                      <SummaryCell label="Net Profit" value={formatFullINR(booking.netProfit ?? 0)} />
+                    </>
+                  )}
                 </div>
                 {(pendingDeviations.length > 0 || canApproveDeviation) && (
                   <div className="border rounded-lg p-3 space-y-2">
@@ -1236,17 +1301,38 @@ function Field({
 }
 
 export function BookingsView() {
+  const user = useAuthStore((s) => s.user);
   const bookings = useDemoDataStore((s) => s.bookings);
+  const upsertBooking = useDemoDataStore((s) => s.upsertBooking);
   const [statusTab, setStatusTab] = useState("All");
   const [service, setService] = useState("All");
   const [search, setSearch] = useState("");
+  const [queueFilter, setQueueFilter] = useState<"all" | "mine" | "unassigned">("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  useEffect(() => {
+    if (queueFilter === "all") return;
+    api.getOpsQueue({ mine: queueFilter === "mine", unassigned: queueFilter === "unassigned" })
+      .then((res) => res.bookings.forEach((b) => upsertBooking(mapApiBooking(b))))
+      .catch(() => undefined);
+  }, [queueFilter, upsertBooking]);
 
   const filtered = useMemo(() => {
     return bookings.filter((b) => {
       if (statusTab !== "All" && b.status !== statusTab) return false;
       if (service !== "All" && b.service !== service) return false;
+      if (queueFilter === "mine") {
+        const mine =
+          b.operationsExecutiveId === user?.id ||
+          b.operationsExecutiveName === user?.name ||
+          b.operationsExecutiveName === user?.email;
+        if (!mine) return false;
+      }
+      if (queueFilter === "unassigned") {
+        const name = (b.operationsExecutiveName || "").trim();
+        if (b.operationsExecutiveId || (name && name !== "Operations")) return false;
+      }
       if (search) {
         const q = search.toLowerCase();
         if (
@@ -1258,7 +1344,7 @@ export function BookingsView() {
       }
       return true;
     });
-  }, [bookings, statusTab, service, search]);
+  }, [bookings, statusTab, service, search, queueFilter, user]);
 
   return (
     <PageShell>
@@ -1278,6 +1364,14 @@ export function BookingsView() {
             {["All", "Flight", "Hotel", "Holiday"].map((s) => (
               <SelectItem key={s} value={s}>{s}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={queueFilter} onValueChange={(v) => setQueueFilter(v as typeof queueFilter)}>
+          <SelectTrigger className="w-40 h-9"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All bookings</SelectItem>
+            <SelectItem value="mine">My ops queue</SelectItem>
+            <SelectItem value="unassigned">Unassigned ops</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -101,10 +101,13 @@ export function mountSupplierRoutes(app: Express, agencyScope: ScopeFn) {
         data: {
           ...data,
           name: String(data.name).trim(),
+          type: String(data.type).trim(),
+          country: String(data.country || "").trim() || null,
+          city: String(data.city || "").trim() || null,
           agencyId: req.auth?.agencyId,
           createdById: req.auth?.userId,
           status: String(data.status || "Active"),
-        },
+        } as Parameters<typeof db.supplier.create>[0]["data"],
       });
       res.status(201).json({ supplier });
     } catch (e) {

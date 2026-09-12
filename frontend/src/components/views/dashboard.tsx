@@ -93,7 +93,131 @@ export function DashboardView() {
   if (!user) return null;
   if (user.role === "super_admin") return <SuperAdminDashboard />;
   if (user.role === "employee") return <EmployeeDashboard />;
+  if (user.role === "travel_agent") return <AgentDashboard />;
   return <AgencyDashboard />;
+}
+
+function AgentDashboard() {
+  const setView = useAppStore((s) => s.setView);
+  const user = useAuthStore((s) => s.user);
+  const bookings = useDemoDataStore((s) => s.bookings);
+  const quotations = useDemoDataStore((s) => s.quotations);
+  const walletBalance = useDemoDataStore((s) => s.walletBalance);
+  const notifications = useDemoDataStore((s) => s.notifications);
+
+  const myQuotes = useMemo(
+    () => quotations.filter((q) =>
+      q.createdBy === user?.email ||
+      q.agentName === user?.name ||
+      q.agentName === user?.email ||
+      (q as { agentId?: string }).agentId === user?.id
+    ),
+    [quotations, user],
+  );
+  const myBookings = useMemo(
+    () => bookings.filter((b) =>
+      b.agent === user?.name ||
+      b.agent === user?.email ||
+      b.salesExecutiveName === user?.name
+    ),
+    [bookings, user],
+  );
+  const pendingAccept = myQuotes.filter((q) => ["Customer Reviewing", "Sent to Agent", "Sent"].includes(q.status)).length;
+  const accepted = myQuotes.filter((q) => q.status === "Accepted").length;
+  const greeting = useMemo(() => greetingForHour(new Date().getHours()), []);
+
+  const stats = [
+    { icon: FileSpreadsheet, label: "My quotations", value: String(myQuotes.length), color: "bg-teal-100 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400", subtitle: "Created by you" },
+    { icon: Clock, label: "Awaiting customer", value: String(pendingAccept), color: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400", subtitle: "Sent / reviewing" },
+    { icon: CheckCircle2, label: "Accepted", value: String(accepted), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", subtitle: "Ready for agency convert" },
+    { icon: Plane, label: "My bookings", value: String(myBookings.length), color: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400", subtitle: "Linked to you" },
+    { icon: Wallet, label: "Wallet", value: formatINR(walletBalance), color: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400", subtitle: "Agency balance" },
+    { icon: Bell, label: "Alerts", value: String(notifications.slice(0, 20).length), color: "bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400", subtitle: "Recent" },
+  ];
+
+  return (
+    <PageShell>
+      <BrandHero
+        eyebrow={greeting}
+        title={user?.name || "Agent desk"}
+        subtitle="Quote packages, compose custom trips, and track customer acceptances — without CRM or cost leakage."
+        actions={
+          <>
+            <Button className="bg-white text-primary hover:bg-white/90 shadow-sm h-9" onClick={() => setView("quotations")}>
+              <Plus className="w-4 h-4 mr-1.5" /> Create quotation
+            </Button>
+            <Button
+              variant="outline"
+              className="bg-white/10 border-white/25 text-white hover:bg-white/20 h-9"
+              onClick={() => setView("bookings")}
+            >
+              <Plane className="w-4 h-4 mr-1.5" /> My bookings
+            </Button>
+          </>
+        }
+      />
+
+      <section className="space-y-4">
+        <SectionHeader title="Agent snapshot" description="Your quotes and bookings only" />
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {stats.map((s, i) => (
+            <MetricCard key={s.label} {...s} index={i} />
+          ))}
+        </div>
+      </section>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader className="pb-2">
+            <SectionHeader
+              title="Recent quotations"
+              action={
+                <Button variant="ghost" size="sm" className="text-xs h-8 text-primary" onClick={() => setView("quotations")}>
+                  Open
+                </Button>
+              }
+            />
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {myQuotes.slice(0, 6).map((q) => (
+              <div key={q.id} className="flex items-center justify-between border rounded-lg px-3 py-2 text-xs">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{q.quoteNo} · {q.customerName}</p>
+                  <p className="text-muted-foreground truncate">{q.destination || q.service}</p>
+                </div>
+                <StatusBadge status={q.status} />
+              </div>
+            ))}
+            {myQuotes.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">No quotations yet</p>}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <SectionHeader
+              title="Recent bookings"
+              action={
+                <Button variant="ghost" size="sm" className="text-xs h-8 text-primary" onClick={() => setView("bookings")}>
+                  Open
+                </Button>
+              }
+            />
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {myBookings.slice(0, 6).map((b) => (
+              <div key={b.id} className="flex items-center justify-between border rounded-lg px-3 py-2 text-xs">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{b.bookingRef} · {b.customerName}</p>
+                  <p className="text-muted-foreground truncate">{b.destination || b.route}</p>
+                </div>
+                <StatusBadge status={b.status} />
+              </div>
+            ))}
+            {myBookings.length === 0 && <p className="text-xs text-muted-foreground text-center py-6">No bookings yet</p>}
+          </CardContent>
+        </Card>
+      </div>
+    </PageShell>
+  );
 }
 
 function AgencyDashboard() {

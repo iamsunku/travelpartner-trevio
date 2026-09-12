@@ -81,7 +81,7 @@ function branchScope(req: AuthRequest, ownField?: string): Record<string, unknow
   const role = req.auth?.role;
   if (role === "super_admin" || role === "agency_admin") return {};
   const scope: Record<string, unknown> = { branchId: req.auth?.branchId ?? "__no_branch__" };
-  if (ownField && (role === "employee" || role === "accountant")) {
+  if (ownField && (role === "employee" || role === "accountant" || role === "travel_agent" || role === "sales_executive")) {
     scope[ownField] = req.auth?.userId;
   }
   return scope;
@@ -3082,6 +3082,152 @@ app.patch("/api/leaves/:id", requireAuth, requireRole("super_admin", "agency_adm
       data: { status: req.body.status, approvedById: req.auth!.userId, approvedByName: req.auth!.email },
     });
     res.json({ leave: updated });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ── Shifts ───────────────────────────────────────────────────────────────────
+app.get("/api/shifts", requireAuth, requirePermission("attendance"), async (req: AuthRequest, res) => {
+  try {
+    const shifts = await db.shift.findMany({
+      where: { ...agencyScope(req) },
+      orderBy: [{ date: "desc" }, { startTime: "asc" }],
+      take: 200,
+    });
+    res.json({ shifts });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/shifts", requireAuth, requirePermission("attendance"), async (req: AuthRequest, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.employeeName || !body.date || !body.startTime || !body.endTime) {
+      res.status(400).json({ error: "employeeName, date, startTime, endTime required" });
+      return;
+    }
+    const shift = await db.shift.create({
+      data: {
+        agencyId: ownAgencyId(req),
+        branchId: ownBranchId(req),
+        employeeId: body.employeeId || null,
+        employeeName: String(body.employeeName),
+        date: String(body.date),
+        startTime: String(body.startTime),
+        endTime: String(body.endTime),
+        roleLabel: body.roleLabel || null,
+        status: body.status || "Scheduled",
+        notes: body.notes || null,
+      },
+    });
+    res.status(201).json({ shift });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.patch("/api/shifts/:id", requireAuth, requirePermission("attendance"), async (req: AuthRequest, res) => {
+  try {
+    const existing = await db.shift.findFirst({ where: { id: routeParamId(req), ...agencyScope(req) } });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const body = req.body || {};
+    const shift = await db.shift.update({
+      where: { id: existing.id },
+      data: {
+        status: body.status ?? existing.status,
+        startTime: body.startTime ?? existing.startTime,
+        endTime: body.endTime ?? existing.endTime,
+        notes: body.notes !== undefined ? body.notes : existing.notes,
+        roleLabel: body.roleLabel !== undefined ? body.roleLabel : existing.roleLabel,
+      },
+    });
+    res.json({ shift });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ── Payroll scaffold ─────────────────────────────────────────────────────────
+app.get("/api/payroll", requireAuth, requireAnyPermission("employees", "finance"), async (req: AuthRequest, res) => {
+  try {
+    const period = typeof req.query.period === "string" ? req.query.period : undefined;
+    const entries = await db.payrollEntry.findMany({
+      where: { ...agencyScope(req), ...(period ? { period } : {}) },
+      orderBy: [{ period: "desc" }, { employeeName: "asc" }],
+      take: 200,
+    });
+    res.json({ entries });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.post("/api/payroll", requireAuth, requireAnyPermission("employees", "finance"), async (req: AuthRequest, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.employeeName || !body.period || body.baseSalary == null) {
+      res.status(400).json({ error: "employeeName, period, baseSalary required" });
+      return;
+    }
+    const baseSalary = Math.round(Number(body.baseSalary) || 0);
+    const incentives = Math.round(Number(body.incentives) || 0);
+    const deductions = Math.round(Number(body.deductions) || 0);
+    const netPay = body.netPay != null ? Math.round(Number(body.netPay)) : baseSalary + incentives - deductions;
+    const entry = await db.payrollEntry.create({
+      data: {
+        agencyId: ownAgencyId(req),
+        employeeId: body.employeeId || null,
+        employeeName: String(body.employeeName),
+        period: String(body.period),
+        baseSalary,
+        incentives,
+        deductions,
+        netPay,
+        status: body.status || "Draft",
+        notes: body.notes || null,
+      },
+    });
+    res.status(201).json({ entry });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.patch("/api/payroll/:id", requireAuth, requireAnyPermission("employees", "finance"), async (req: AuthRequest, res) => {
+  try {
+    const existing = await db.payrollEntry.findFirst({ where: { id: routeParamId(req), ...agencyScope(req) } });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const body = req.body || {};
+    const baseSalary = body.baseSalary != null ? Math.round(Number(body.baseSalary)) : existing.baseSalary;
+    const incentives = body.incentives != null ? Math.round(Number(body.incentives)) : existing.incentives;
+    const deductions = body.deductions != null ? Math.round(Number(body.deductions)) : existing.deductions;
+    const netPay = body.netPay != null ? Math.round(Number(body.netPay)) : baseSalary + incentives - deductions;
+    const entry = await db.payrollEntry.update({
+      where: { id: existing.id },
+      data: {
+        baseSalary,
+        incentives,
+        deductions,
+        netPay,
+        status: body.status ?? existing.status,
+        notes: body.notes !== undefined ? body.notes : existing.notes,
+      },
+    });
+    res.json({ entry });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });

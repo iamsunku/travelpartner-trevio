@@ -22,9 +22,9 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/app-store";
-import { api, type ApiAttendance, type ApiEmployee, type ApiLeave } from "@/lib/api";
+import { api, type ApiAttendance, type ApiEmployee, type ApiLeave, type ApiPayrollEntry, type ApiShift } from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
-import { PageShell, PageHeader, MetricCard, SectionHeader, StatusBadge } from "@/components/shared/ui-helpers";
+import { PageShell, PageHeader, MetricCard, SectionHeader, StatusBadge, formatINR } from "@/components/shared/ui-helpers";
 
 const LEAVE_TYPES = ["Casual", "Sick", "Earned", "Unpaid"] as const;
 
@@ -37,6 +37,10 @@ function fmtTime(v?: string | null) {
   return new Date(v).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 }
 
+function currentPeriod() {
+  return new Date().toISOString().slice(0, 7);
+}
+
 export function AttendanceLeaveView() {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
@@ -47,7 +51,11 @@ export function AttendanceLeaveView() {
   const [teamEmployees, setTeamEmployees] = useState<ApiEmployee[]>([]);
   const [myLeaves, setMyLeaves] = useState<ApiLeave[]>([]);
   const [teamLeaves, setTeamLeaves] = useState<ApiLeave[]>([]);
+  const [shifts, setShifts] = useState<ApiShift[]>([]);
+  const [payroll, setPayroll] = useState<ApiPayrollEntry[]>([]);
   const [requestOpen, setRequestOpen] = useState(false);
+  const [shiftOpen, setShiftOpen] = useState(false);
+  const [payrollOpen, setPayrollOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const today = todayISO();
@@ -60,10 +68,11 @@ export function AttendanceLeaveView() {
       setMyLeaves(res.leaves.filter((l) => l.userId === user.id));
       if (isManager) setTeamLeaves(res.leaves.filter((l) => l.userId !== user.id));
     }).catch(() => undefined);
+    api.getShifts().then((res) => setShifts(res.shifts)).catch(() => undefined);
     if (isManager) {
-      // Managers get their whole branch/agency's records when no userId is passed.
       api.getAttendance().then((res) => setTeamAttendance(res.attendance)).catch(() => undefined);
       api.getEmployees(user.agencyId || undefined).then((res) => setTeamEmployees(res.employees)).catch(() => undefined);
+      api.getPayroll().then((res) => setPayroll(res.entries)).catch(() => undefined);
     }
   }
 
@@ -112,7 +121,7 @@ export function AttendanceLeaveView() {
     <PageShell>
       <PageHeader
         title="Attendance & Leave"
-        subtitle="Check in/out, request leave, and track your work hours"
+        subtitle="Check in/out, shifts, leave, and payroll scaffold"
         action={
           <Button onClick={() => setRequestOpen(true)} className="bg-primary hover:bg-primary/90">
             <Plus className="w-4 h-4 mr-1.5" /> Request Leave
@@ -139,11 +148,13 @@ export function AttendanceLeaveView() {
       </Card>
 
       <Tabs defaultValue="attendance">
-        <TabsList className="bg-muted/60">
+        <TabsList className="bg-muted/60 flex flex-wrap h-auto">
           <TabsTrigger value="attendance">My Attendance</TabsTrigger>
           <TabsTrigger value="leaves">My Leaves</TabsTrigger>
+          <TabsTrigger value="shifts">Shifts</TabsTrigger>
           {isManager && <TabsTrigger value="roster">Team Attendance</TabsTrigger>}
           {isManager && <TabsTrigger value="approvals">Approvals</TabsTrigger>}
+          {isManager && <TabsTrigger value="payroll">Payroll</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="attendance" className="mt-4">
@@ -207,6 +218,68 @@ export function AttendanceLeaveView() {
                   ))}
                   {myLeaves.length === 0 && (
                     <TableRow><TableCell colSpan={5} className="text-center py-10 text-sm text-muted-foreground">No leave requests yet.</TableCell></TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="shifts" className="mt-4">
+          <Card>
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <SectionHeader title="Shift roster" description="Scheduled desk / ops / sales shifts" />
+              {isManager && (
+                <Button size="sm" onClick={() => setShiftOpen(true)}>
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add shift
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Employee</TableHead>
+                    <TableHead>Time</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    {isManager && <TableHead />}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {shifts.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="text-sm">{s.date}</TableCell>
+                      <TableCell className="text-sm">{s.employeeName}</TableCell>
+                      <TableCell className="text-sm">{s.startTime} – {s.endTime}</TableCell>
+                      <TableCell className="text-sm">{s.roleLabel || "—"}</TableCell>
+                      <TableCell><StatusBadge status={s.status} /></TableCell>
+                      {isManager && (
+                        <TableCell>
+                          {s.status === "Scheduled" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px]"
+                              onClick={async () => {
+                                await api.updateShift(s.id, { status: "CheckedIn" });
+                                refresh();
+                              }}
+                            >
+                              Check in
+                            </Button>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                  {shifts.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={isManager ? 6 : 5} className="text-center py-10 text-sm text-muted-foreground">
+                        No shifts scheduled yet.
+                      </TableCell>
+                    </TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -307,9 +380,88 @@ export function AttendanceLeaveView() {
             </Card>
           </TabsContent>
         )}
+
+        {isManager && (
+          <TabsContent value="payroll" className="mt-4">
+            <Card>
+              <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                <SectionHeader title="Payroll scaffold" description="Draft monthly pay entries from employee salary / incentives" />
+                <Button size="sm" onClick={() => setPayrollOpen(true)}>
+                  <Plus className="w-3.5 h-3.5 mr-1" /> Add entry
+                </Button>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Period</TableHead>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Base</TableHead>
+                      <TableHead>Incentives</TableHead>
+                      <TableHead>Deductions</TableHead>
+                      <TableHead>Net</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {payroll.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell className="text-sm">{p.period}</TableCell>
+                        <TableCell className="text-sm">{p.employeeName}</TableCell>
+                        <TableCell className="text-sm">{formatINR(p.baseSalary)}</TableCell>
+                        <TableCell className="text-sm">{formatINR(p.incentives)}</TableCell>
+                        <TableCell className="text-sm">{formatINR(p.deductions)}</TableCell>
+                        <TableCell className="text-sm font-semibold">{formatINR(p.netPay)}</TableCell>
+                        <TableCell><StatusBadge status={p.status} /></TableCell>
+                        <TableCell>
+                          {p.status === "Draft" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px]"
+                              onClick={async () => {
+                                await api.updatePayrollEntry(p.id, { status: "Approved" });
+                                refresh();
+                              }}
+                            >
+                              Approve
+                            </Button>
+                          )}
+                          {p.status === "Approved" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px]"
+                              onClick={async () => {
+                                await api.updatePayrollEntry(p.id, { status: "Paid" });
+                                refresh();
+                              }}
+                            >
+                              Mark paid
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {payroll.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-10 text-sm text-muted-foreground">
+                          No payroll entries yet.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
 
       <LeaveRequestDialog open={requestOpen} onOpenChange={setRequestOpen} onCreated={refresh} />
+      <ShiftDialog open={shiftOpen} onOpenChange={setShiftOpen} employees={teamEmployees} onCreated={refresh} />
+      <PayrollDialog open={payrollOpen} onOpenChange={setPayrollOpen} employees={teamEmployees} onCreated={refresh} />
     </PageShell>
   );
 }
@@ -372,6 +524,211 @@ function LeaveRequestDialog({ open, onOpenChange, onCreated }: { open: boolean; 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90">Submit Request</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ShiftDialog({
+  open,
+  onOpenChange,
+  employees,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  employees: ApiEmployee[];
+  onCreated: () => void;
+}) {
+  const { toast } = useToast();
+  const [employeeName, setEmployeeName] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [date, setDate] = useState(todayISO());
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("18:00");
+  const [roleLabel, setRoleLabel] = useState("desk");
+
+  async function handleSubmit() {
+    if (!employeeName) {
+      toast({ title: "Pick an employee", variant: "destructive" });
+      return;
+    }
+    try {
+      await api.createShift({ employeeName, employeeId: employeeId || undefined, date, startTime, endTime, roleLabel });
+      toast({ title: "Shift scheduled" });
+      onOpenChange(false);
+      onCreated();
+    } catch {
+      toast({ title: "Couldn't create shift", variant: "destructive" });
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Schedule shift</DialogTitle>
+          <DialogDescription>Assign a desk, ops, or sales shift.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Employee</Label>
+            <Select
+              value={employeeId || "__none"}
+              onValueChange={(v) => {
+                if (v === "__none") {
+                  setEmployeeId("");
+                  setEmployeeName("");
+                  return;
+                }
+                const emp = employees.find((e) => e.id === v);
+                setEmployeeId(v);
+                setEmployeeName(emp?.name || "");
+              }}
+            >
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">Select…</SelectItem>
+                {employees.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Date</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Role</Label>
+              <Select value={roleLabel} onValueChange={setRoleLabel}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {["desk", "ops", "sales"].map((r) => (
+                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Start</Label>
+              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>End</Label>
+              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSubmit}>Save shift</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PayrollDialog({
+  open,
+  onOpenChange,
+  employees,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  employees: ApiEmployee[];
+  onCreated: () => void;
+}) {
+  const { toast } = useToast();
+  const [employeeId, setEmployeeId] = useState("");
+  const [employeeName, setEmployeeName] = useState("");
+  const [period, setPeriod] = useState(currentPeriod());
+  const [baseSalary, setBaseSalary] = useState("");
+  const [incentives, setIncentives] = useState("0");
+  const [deductions, setDeductions] = useState("0");
+
+  async function handleSubmit() {
+    if (!employeeName || !baseSalary) {
+      toast({ title: "Employee and base salary required", variant: "destructive" });
+      return;
+    }
+    try {
+      await api.createPayrollEntry({
+        employeeId: employeeId || undefined,
+        employeeName,
+        period,
+        baseSalary: Number(baseSalary) || 0,
+        incentives: Number(incentives) || 0,
+        deductions: Number(deductions) || 0,
+      });
+      toast({ title: "Payroll entry created" });
+      onOpenChange(false);
+      onCreated();
+    } catch {
+      toast({ title: "Couldn't create payroll entry", variant: "destructive" });
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Payroll entry</DialogTitle>
+          <DialogDescription>Draft a monthly pay line for an employee.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Employee</Label>
+            <Select
+              value={employeeId || "__none"}
+              onValueChange={(v) => {
+                if (v === "__none") {
+                  setEmployeeId("");
+                  setEmployeeName("");
+                  setBaseSalary("");
+                  return;
+                }
+                const emp = employees.find((e) => e.id === v);
+                setEmployeeId(v);
+                setEmployeeName(emp?.name || "");
+                setBaseSalary(String(emp?.salary || 0));
+                setIncentives(String(emp?.incentives || 0));
+              }}
+            >
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">Select…</SelectItem>
+                {employees.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Period (YYYY-MM)</Label>
+              <Input value={period} onChange={(e) => setPeriod(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Base salary</Label>
+              <Input value={baseSalary} onChange={(e) => setBaseSalary(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Incentives</Label>
+              <Input value={incentives} onChange={(e) => setIncentives(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Deductions</Label>
+              <Input value={deductions} onChange={(e) => setDeductions(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSubmit}>Create draft</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

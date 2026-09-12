@@ -7,7 +7,7 @@ export type ProductAccess = {
 };
 
 const DEFAULT_AGENT: ProductAccess = {
-  flights: false,
+  flights: true,
   hotels: true,
   packages: true,
 };

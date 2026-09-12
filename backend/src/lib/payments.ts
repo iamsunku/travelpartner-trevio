@@ -1,4 +1,4 @@
-const OFFLINE_METHODS = new Set(["Cash", "Bank Transfer", "Cheque"]);
+const OFFLINE_METHODS = new Set(["Cash", "Bank Transfer", "Cheque", "Wallet"]);
 
 export function isOfflinePaymentMethod(method: string | undefined): boolean {
   return OFFLINE_METHODS.has(String(method || ""));

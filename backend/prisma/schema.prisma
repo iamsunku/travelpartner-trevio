@@ -2,7 +2,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/@prisma/client"
 }
 
 datasource db {
@@ -246,6 +245,7 @@ model Lead {
   customerId     String?
   travelRequirements TravelRequirement[]
   travelProposals    TravelProposal[]
+  quotations         Quotation[]
 
   @@index([agencyId])
   @@index([branchId])
@@ -331,6 +331,7 @@ model Quotation {
   currentVersion  Int      @default(1)
   wizardStep      Int      @default(1)
   enquiryRef      String?
+  leadId          String?
   selectedPackageId String?
   agentMarkup     Int      @default(0)
   baseSellingTotal Int     @default(0)
@@ -347,6 +348,7 @@ model Quotation {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
 
+  lead          Lead?  @relation(fields: [leadId], references: [id])
   createdByUser User? @relation(fields: [createdById], references: [id])
   bookings      Booking[]
   packages      QuotationPackage[]
@@ -362,6 +364,7 @@ model Quotation {
   @@index([status])
   @@index([deletedAt])
   @@index([destination])
+  @@index([leadId])
 }
 
 model QuotationPackage {
@@ -582,6 +585,47 @@ model Leave {
   @@index([agencyId])
   @@index([branchId])
   @@index([userId])
+}
+
+model Shift {
+  id           String   @id @default(cuid())
+  agencyId     String?
+  branchId     String?
+  employeeId   String?
+  employeeName String
+  date         String   // YYYY-MM-DD
+  startTime    String   // HH:mm
+  endTime      String
+  roleLabel    String?  // desk|ops|sales
+  status       String   @default("Scheduled") // Scheduled|CheckedIn|Completed|Missed
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([agencyId])
+  @@index([branchId])
+  @@index([date])
+  @@index([employeeId])
+}
+
+model PayrollEntry {
+  id           String   @id @default(cuid())
+  agencyId     String?
+  employeeId   String?
+  employeeName String
+  period       String   // YYYY-MM
+  baseSalary   Int
+  incentives   Int      @default(0)
+  deductions   Int      @default(0)
+  netPay       Int
+  status       String   @default("Draft") // Draft|Approved|Paid
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([agencyId])
+  @@index([period])
+  @@index([employeeId])
 }
 
 model AuditLog {

@@ -58,14 +58,27 @@ interface AppState {
   sidebarOpen: boolean;
   sidebarCollapsed: boolean;
   theme: "light" | "dark";
+  quotePrefill: QuotePrefill | null;
   setView: (view: ViewKey) => void;
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebarCollapsed: () => void;
   setTheme: (theme: "light" | "dark") => void;
+  setQuotePrefill: (prefill: QuotePrefill | null) => void;
   syncViewFromUrl: () => void;
 }
+
+export type QuotePrefill = {
+  leadId?: string;
+  customerName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  service?: string;
+  budget?: number;
+  enquiryRef?: string;
+  destination?: string;
+};
 
 function updateUrlView(view: ViewKey) {
   if (typeof window === "undefined") return;
@@ -81,6 +94,7 @@ export const useAppStore = create<AppState>()(
       sidebarOpen: false,
       sidebarCollapsed: false,
       theme: "light",
+      quotePrefill: null,
       setView: (view) => {
         const label = SEARCH_ITEMS.find((s) => s.key === view)?.label ?? view;
         pushRecentView(view, label);
@@ -92,6 +106,7 @@ export const useAppStore = create<AppState>()(
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
       toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setTheme: (theme) => set({ theme }),
+      setQuotePrefill: (prefill) => set({ quotePrefill: prefill }),
       syncViewFromUrl: () => {
         if (typeof window === "undefined") return;
         const view = new URLSearchParams(window.location.search).get("view") as ViewKey | null;
@@ -102,6 +117,13 @@ export const useAppStore = create<AppState>()(
         }
       },
     }),
-    { name: "tpp-app" }
+    {
+      name: "tpp-app",
+      partialize: (s) => ({
+        activeView: s.activeView,
+        sidebarCollapsed: s.sidebarCollapsed,
+        theme: s.theme,
+      }),
+    }
   )
 );

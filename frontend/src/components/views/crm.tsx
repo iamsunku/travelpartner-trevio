@@ -15,13 +15,14 @@ import {
 import {
   Plus, Target, TrendingUp, Users, Wallet, Phone, Mail, Calendar,
   GripVertical, MessageCircle, Globe, Facebook, Instagram,
-  UserPlus, Footprints,
+  UserPlus, Footprints, FileText,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { useDemoDataStore } from "@/store/demo-data-store";
+import { useAppStore } from "@/store/app-store";
 import type { Lead } from "@/types";
 import {
   formatINR, formatFullINR, StatusBadge, PageHeader, PageShell, MetricCard, initials, avatarGradient,
@@ -76,7 +77,7 @@ const SERVICE_COLORS: Record<string, string> = {
   Holiday: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
 };
 
-function LeadCard({ lead }: { lead: Lead }) {
+function LeadCard({ lead, onCreateQuote }: { lead: Lead; onCreateQuote?: (lead: Lead) => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: lead.id });
   const SourceIcon = SOURCE_ICON[lead.source] || Globe;
   return (
@@ -118,11 +119,33 @@ function LeadCard({ lead }: { lead: Lead }) {
           {new Date(lead.expectedClose).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
         </span>
       </div>
+      {onCreateQuote && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full mt-2 h-7 text-[11px]"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCreateQuote(lead);
+          }}
+        >
+          <FileText className="w-3 h-3 mr-1" /> Create quote
+        </Button>
+      )}
     </div>
   );
 }
 
-function KanbanColumn({ stage, leads }: { stage: Lead["stage"]; leads: Lead[] }) {
+function KanbanColumn({
+  stage,
+  leads,
+  onCreateQuote,
+}: {
+  stage: Lead["stage"];
+  leads: Lead[];
+  onCreateQuote?: (lead: Lead) => void;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: stage });
   const totalValue = leads.reduce((s, l) => s + l.value, 0);
   return (
@@ -144,7 +167,7 @@ function KanbanColumn({ stage, leads }: { stage: Lead["stage"]; leads: Lead[] })
         )}
       >
         {leads.map((lead) => (
-          <LeadCard key={lead.id} lead={lead} />
+          <LeadCard key={lead.id} lead={lead} onCreateQuote={onCreateQuote} />
         ))}
         {leads.length === 0 && (
           <div className="text-[11px] text-muted-foreground/60 text-center py-8 border-2 border-dashed border-border/50 rounded-lg">
@@ -269,6 +292,8 @@ function NewLeadDialog() {
 
 function LeadsPipeline() {
   const { toast } = useToast();
+  const setView = useAppStore((s) => s.setView);
+  const setQuotePrefill = useAppStore((s) => s.setQuotePrefill);
   const leads = useDemoDataStore((s) => s.leads);
   const updateLeadStage = useDemoDataStore((s) => s.updateLeadStage);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
@@ -288,6 +313,23 @@ function LeadsPipeline() {
   const wonLeads = leads.filter((l) => l.stage === "Won").length;
   const closedLeads = leads.filter((l) => l.stage === "Won" || l.stage === "Lost").length;
   const conversionRate = closedLeads > 0 ? Math.round((wonLeads / closedLeads) * 100) : 0;
+
+  function handleCreateQuote(lead: Lead) {
+    setQuotePrefill({
+      leadId: lead.id,
+      customerName: lead.customerName,
+      contactEmail: lead.email,
+      contactPhone: lead.phone,
+      service: lead.service,
+      budget: lead.value,
+      enquiryRef: `LEAD-${lead.id.slice(-6)}`,
+    });
+    setView("quotations");
+    toast({
+      title: "Opening quotation wizard",
+      description: `Prefilling from ${lead.customerName}`,
+    });
+  }
 
   function handleDragStart(e: DragStartEvent) {
     const lead = leads.find((l) => l.id === e.active.id);
@@ -325,7 +367,7 @@ function LeadsPipeline() {
         <div className="overflow-x-auto scroll-thin pb-2">
           <div className="flex gap-3 min-w-max">
             {STAGES.map((stage) => (
-              <KanbanColumn key={stage} stage={stage} leads={columns[stage]} />
+              <KanbanColumn key={stage} stage={stage} leads={columns[stage]} onCreateQuote={handleCreateQuote} />
             ))}
           </div>
         </div>
@@ -339,7 +381,7 @@ function LeadsPipeline() {
       </DndContext>
 
       <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-        <GripVertical className="w-3 h-3" /> Drag lead cards between columns to update stages.
+        <GripVertical className="w-3 h-3" /> Drag lead cards between columns to update stages. Use Create quote to open the wizard.
       </p>
     </div>
   );
@@ -347,6 +389,23 @@ function LeadsPipeline() {
 
 function EnquiriesTab() {
   const leads = useDemoDataStore((s) => s.leads);
+  const setView = useAppStore((s) => s.setView);
+  const setQuotePrefill = useAppStore((s) => s.setQuotePrefill);
+  const { toast } = useToast();
+
+  function handleCreateQuote(lead: Lead) {
+    setQuotePrefill({
+      leadId: lead.id,
+      customerName: lead.customerName,
+      contactEmail: lead.email,
+      contactPhone: lead.phone,
+      service: lead.service,
+      budget: lead.value,
+      enquiryRef: `LEAD-${lead.id.slice(-6)}`,
+    });
+    setView("quotations");
+    toast({ title: "Opening quotation wizard", description: `Prefilling from ${lead.customerName}` });
+  }
   const sourceMap = new Map<string, number>();
   for (const lead of leads) {
     const src = lead.source || "Other";
@@ -433,6 +492,7 @@ function EnquiriesTab() {
                   <TableHead className="text-right">Value</TableHead>
                   <TableHead>Stage</TableHead>
                   <TableHead>Date</TableHead>
+                  <TableHead className="w-28" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -465,6 +525,11 @@ function EnquiriesTab() {
                       <TableCell><StatusBadge status={l.stage} /></TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {new Date(l.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}
+                      </TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => handleCreateQuote(l)}>
+                          <FileText className="w-3 h-3 mr-1" /> Quote
+                        </Button>
                       </TableCell>
                     </TableRow>
                   );

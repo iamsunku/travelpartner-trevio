@@ -84,6 +84,7 @@ export function mapApiBooking(b: ApiBooking): Booking {
     netProfit: b.netProfit,
     salesExecutiveName: b.salesExecutiveName,
     operationsExecutiveName: b.operationsExecutiveName,
+    operationsExecutiveId: (b as { operationsExecutiveId?: string | null }).operationsExecutiveId,
     isInternational: b.isInternational,
     policiesAcceptedAt: b.policiesAcceptedAt,
     termsAndConditions: b.termsAndConditions,

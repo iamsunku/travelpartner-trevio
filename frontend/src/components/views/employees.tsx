@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 const DEPARTMENTS = ["All", "Sales", "Management", "Accounts", "Operations", "Support"];
 const BRANCHES = ["All", "Mumbai - Andheri", "Delhi - CP", "Bangalore - Indiranagar", "Chennai - T. Nagar"];
 const STATUSES = ["All", "Active", "On Leave", "Inactive"];
-const ROLES = ["employee", "branch_manager", "accountant"];
+const ROLES = ["employee", "branch_manager", "accountant", "travel_agent", "sales_executive", "operations"];
 
 export function EmployeesView() {
   const employees = useDemoDataStore((s) => s.employees);

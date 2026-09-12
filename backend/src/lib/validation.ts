@@ -209,7 +209,7 @@ export const employeeSchema = z.object({
   designation: z.string().min(1),
   department: z.string().optional(),
   branch: z.string().optional(),
-  role: z.enum(["employee", "branch_manager", "accountant"]).optional(),
+  role: z.enum(["employee", "branch_manager", "accountant", "travel_agent", "sales_executive", "operations"]).optional(),
   salary: z.number().min(0).optional(),
   target: z.number().min(0).optional(),
   joinDate: z.string().optional(),

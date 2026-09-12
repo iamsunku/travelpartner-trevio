@@ -281,6 +281,7 @@ export interface Booking {
   netProfit?: number;
   salesExecutiveName?: string | null;
   operationsExecutiveName?: string | null;
+  operationsExecutiveId?: string | null;
   isInternational?: boolean;
   policiesAcceptedAt?: string | null;
   termsAndConditions?: string | null;
@@ -509,6 +510,7 @@ export interface Quotation {
   currentVersion?: number;
   wizardStep?: number;
   enquiryRef?: string;
+  leadId?: string;
   selectedPackageId?: string | null;
   agentMarkup?: number;
   baseSellingTotal?: number;

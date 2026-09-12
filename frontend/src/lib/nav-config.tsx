@@ -176,6 +176,6 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   sales_executive: "Sales team — customers, quotations & bookings",
   product_executive: "Product team — manage hotels, activities & transfers",
   operations: "Operations team — confirm services, vouchers & suppliers",
-  travel_agent: "B2B agent — passenger details, payments & change requests",
+  travel_agent: "B2B agency partner — book flights/hotels/packages for clients, or send quotes for Trevio ops to fulfill",
   management: "Leadership — dashboards, reports & approvals",
 };

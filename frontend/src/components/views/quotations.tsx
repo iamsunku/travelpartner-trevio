@@ -7,7 +7,7 @@ import {
   ChevronDown, Sparkles, Globe, ListOrdered,
 } from "lucide-react";
 import { useDemoDataStore } from "@/store/demo-data-store";
-import { useAuthStore } from "@/store/app-store";
+import { useAuthStore, useAppStore } from "@/store/app-store";
 import { api, ApiError } from "@/lib/api";
 import type { Quotation } from "@/types";
 import { mapApiQuotation } from "@/lib/api-mappers";
@@ -42,6 +42,7 @@ import { InternationalQuotationDialog } from "@/components/views/international-q
 import { ProductQuoteBuilderDialog } from "@/components/shared/product-quote-builder";
 import { QuotationWizardDialog } from "@/components/views/quotation-wizard";
 import { AgentQuotationDialog } from "@/components/views/agent-quotation-dialog";
+import { AgentTripComposerDialog } from "@/components/views/agent-trip-composer";
 import {
   downloadQuotationPdf,
   getQuotationLineItems,
@@ -763,6 +764,8 @@ export function QuotationsView() {
   const { toast } = useToast();
   const { pdf, markSent } = useQuoteActions();
   const user = useAuthStore((s) => s.user);
+  const quotePrefill = useAppStore((s) => s.quotePrefill);
+  const setQuotePrefill = useAppStore((s) => s.setQuotePrefill);
   const quotations = useDemoDataStore((s) => s.quotations);
   const upsertQuotation = useDemoDataStore((s) => s.upsertQuotation);
   const hydrateFromApi = useDemoDataStore((s) => s.hydrateFromApi);
@@ -774,6 +777,7 @@ export function QuotationsView() {
   const [intlQuoteOpen, setIntlQuoteOpen] = useState(false);
   const [quickQuoteOpen, setQuickQuoteOpen] = useState(false);
   const [agentQuoteOpen, setAgentQuoteOpen] = useState(false);
+  const [tripComposerOpen, setTripComposerOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [sort, setSort] = useState("latest");
@@ -781,6 +785,12 @@ export function QuotationsView() {
   const [travelTo, setTravelTo] = useState("");
   const [analytics, setAnalytics] = useState<Record<string, number | undefined>>({});
   const isAgent = user?.role === "travel_agent";
+
+  useEffect(() => {
+    if (!quotePrefill || isAgent) return;
+    setEditWizardId(null);
+    setWizardOpen(true);
+  }, [quotePrefill, isAgent]);
 
   useEffect(() => {
     api.getQuotationAnalytics()
@@ -852,9 +862,14 @@ export function QuotationsView() {
         subtitle={isAgent ? "Browse packages, add markup, and send branded PDFs to customers instantly" : "Enquiry → draft → approval → send → revise → accept → convert to booking"}
         action={
           isAgent ? (
-            <Button className="bg-teal-600 hover:bg-teal-700" onClick={() => setAgentQuoteOpen(true)}>
-              <Plus className="w-4 h-4 mr-1" /> Create quotation
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button className="bg-teal-600 hover:bg-teal-700" onClick={() => setAgentQuoteOpen(true)}>
+                <Plus className="w-4 h-4 mr-1" /> Create quotation
+              </Button>
+              <Button variant="outline" onClick={() => setTripComposerOpen(true)}>
+                <Sparkles className="w-4 h-4 mr-1" /> Compose trip
+              </Button>
+            </div>
           ) : !isAgent ? (
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -1059,13 +1074,22 @@ export function QuotationsView() {
       <QuoteDetailDialog quote={selected} open={detailOpen} onOpenChange={setDetailOpen} />
       <QuotationWizardDialog
         open={wizardOpen}
-        onOpenChange={setWizardOpen}
+        onOpenChange={(v) => {
+          setWizardOpen(v);
+          if (!v) setQuotePrefill(null);
+        }}
         quotationId={editWizardId}
+        prefill={quotePrefill}
         onSaved={(q) => upsertQuotation(q)}
       />
       <AgentQuotationDialog
         open={agentQuoteOpen}
         onOpenChange={setAgentQuoteOpen}
+        onCreated={(q) => upsertQuotation(q)}
+      />
+      <AgentTripComposerDialog
+        open={tripComposerOpen}
+        onOpenChange={setTripComposerOpen}
         onCreated={(q) => upsertQuotation(q)}
       />
     </PageShell>

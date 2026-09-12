@@ -22,12 +22,37 @@ import {
   writeAudit,
 } from "../lib/bms.js";
 import { isAgentLike } from "../lib/quotations.js";
-
+import { resolveCommissionAmount } from "../lib/commission.js";
+import { adjustAgencyWallet } from "../lib/wallet.js";
 import {
   assertRazorpayPayment,
   razorpayKeysForAgency,
 } from "../lib/razorpay.js";
 import { isOfflinePaymentMethod } from "../lib/payments.js";
+
+/** Hide net cost / supplier / profit fields from travel agents. */
+function sanitizeBookingForRole<T>(booking: T, role?: string): T {
+  if (!isAgentLike(role) || !booking || typeof booking !== "object") return booking;
+  const clone = JSON.parse(JSON.stringify(booking)) as Record<string, unknown>;
+  delete clone.costPrice;
+  delete clone.grossProfit;
+  delete clone.netProfit;
+  delete clone.costDeviationApprovals;
+  if (Array.isArray(clone.services)) {
+    clone.services = (clone.services as Record<string, unknown>[]).map((svc) => {
+      const next = { ...svc };
+      delete next.costPrice;
+      delete next.quotedCostPrice;
+      delete next.supplierId;
+      delete next.supplierName;
+      return next;
+    });
+  }
+  if (Array.isArray(clone.supplierPayouts)) {
+    clone.supplierPayouts = [];
+  }
+  return clone as T;
+}
 import {
   applyServiceUpdate,
   approveCostDeviation,
@@ -355,6 +380,19 @@ export function mountBmsRoutes(
         const bookingRef = await nextBookingRef();
         const salesName = quote.salesExecutiveName || quote.createdBy || req.auth?.email || "Sales";
         const opsName = (req.body?.operationsExecutiveName as string) || "Operations";
+        const opsId = (req.body?.operationsExecutiveId as string) || undefined;
+
+        const settings = quote.agencyId
+          ? await db.settings.findUnique({
+              where: { agencyId: quote.agencyId },
+              select: { commissionRules: true },
+            })
+          : null;
+        const commission = resolveCommissionAmount(
+          packageValue,
+          quote.service,
+          settings?.commissionRules,
+        );
 
         const booking = await db.booking.create({
           data: {
@@ -364,7 +402,7 @@ export function mountBmsRoutes(
             route: quote.destination || travelStartDate || "Package",
             travelDate: (travelStartDate || quote.travelDates || quote.validTill || "").slice(0, 32) || new Date().toISOString().slice(0, 10),
             amount: packageValue,
-            commission: Math.round(packageValue * 0.05),
+            commission,
             status: "Awaiting Passenger Details",
             paymentStatus: "Pending",
             agentId: req.auth?.userId,
@@ -388,6 +426,7 @@ export function mountBmsRoutes(
             netProfit: Math.round(grossProfit * 0.9),
             salesExecutiveId: quote.createdById ?? req.auth?.userId,
             salesExecutiveName: salesName,
+            operationsExecutiveId: opsId,
             operationsExecutiveName: opsName,
             isInternational: quote.isInternational,
             pricingLocked: true,
@@ -447,7 +486,7 @@ export function mountBmsRoutes(
           if (itinerary.length > 0) {
             await db.booking.update({
               where: { id: booking.id },
-              data: { itinerary },
+              data: { itinerary: itinerary as object },
             });
           }
         }
@@ -485,6 +524,28 @@ export function mountBmsRoutes(
           priority: "high",
         });
 
+        if (commission > 0 && booking.agencyId) {
+          try {
+            await adjustAgencyWallet({
+              agencyId: booking.agencyId,
+              type: "Credit",
+              amount: commission,
+              source: "Commission",
+              description: `Commission: ${bookingRef} (${booking.service})`,
+              paymentRef: `comm_${booking.id}`,
+            });
+          } catch (walletErr) {
+            logger.warn({ err: walletErr, bookingRef }, "Commission wallet credit skipped");
+          }
+        }
+
+        if (quote.leadId) {
+          await db.lead.updateMany({
+            where: { id: quote.leadId, agencyId: booking.agencyId ?? undefined },
+            data: { stage: "Won" },
+          });
+        }
+
         const full = await db.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
         res.status(201).json({ booking: full });
       } catch (e) {
@@ -515,7 +576,11 @@ export function mountBmsRoutes(
           orderBy: { createdAt: "desc" },
           take: 100,
         });
-        res.json({ booking, tasks, audits });
+        res.json({
+          booking: sanitizeBookingForRole(booking, req.auth?.role),
+          tasks: isAgentLike(req.auth?.role) ? [] : tasks,
+          audits: isAgentLike(req.auth?.role) ? [] : audits,
+        });
       } catch (e) {
         logger.error(e);
         res.status(500).json({ error: "Server error" });
@@ -841,7 +906,7 @@ export function mountBmsRoutes(
           const { orderId, paymentId, signature } = req.body ?? {};
           if (!keys || !orderId || !paymentId || !signature) {
             res.status(400).json({
-              error: "Online payments require a verified Razorpay payment. Use Cash, Bank Transfer, or Cheque for manual collection.",
+              error: "Online payments require a verified Razorpay payment. Use Cash, Bank Transfer, Cheque, or Wallet for manual/wallet settlement.",
             });
             return;
           }
@@ -861,6 +926,28 @@ export function mountBmsRoutes(
         }
         const newPaid = Math.min(pr.amount, pr.amountPaid + payAmount);
         const status = newPaid >= pr.amount ? "Paid" : "Partially Paid";
+
+        if (method === "Wallet") {
+          if (!pr.agencyId) {
+            res.status(400).json({ error: "No agency wallet for this payment" });
+            return;
+          }
+          try {
+            await adjustAgencyWallet({
+              agencyId: pr.agencyId,
+              type: "Debit",
+              amount: payAmount,
+              source: "Booking",
+              description: `Booking payment: ${pr.booking.bookingRef} (${pr.requestRef})`,
+              paymentRef: `bms_pay_${pr.id}_${Date.now()}`,
+            });
+          } catch (walletErr) {
+            const msg = walletErr instanceof Error ? walletErr.message : "Wallet debit failed";
+            res.status(400).json({ error: msg });
+            return;
+          }
+        }
+
         const updated = await db.paymentRequest.update({
           where: { id: pr.id },
           data: { amountPaid: newPaid, status },
@@ -878,7 +965,7 @@ export function mountBmsRoutes(
             method,
             status: "Success",
             type: "Payment",
-            gateway,
+            gateway: method === "Wallet" ? "Wallet" : gateway,
           },
         });
         const booking = await refreshBookingTotals(pr.bookingId);
@@ -1703,7 +1790,7 @@ export function mountBmsRoutes(
   app.patch(
     "/api/bookings/:id/assignees",
     requireAuth,
-    requireRole("super_admin", "agency_admin", "branch_manager"),
+    requireAnyPermission("bookings", "tasks"),
     async (req: AuthRequest, res: Response) => {
       try {
         const existing = await db.booking.findFirst({
@@ -1711,6 +1798,14 @@ export function mountBmsRoutes(
         });
         if (!existing) {
           res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const role = req.auth?.role || "";
+        const canAssign =
+          ["super_admin", "agency_admin", "branch_manager", "operations_executive", "sales_executive"].includes(role) ||
+          role === "employee";
+        if (!canAssign) {
+          res.status(403).json({ error: "Not allowed to assign executives" });
           return;
         }
         const booking = await db.booking.update({
@@ -1723,7 +1818,54 @@ export function mountBmsRoutes(
           },
           include: BOOKING_INCLUDE,
         });
+        await writeAudit({
+          req,
+          agencyId: booking.agencyId,
+          bookingId: booking.id,
+          action: "Assignees Updated",
+          details: `Ops: ${booking.operationsExecutiveName || "—"} · Sales: ${booking.salesExecutiveName || "—"}`,
+        });
         res.json({ booking });
+      } catch (e) {
+        logger.error(e);
+        res.status(500).json({ error: "Server error" });
+      }
+    },
+  );
+
+  // ── Ops fulfillment queue ────────────────────────────────────────────────
+  app.get(
+    "/api/bookings/ops-queue",
+    requireAuth,
+    requireAnyPermission("bookings", "tasks"),
+    async (req: AuthRequest, res: Response) => {
+      try {
+        const mine = String(req.query.mine || "") === "1";
+        const unassigned = String(req.query.unassigned || "") === "1";
+        const where: Record<string, unknown> = {
+          ...agencyScope(req),
+          status: {
+            notIn: ["Completed", "Cancelled", "Refunded", "Failed"],
+          },
+        };
+        if (mine && req.auth?.userId) {
+          where.OR = [
+            { operationsExecutiveId: req.auth.userId },
+            { operationsExecutiveName: req.auth.email },
+          ];
+        } else if (unassigned) {
+          where.AND = [
+            { OR: [{ operationsExecutiveId: null }, { operationsExecutiveId: "" }] },
+            { OR: [{ operationsExecutiveName: null }, { operationsExecutiveName: "" }, { operationsExecutiveName: "Operations" }] },
+          ];
+        }
+        const bookings = await db.booking.findMany({
+          where,
+          orderBy: { updatedAt: "desc" },
+          take: 100,
+          include: BOOKING_INCLUDE,
+        });
+        res.json({ bookings, total: bookings.length });
       } catch (e) {
         logger.error(e);
         res.status(500).json({ error: "Server error" });

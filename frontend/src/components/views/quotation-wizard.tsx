@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import type { QuotePrefill } from "@/store/app-store";
 
 const STEPS = [
   { label: "Basic Details", hint: "Customer & trip" },
@@ -92,11 +93,13 @@ export function QuotationWizardDialog({
   onOpenChange,
   quotationId,
   onSaved,
+  prefill,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   quotationId?: string | null;
   onSaved?: (q: Quotation) => void;
+  prefill?: QuotePrefill | null;
 }) {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
@@ -104,6 +107,7 @@ export function QuotationWizardDialog({
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [id, setId] = useState<string | null>(quotationId || null);
+  const [leadId, setLeadId] = useState<string | null>(null);
   const [quoteNo, setQuoteNo] = useState("");
   const [form, setForm] = useState({
     customerName: "",
@@ -133,6 +137,8 @@ export function QuotationWizardDialog({
     cancellationPolicy: "Cancellation charges as per supplier policy.",
     refundPolicy: "Refunds processed within 15 working days after supplier confirmation.",
     coverImage: "",
+    budget: 0,
+    service: "Holiday",
   });
   const [packages, setPackages] = useState<QuotationPackage[]>([emptyPackage("Standard", true)]);
   const [destinationId, setDestinationId] = useState("");
@@ -146,6 +152,7 @@ export function QuotationWizardDialog({
         .then((res) => {
           const q = res.quotation as unknown as Quotation & Record<string, unknown>;
           setId(q.id);
+          setLeadId((q.leadId as string) || null);
           setQuoteNo(q.quoteNo);
           setStep(Math.max(0, Number(q.wizardStep || 1) - 1));
           setForm((f) => ({
@@ -176,6 +183,8 @@ export function QuotationWizardDialog({
             paymentTerms: q.paymentTerms || f.paymentTerms,
             cancellationPolicy: q.cancellationPolicy || f.cancellationPolicy,
             coverImage: q.coverImage || "",
+            budget: Number(q.budget || 0),
+            service: (q.service as string) || "Holiday",
           }));
           if (q.packages?.length) setPackages(q.packages as QuotationPackage[]);
         })
@@ -188,9 +197,21 @@ export function QuotationWizardDialog({
       setPackages([emptyPackage("Standard", true)]);
       setDestinationId("");
       setVisaHint("");
-      setForm((f) => ({ ...f, coverImage: "" }));
+      setLeadId(prefill?.leadId || null);
+      setForm((f) => ({
+        ...f,
+        coverImage: "",
+        customerName: prefill?.customerName || "",
+        contactPerson: prefill?.customerName || "",
+        contactEmail: prefill?.contactEmail || "",
+        contactPhone: prefill?.contactPhone || "",
+        enquiryRef: prefill?.enquiryRef || "",
+        budget: prefill?.budget || 0,
+        service: prefill?.service || "Holiday",
+        destination: prefill?.destination || "",
+      }));
     }
-  }, [open, quotationId, toast]);
+  }, [open, quotationId, prefill, toast]);
 
   const nights = useMemo(() => {
     if (!form.travelStartDate || !form.travelEndDate) return null;
@@ -293,7 +314,9 @@ export function QuotationWizardDialog({
         travelDates: form.travelStartDate,
         wizardStep: nextStep + 1,
         packages: packages.map((p, i) => ({ ...p, sortOrder: i })),
-        service: form.isInternational ? "International" : "Holiday",
+        service: form.service || (form.isInternational ? "International" : "Holiday"),
+        leadId: leadId || undefined,
+        budget: form.budget || undefined,
       };
       let quotation: Quotation;
       if (!id) {

@@ -46,7 +46,8 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
     "support", "notifications", "attendance", "leaves",
   ],
   travel_agent: [
-    "bookings", "quotations", "payments", "customers", "notifications", "travel-proposals",
+    "flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages",
+    "bookings", "quotations", "payments", "wallet", "customers", "notifications", "travel-proposals", "support",
   ],
   management: [
     "bookings", "crm", "customers", "quotations", "payments", "finance", "reports", "analytics",
@@ -67,7 +68,7 @@ export const ROLE_CRUD: Record<Role, Record<string, CrudAction[]>> = {
   sales_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "destinations", "packages", "suppliers"].includes(m) ? READ : SALES])),
   product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "destinations", "packages"].includes(m) ? FULL : m === "suppliers" ? READ : m === "quotations" ? SALES : READ])),
   operations: Object.fromEntries(MODULES.map((m) => [m, ["bookings", "suppliers", "tasks", "holiday", "hotels", "activities", "transfers"].includes(m) ? SALES : READ])),
-  travel_agent: Object.fromEntries(MODULES.map((m) => [m, ["bookings", "quotations", "payments", "customers"].includes(m) ? SALES : READ])),
+  travel_agent: Object.fromEntries(MODULES.map((m) => [m, ["bookings", "quotations", "payments", "wallet", "customers", "travel-proposals", "support", "notifications"].includes(m) ? SALES : ["flights", "hotels", "activities", "transfers", "holiday", "packages", "destinations"].includes(m) ? READ : READ])),
   management: Object.fromEntries(MODULES.map((m) => [m, READ])),
 };
 

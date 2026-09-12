@@ -477,11 +477,46 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  createAgentTripQuote: (body: Record<string, unknown>) =>
+    apiFetch<{ quotation: ApiQuotation }>("/api/quotations/agent/trip", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   updateAgentQuotation: (id: string, body: Record<string, unknown>) =>
     apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/agent`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+
+  assignBookingExecutives: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ booking: ApiBooking }>(`/api/bookings/${id}/assignees`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  getOpsQueue: (params?: { mine?: boolean; unassigned?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.mine) q.set("mine", "1");
+    if (params?.unassigned) q.set("unassigned", "1");
+    const qs = q.toString();
+    return apiFetch<{ bookings: ApiBooking[]; total: number }>(`/api/bookings/ops-queue${qs ? `?${qs}` : ""}`);
+  },
+
+  getShifts: () => apiFetch<{ shifts: ApiShift[] }>("/api/shifts"),
+  createShift: (body: Record<string, unknown>) =>
+    apiFetch<{ shift: ApiShift }>("/api/shifts", { method: "POST", body: JSON.stringify(body) }),
+  updateShift: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ shift: ApiShift }>(`/api/shifts/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  getPayroll: (period?: string) => {
+    const qs = period ? `?period=${encodeURIComponent(period)}` : "";
+    return apiFetch<{ entries: ApiPayrollEntry[] }>(`/api/payroll${qs}`);
+  },
+  createPayrollEntry: (body: Record<string, unknown>) =>
+    apiFetch<{ entry: ApiPayrollEntry }>("/api/payroll", { method: "POST", body: JSON.stringify(body) }),
+  updatePayrollEntry: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ entry: ApiPayrollEntry }>(`/api/payroll/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
   saveQuotationWizard: (id: string, body: Record<string, unknown>) =>
     apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/wizard`, { method: "PUT", body: JSON.stringify(body) }),
@@ -814,6 +849,7 @@ export interface ApiBooking {
   netProfit?: number;
   salesExecutiveName?: string | null;
   operationsExecutiveName?: string | null;
+  operationsExecutiveId?: string | null;
   isInternational?: boolean;
   policiesAcceptedAt?: string | null;
   termsAndConditions?: string | null;
@@ -994,6 +1030,33 @@ export interface ApiLeave {
   status: string;
   approvedByName?: string | null;
   createdAt: string;
+}
+
+export interface ApiShift {
+  id: string;
+  agencyId?: string | null;
+  employeeId?: string | null;
+  employeeName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  roleLabel?: string | null;
+  status: string;
+  notes?: string | null;
+}
+
+export interface ApiPayrollEntry {
+  id: string;
+  agencyId?: string | null;
+  employeeId?: string | null;
+  employeeName: string;
+  period: string;
+  baseSalary: number;
+  incentives: number;
+  deductions: number;
+  netPay: number;
+  status: string;
+  notes?: string | null;
 }
 
 export interface ApiTask {
