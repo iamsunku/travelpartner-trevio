@@ -219,7 +219,7 @@ npm run dev -- --webpack
 ### Login with Seed Data
 ```
 Email:    admin@travelpartner.pro
-Password: TravioAdmin@2024!
+Password: set SEED_SUPER_ADMIN_PASSWORD before seeding (not stored in source)
 Role:     Super Admin
 ```
 
@@ -296,7 +296,7 @@ Content-Type: application/json
 
 {
   "email": "admin@travelpartner.pro",
-  "password": "TravioAdmin@2024!"
+  "password": "<SEED_SUPER_ADMIN_PASSWORD>"
 }
 
 Response (200):
@@ -660,7 +660,7 @@ curl https://your-app.railway.app/api/health
 # Test login
 curl -X POST https://your-app.railway.app/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@travelpartner.pro","password":"TravioAdmin@2024!"}'
+  -d '{"email":"admin@travelpartner.pro","password":"<SEED_SUPER_ADMIN_PASSWORD>"}'
 ```
 
 **Detailed Guide:** See [PRODUCTION_DEPLOYMENT_GUIDE.md](./PRODUCTION_DEPLOYMENT_GUIDE.md)

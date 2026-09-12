@@ -19,6 +19,7 @@ export type Role =
   | "product_executive"
   | "operations"
   | "travel_agent"
+  | "team_lead"
   | "management";
 
 export type CrudAction = "view" | "add" | "edit" | "delete";
@@ -51,7 +52,7 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
     "trip-planner", "travel-proposals", "quotations", "payments", "tasks", "support", "notifications", "attendance", "leaves",
   ],
   product_executive: [
-    "hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers", "quotations", "notifications",
+    "flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages", "suppliers", "quotations", "notifications",
   ],
   operations: [
     "bookings", "holiday", "hotels", "activities", "transfers", "suppliers", "tasks", "customers",
@@ -60,6 +61,9 @@ export const ROLE_DEFAULT_PERMISSIONS: Record<Role, Module[]> = {
   travel_agent: [
     "flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages",
     "bookings", "quotations", "payments", "wallet", "customers", "notifications", "travel-proposals", "support",
+  ],
+  team_lead: [
+    "bookings", "crm", "customers", "quotations", "payments", "reports", "tasks", "notifications",
   ],
   management: [
     "bookings", "crm", "customers", "quotations", "payments", "finance", "reports", "analytics",
@@ -78,9 +82,10 @@ export const ROLE_CRUD: Record<Role, Record<string, CrudAction[]>> = {
   employee: Object.fromEntries(MODULES.map((m) => [m, SALES_CRUD])),
   accountant: Object.fromEntries(MODULES.map((m) => [m, ["payments", "wallet", "commission", "finance", "reports"].includes(m) ? SALES_CRUD : READ_ONLY])),
   sales_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "destinations", "packages", "suppliers"].includes(m) ? READ_ONLY : SALES_CRUD])),
-  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["hotels", "activities", "transfers", "holiday", "destinations", "packages"].includes(m) ? FULL_CRUD : m === "suppliers" ? READ_ONLY : m === "quotations" ? SALES_CRUD : READ_ONLY])),
+  product_executive: Object.fromEntries(MODULES.map((m) => [m, ["flights", "hotels", "activities", "transfers", "holiday", "destinations", "packages"].includes(m) ? FULL_CRUD : m === "suppliers" ? READ_ONLY : m === "quotations" ? SALES_CRUD : READ_ONLY])),
   operations: Object.fromEntries(MODULES.map((m) => [m, ["bookings", "suppliers", "tasks", "holiday", "hotels", "activities", "transfers"].includes(m) ? SALES_CRUD : READ_ONLY])),
   travel_agent: Object.fromEntries(MODULES.map((m) => [m, ["bookings", "quotations", "payments", "wallet", "customers", "travel-proposals", "support", "notifications"].includes(m) ? SALES_CRUD : ["flights", "hotels", "activities", "transfers", "holiday", "packages", "destinations"].includes(m) ? READ_ONLY : READ_ONLY])),
+  team_lead: Object.fromEntries(MODULES.map((m) => [m, ["quotations", "bookings", "customers", "crm"].includes(m) ? SALES_CRUD : READ_ONLY])),
   management: Object.fromEntries(MODULES.map((m) => [m, READ_ONLY])),
 };
 

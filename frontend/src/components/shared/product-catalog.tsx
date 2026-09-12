@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Search, Copy, Archive, Trash2, Pencil, Download, Upload, CheckCircle, Package } from "lucide-react";
+import { Plus, Search, Copy, Archive, Trash2, Pencil, Download, Upload, CheckCircle, Package, IndianRupee } from "lucide-react";
 import { PageShell, PageHeader, MetricCard, StatusBadge } from "@/components/shared/ui-helpers";
 import { ProductFormDialog, type ProductKind } from "@/components/shared/product-form-dialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
+import { useAuthStore } from "@/store/app-store";
+import { ContractedRatesDialog, type ProductRateType } from "@/components/shared/contracted-rates-dialog";
 import type { ProductRecord } from "@/types";
 import type { DestinationOption } from "@/components/shared/destination-select";
 
@@ -146,6 +148,10 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ProductRecord | null>(null);
+  const [ratesFor, setRatesFor] = useState<ProductRecord | null>(null);
+  const [city, setCity] = useState("");
+  const role = useAuthStore((s) => s.user?.role);
+  const rateType: ProductRateType = kind === "hotels" ? "HOTEL" : kind === "transfers" ? "TRANSFER" : "ACTIVITY";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -158,6 +164,7 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
         ...(q ? { q } : {}),
         ...(status !== "All" ? { status } : {}),
         ...(destinationId !== "All" ? { destinationId } : {}),
+        ...(city ? { city } : {}),
       });
       const data = await apiFetch<{ items: ProductRecord[]; total: number }>(`${apiPath}?${params}`);
       setItems(data.items);
@@ -167,7 +174,7 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
     } finally {
       setLoading(false);
     }
-  }, [apiPath, page, q, sort, status, destinationId, toast]);
+  }, [apiPath, page, q, sort, status, destinationId, city, toast]);
 
   useEffect(() => {
     apiFetch<{ items: DestinationOption[] }>("/api/destinations?pageSize=100&status=Active")
@@ -329,6 +336,7 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input className="pl-9" placeholder="Search products..." value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
+              <Input className="w-[160px]" placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} />
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
@@ -418,6 +426,9 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
                             Submit Rates
                           </Button>
                         )}
+                        {role !== "travel_agent" && (
+                          <Button variant="ghost" size="icon" onClick={() => setRatesFor(item)} title="Contracted rates"><IndianRupee className="w-4 h-4" /></Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => { setEditing(mergePendingRates(item)); setFormOpen(true); }}><Pencil className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleDuplicate(item.id)}><Copy className="w-4 h-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleArchive(item.id)}><Archive className="w-4 h-4" /></Button>
@@ -441,6 +452,15 @@ export function ProductCatalog({ title, subtitle, kind, apiPath, columns }: Prod
         </CardContent>
       </Card>
 
+      {ratesFor && role !== "travel_agent" && (
+        <ContractedRatesDialog
+          open={Boolean(ratesFor)}
+          onOpenChange={(open) => { if (!open) setRatesFor(null); }}
+          productType={rateType}
+          productId={ratesFor.id}
+          productName={ratesFor.name}
+        />
+      )}
       <ProductFormDialog
         open={formOpen}
         onOpenChange={(open) => { setFormOpen(open); if (!open) setEditing(null); }}

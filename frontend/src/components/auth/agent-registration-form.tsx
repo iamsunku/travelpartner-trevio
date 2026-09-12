@@ -16,9 +16,6 @@ import {
 } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import { api, ApiError } from "@/lib/api";
-import { useAuthStore } from "@/store/app-store";
-import { useDemoDataStore } from "@/store/demo-data-store";
-import { mapApiUser } from "@/lib/api-mappers";
 import {
   AGENT_TERMS_VERSION,
   CITIES_BY_COUNTRY,
@@ -43,7 +40,6 @@ type FieldErrors = Partial<Record<
 
 export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
   const { toast } = useToast();
-  const hydrateFromApi = useDemoDataStore((s) => s.hydrateFromApi);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [fullName, setFullName] = useState("");
@@ -63,7 +59,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
   const [gstNumber, setGstNumber] = useState("");
   const [gstProofName, setGstProofName] = useState("");
   const [gstProofSize, setGstProofSize] = useState(0);
-  const [gstProofUrl, setGstProofUrl] = useState("");
+  const [gstProofId, setGstProofId] = useState("");
   const [gstProofUploading, setGstProofUploading] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
@@ -118,28 +114,19 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
     }
     setGstProofUploading(true);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error("Could not read file"));
-        reader.readAsDataURL(file);
-      });
-      if (!dataUrl.startsWith("data:image/jpeg") && !dataUrl.startsWith("data:image/png") && !dataUrl.startsWith("data:application/pdf")) {
-        setErrors((e) => ({ ...e, gstProof: "File content could not be verified" }));
-        return;
-      }
-      setGstProofUrl(dataUrl);
+      const uploaded = await api.uploadGstProof(file);
+      setGstProofId(uploaded.gstProofId);
       setGstProofName(file.name);
       setGstProofSize(file.size);
-    } catch {
-      setErrors((e) => ({ ...e, gstProof: "Upload failed. Try another file." }));
+    } catch (err) {
+      setErrors((e) => ({ ...e, gstProof: err instanceof Error ? err.message : "Upload failed. Try another file." }));
     } finally {
       setGstProofUploading(false);
     }
   }
 
   function clearProof() {
-    setGstProofUrl("");
+    setGstProofId("");
     setGstProofName("");
     setGstProofSize(0);
     if (fileRef.current) fileRef.current.value = "";
@@ -157,7 +144,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
 
     setSubmitting(true);
     try {
-      const { user, token } = await api.registerAgent({
+      const result = await api.registerAgent({
         fullName: fullName.trim(),
         companyName: companyName.trim(),
         address: address.trim(),
@@ -172,22 +159,25 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
         password,
         confirmPassword,
         gstNumber: gstNumber.trim() || undefined,
-        gstProofUrl: gstProofUrl || undefined,
+        gstProofId: gstProofId || undefined,
         termsAccepted: true,
         termsVersion: AGENT_TERMS_VERSION,
       });
 
-      useAuthStore.setState({
-        user: mapApiUser(user),
-        token,
-        isAuthenticated: true,
-        apiConnected: true,
-      });
-      await hydrateFromApi(user.agencyId ?? undefined);
-      toast({
-        title: "Welcome to Trevio Global!",
-        description: "Your agent account has been created. You're now signed in.",
-      });
+      if (result.token) {
+        // Defensive: server must not issue a session for Submitted registrations.
+        toast({
+          title: "Registration submitted",
+          description: "Your application is pending admin approval. Please wait before signing in.",
+        });
+      } else {
+        toast({
+          title: "Registration submitted",
+          description: result.message || "Your application is pending admin approval. You will be able to sign in after approval.",
+        });
+      }
+      // Never auto-authenticate after registration (Phase 15).
+      onLogin();
     } catch (err) {
       const message = err instanceof ApiError ? err.message : "Registration failed. Please try again.";
       const details = err instanceof ApiError ? err.body?.details : undefined;
@@ -231,7 +221,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
             <span className="block text-amber-500">Agent Account!</span>
           </h1>
           <p className="text-muted-foreground mt-3 max-w-2xl text-sm sm:text-base">
-            Fill in your details below to register with Trevio Global and access the agent portal.
+            Fill in your details below to register with Trevio Global. An administrator must approve your account before you can sign in.
           </p>
         </div>
 

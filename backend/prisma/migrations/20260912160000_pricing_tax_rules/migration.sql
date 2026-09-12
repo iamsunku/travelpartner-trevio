@@ -1,0 +1,29 @@
+ALTER TABLE "ContractedRate" ADD COLUMN IF NOT EXISTS "rateUnit" TEXT NOT NULL DEFAULT 'UNSPECIFIED';
+
+ALTER TABLE "Quotation" ADD COLUMN IF NOT EXISTS "taxRuleId" TEXT;
+ALTER TABLE "Quotation" ADD COLUMN IF NOT EXISTS "trevioMarkupType" TEXT NOT NULL DEFAULT 'Percentage';
+ALTER TABLE "Quotation" ADD COLUMN IF NOT EXISTS "trevioMarkupValue" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "Quotation" ADD COLUMN IF NOT EXISTS "agentMarkupType" TEXT NOT NULL DEFAULT 'Fixed';
+ALTER TABLE "Quotation" ADD COLUMN IF NOT EXISTS "exchangeRateExplicit" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Quotation" ADD COLUMN IF NOT EXISTS "pricingStatus" TEXT NOT NULL DEFAULT 'OK';
+
+ALTER TABLE "QuotationPackage" ADD COLUMN IF NOT EXISTS "pricing" JSONB;
+
+CREATE TABLE IF NOT EXISTS "TaxRule" (
+  "id" TEXT NOT NULL,
+  "agencyId" TEXT,
+  "name" TEXT NOT NULL,
+  "rate" DOUBLE PRECISION NOT NULL,
+  "method" TEXT NOT NULL DEFAULT 'EXCLUSIVE',
+  "active" BOOLEAN NOT NULL DEFAULT true,
+  "scope" TEXT NOT NULL DEFAULT 'QUOTATION',
+  "effectiveFrom" TEXT,
+  "effectiveTo" TEXT,
+  "createdById" TEXT,
+  "updatedById" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "TaxRule_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX IF NOT EXISTS "TaxRule_agencyId_active_idx" ON "TaxRule"("agencyId", "active");

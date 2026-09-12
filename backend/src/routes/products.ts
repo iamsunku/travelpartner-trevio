@@ -2,6 +2,7 @@ import type { Express, Response } from "express";
 import { Prisma } from "@prisma/client";
 import type { AuthRequest } from "../middleware/auth.js";
 import { requireAuth, requireCrudPermission, requirePermission, requireRole } from "../middleware/auth.js";
+import { stripCatalogForRole } from "../lib/quote-access.js";
 import { db } from "../lib/db.js";
 import { logger } from "../lib/logger.js";
 import { sendEmail } from "../lib/email.js";
@@ -12,6 +13,7 @@ import {
   sanitizeCreateBody,
   type ProductKind,
 } from "../lib/product-rate-approval.js";
+import { checkCatalogueHotelInventory } from "../lib/hotel-inventory.js";
 
 type ScopeFn = (req: AuthRequest) => Record<string, unknown>;
 
@@ -160,6 +162,8 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
       const query = parseListQuery(req);
       const where: Record<string, unknown> = { ...agencyScope(req) };
       applyProductListFilters(where, query);
+      const city = (req.query.city as string)?.trim();
+      if (city) where.city = { contains: city, mode: "insensitive" };
       if (query.q) {
         where.OR = [
           { name: { contains: query.q, mode: "insensitive" } },
@@ -172,7 +176,42 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
         db.hotelProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [query.sort]: query.order }, skip: query.skip, take: query.pageSize }),
         db.hotelProduct.count({ where }),
       ]);
-      res.json({ items, total, page: query.page, pageSize: query.pageSize });
+      res.json({
+        items: items.map((item) => stripCatalogForRole(item, req.auth?.role)),
+        total,
+        page: query.page,
+        pageSize: query.pageSize,
+      });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  /** Catalogue inventory check (not live supplier availability). */
+  app.get(`${base}/:id/catalogue-availability`, requireAuth, requireCrudPermission("hotels", "view"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      const hotel = await db.hotelProduct.findFirst({ where: { id, ...agencyScope(req) } });
+      if (!hotel) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const result = checkCatalogueHotelInventory({
+        inventory: hotel.inventory,
+        blackoutDates: hotel.blackoutDates,
+        checkIn: String(req.query.checkIn || ""),
+        checkOut: String(req.query.checkOut || ""),
+        roomType: req.query.roomType ? String(req.query.roomType) : null,
+        rooms: req.query.rooms ? Number(req.query.rooms) : 1,
+      });
+      res.json({
+        source: result.source,
+        liveSupplier: false,
+        ok: result.ok,
+        message: result.message || null,
+        nights: result.nights,
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -352,6 +391,8 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
       const query = parseListQuery(req);
       const where: Record<string, unknown> = { ...agencyScope(req) };
       applyProductListFilters(where, query);
+      const city = (req.query.city as string)?.trim();
+      if (city) where.location = { contains: city, mode: "insensitive" };
       if (query.q) {
         where.OR = [
           { name: { contains: query.q, mode: "insensitive" } },
@@ -363,7 +404,12 @@ function registerActivityRoutes(app: Express, agencyScope: ScopeFn) {
         db.activityProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [query.sort]: query.order }, skip: query.skip, take: query.pageSize }),
         db.activityProduct.count({ where }),
       ]);
-      res.json({ items, total, page: query.page, pageSize: query.pageSize });
+      res.json({
+        items: items.map((item) => stripCatalogForRole(item, req.auth?.role)),
+        total,
+        page: query.page,
+        pageSize: query.pageSize,
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -543,9 +589,25 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
       const query = parseListQuery(req);
       const where: Record<string, unknown> = { ...agencyScope(req) };
       applyProductListFilters(where, query);
+      const city = (req.query.city as string)?.trim();
+      const transferType = (req.query.transferType as string)?.trim();
+      if (city) {
+        where.AND = [
+          {
+            OR: [
+              { city: { contains: city, mode: "insensitive" } },
+              { pickupLocation: { contains: city, mode: "insensitive" } },
+              { dropLocation: { contains: city, mode: "insensitive" } },
+            ],
+          },
+        ];
+      }
+      if (transferType && transferType !== "All") where.transferType = transferType;
       if (query.q) {
         where.OR = [
           { name: { contains: query.q, mode: "insensitive" } },
+          { transferType: { contains: query.q, mode: "insensitive" } },
+          { city: { contains: query.q, mode: "insensitive" } },
           { pickupLocation: { contains: query.q, mode: "insensitive" } },
           { dropLocation: { contains: query.q, mode: "insensitive" } },
           { destination: { name: { contains: query.q, mode: "insensitive" } } },
@@ -555,7 +617,12 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
         db.transferProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [query.sort]: query.order }, skip: query.skip, take: query.pageSize }),
         db.transferProduct.count({ where }),
       ]);
-      res.json({ items, total, page: query.page, pageSize: query.pageSize });
+      res.json({
+        items: items.map((item) => stripCatalogForRole(item, req.auth?.role)),
+        total,
+        page: query.page,
+        pageSize: query.pageSize,
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -760,7 +827,12 @@ function registerMealRoutes(app: Express, agencyScope: ScopeFn) {
           }),
           mealDelegate.count({ where }),
         ]);
-        res.json({ items, total, page: query.page, pageSize: query.pageSize });
+        res.json({
+          items: items.map((item: { supplier?: unknown; supplierId?: string | null }) => stripCatalogForRole(item, req.auth?.role)),
+          total,
+          page: query.page,
+          pageSize: query.pageSize,
+        });
         return;
       }
       const agencyId = scope.agencyId ?? null;
@@ -778,7 +850,12 @@ function registerMealRoutes(app: Express, agencyScope: ScopeFn) {
         query.pageSize,
         query.skip
       );
-      res.json({ items, total: items.length, page: query.page, pageSize: query.pageSize });
+      res.json({
+        items: items.map((item: Record<string, unknown>) => stripCatalogForRole(item, req.auth?.role)),
+        total: items.length,
+        page: query.page,
+        pageSize: query.pageSize,
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -803,6 +880,8 @@ function registerMealRoutes(app: Express, agencyScope: ScopeFn) {
             description: req.body.description || null,
             mealType: req.body.mealType || "Other",
             city: req.body.city || null,
+            restaurant: req.body.restaurant || null,
+            transferInclusion: req.body.transferInclusion === "PRIVATE" ? "PRIVATE" : "NONE",
             adultPrice: Number(req.body.adultPrice) || 0,
             childPrice: Number(req.body.childPrice) || 0,
             currency: req.body.currency || "INR",
@@ -860,6 +939,8 @@ function registerMealRoutes(app: Express, agencyScope: ScopeFn) {
             ...(req.body.description !== undefined ? { description: req.body.description } : {}),
             ...(req.body.mealType !== undefined ? { mealType: req.body.mealType } : {}),
             ...(req.body.city !== undefined ? { city: req.body.city } : {}),
+            ...(req.body.restaurant !== undefined ? { restaurant: req.body.restaurant || null } : {}),
+            ...(req.body.transferInclusion !== undefined ? { transferInclusion: req.body.transferInclusion === "PRIVATE" ? "PRIVATE" : "NONE" } : {}),
             ...(req.body.destinationId !== undefined ? { destinationId: req.body.destinationId || null } : {}),
             ...(req.body.supplierId !== undefined ? { supplierId: req.body.supplierId || null } : {}),
             ...(req.body.adultPrice !== undefined ? { adultPrice: Number(req.body.adultPrice) || 0 } : {}),
@@ -925,11 +1006,131 @@ function registerMealRoutes(app: Express, agencyScope: ScopeFn) {
   });
 }
 
+function registerFlightRoutes(app: Express, agencyScope: ScopeFn) {
+  const base = "/api/products/flights";
+
+  app.get(base, requireAuth, requireCrudPermission("flights", "view"), async (req: AuthRequest, res: Response) => {
+    try {
+      const query = parseListQuery(req);
+      const where: Record<string, unknown> = { ...agencyScope(req) };
+      applyProductListFilters(where, query);
+      const city = (req.query.city as string)?.trim();
+      if (city) {
+        where.OR = [
+          { origin: { contains: city, mode: "insensitive" } },
+          { destinationAirport: { contains: city, mode: "insensitive" } },
+          { name: { contains: city, mode: "insensitive" } },
+        ];
+      }
+      if (query.q) {
+        where.OR = [
+          { name: { contains: query.q, mode: "insensitive" } },
+          { airline: { contains: query.q, mode: "insensitive" } },
+          { flightNumber: { contains: query.q, mode: "insensitive" } },
+          { origin: { contains: query.q, mode: "insensitive" } },
+          { destinationAirport: { contains: query.q, mode: "insensitive" } },
+        ];
+      }
+      const [items, total] = await Promise.all([
+        db.flightProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [query.sort]: query.order }, skip: query.skip, take: query.pageSize }),
+        db.flightProduct.count({ where }),
+      ]);
+      res.json({
+        items: items.map((item) => stripCatalogForRole(item, req.auth?.role)),
+        total,
+        page: query.page,
+        pageSize: query.pageSize,
+      });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post(base, requireAuth, requireCrudPermission("flights", "add"), async (req: AuthRequest, res: Response) => {
+    try {
+      const name = String(req.body.name || req.body.airline || "").trim();
+      const airline = String(req.body.airline || "").trim();
+      const origin = String(req.body.origin || "").trim();
+      const destinationAirport = String(req.body.destinationAirport || req.body.to || "").trim();
+      if (!name || !airline || !origin || !destinationAirport) {
+        res.status(400).json({ error: "name, airline, origin, and destinationAirport are required" });
+        return;
+      }
+      if (req.body.destinationId) {
+        const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
+        if (destError) { res.status(400).json({ error: destError }); return; }
+      }
+      const item = await db.flightProduct.create({
+        data: {
+          agencyId: req.auth?.agencyId,
+          supplierId: req.body.supplierId || null,
+          destinationId: req.body.destinationId || null,
+          name,
+          airline,
+          flightNumber: req.body.flightNumber || null,
+          origin,
+          destinationAirport,
+          departureTime: req.body.departureTime || null,
+          arrivalTime: req.body.arrivalTime || null,
+          duration: req.body.duration || null,
+          cabinClass: req.body.cabinClass || null,
+          baggage: req.body.baggage || null,
+          currency: req.body.currency || "INR",
+          status: req.body.status || "Active",
+          approvalStatus: "Approved",
+          createdById: req.auth?.userId,
+          updatedById: req.auth?.userId,
+        },
+        include: PRODUCT_RELATIONS,
+      });
+      res.status(201).json({ item });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.patch(`${base}/:id`, requireAuth, requireCrudPermission("flights", "edit"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      const existing = await db.flightProduct.findFirst({ where: { id, ...agencyScope(req) } });
+      if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+      const item = await db.flightProduct.update({
+        where: { id },
+        data: {
+          ...(req.body.name !== undefined ? { name: String(req.body.name) } : {}),
+          ...(req.body.airline !== undefined ? { airline: String(req.body.airline) } : {}),
+          ...(req.body.flightNumber !== undefined ? { flightNumber: req.body.flightNumber || null } : {}),
+          ...(req.body.origin !== undefined ? { origin: String(req.body.origin) } : {}),
+          ...(req.body.destinationAirport !== undefined ? { destinationAirport: String(req.body.destinationAirport) } : {}),
+          ...(req.body.departureTime !== undefined ? { departureTime: req.body.departureTime || null } : {}),
+          ...(req.body.arrivalTime !== undefined ? { arrivalTime: req.body.arrivalTime || null } : {}),
+          ...(req.body.duration !== undefined ? { duration: req.body.duration || null } : {}),
+          ...(req.body.cabinClass !== undefined ? { cabinClass: req.body.cabinClass || null } : {}),
+          ...(req.body.baggage !== undefined ? { baggage: req.body.baggage || null } : {}),
+          ...(req.body.supplierId !== undefined ? { supplierId: req.body.supplierId || null } : {}),
+          ...(req.body.destinationId !== undefined ? { destinationId: req.body.destinationId || null } : {}),
+          ...(req.body.status !== undefined ? { status: req.body.status } : {}),
+          ...(req.body.currency !== undefined ? { currency: req.body.currency } : {}),
+          updatedById: req.auth?.userId,
+        },
+        include: PRODUCT_RELATIONS,
+      });
+      res.json({ item });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+}
+
 export function mountProductRoutes(app: Express, agencyScope: ScopeFn) {
   registerHotelRoutes(app, agencyScope);
   registerActivityRoutes(app, agencyScope);
   registerTransferRoutes(app, agencyScope);
   registerMealRoutes(app, agencyScope);
+  registerFlightRoutes(app, agencyScope);
 
   app.get("/api/employees/activity", requireAuth, requirePermission("employees"), async (req: AuthRequest, res: Response) => {
     try {

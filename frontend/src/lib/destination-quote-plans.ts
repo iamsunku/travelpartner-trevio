@@ -74,7 +74,7 @@ export const THAILAND_4N_PLAN: DestinationQuotePlan = {
     coverImage: IMG.cover,
     specialRequests: "Twin/double sharing. Quote is subject to availability and not blocked until confirmed.",
     termsAndConditions:
-      "Above quote is not blocked or booked. It is strictly subject to availability. Includes GST 18% on our service charges. Quote is on twin/double sharing basis. TCS can be claimed while filing annual returns. Passport must be valid 6 months after return. PAN is required to confirm booking as per RBI guidelines.",
+      "Applicable taxes follow configured Tax Rules on the quotation. Quote is on twin/double sharing basis. TCS can be claimed while filing annual returns. Passport must be valid 6 months after return. PAN is required to confirm booking as per RBI guidelines.",
     paymentTerms:
       "1st instalment: 50% to confirm flight tickets. Final instalment: 50% to confirm the land package. Share payment reference via email/WhatsApp to receive receipt and tickets.",
     cancellationPolicy:
@@ -331,7 +331,91 @@ export const THAILAND_4N_PLAN: DestinationQuotePlan = {
   ],
 };
 
-export const DESTINATION_QUOTE_PLANS: DestinationQuotePlan[] = [THAILAND_4N_PLAN];
+function skeletonPlan(opts: {
+  id: string;
+  label: string;
+  destination: string;
+  country: string;
+  nights: number;
+  international?: boolean;
+}): DestinationQuotePlan {
+  const days = opts.nights + 1;
+  return {
+    id: opts.id,
+    label: opts.label,
+    suggestedNights: opts.nights,
+    form: {
+      destination: opts.destination,
+      country: opts.country,
+      isInternational: opts.international ?? true,
+      adults: 2,
+      children: 0,
+      infants: 0,
+      currency: "INR",
+      specialRequests: "Quote subject to availability. Confirm passport validity before ticketing.",
+      termsAndConditions:
+        `Sample ${opts.destination} itinerary template. Rates subject to availability. Not a confirmed booking.`,
+      paymentTerms: "50% advance to confirm. Balance before travel as per supplier policy.",
+      cancellationPolicy: "Cancellation charges follow hotel, airline and ground-supplier policies.",
+      refundPolicy: "Refunds processed after supplier confirmation, typically within 15 working days.",
+    },
+    packages: [
+      {
+        name: "Standard",
+        isSelected: true,
+        sortOrder: 0,
+        description: `${opts.destination} ${opts.nights}N / ${days}D starter template`,
+        hotels: [],
+        flights: [],
+        transfers: [],
+        activities: [],
+        meals: [],
+        itinerary: Array.from({ length: days }, (_, i) => ({
+          day: i + 1,
+          title: `Day ${i + 1}`,
+          city: opts.destination,
+          mealPlan: i === 0 ? "Dinner" : "Breakfast",
+          coverImage: "",
+          gallery: [],
+          items: [
+            {
+              activityName: i === 0 ? "Arrival & transfer" : i === days - 1 ? "Departure" : "Sightseeing / leisure",
+              description: "",
+              pickupTime: "",
+              duration: "",
+              vehicle: "",
+              guide: "",
+              voucher: "",
+              remarks: "",
+            },
+          ],
+        })),
+        visa: {
+          enabled: Boolean(opts.international),
+          visaType: "Tourist",
+          entryType: "Single Entry",
+          sellingPrice: 0,
+          costPrice: 0,
+          remarks: "Catalogue template only — confirm visa eligibility independently.",
+        },
+        insurance: { enabled: false, provider: "", planName: "", sellingPrice: 0, costPrice: 0 },
+        addOns: [],
+        inclusions: ["Accommodation as selected", "Transfers as selected", "Sightseeing as stated"],
+        exclusions: ["Flights unless listed", "Personal expenses", "Travel insurance unless listed"],
+      },
+    ],
+  };
+}
+
+export const DESTINATION_QUOTE_PLANS: DestinationQuotePlan[] = [
+  THAILAND_4N_PLAN,
+  skeletonPlan({ id: "singapore-3n", label: "Singapore 3N 4D", destination: "Singapore", country: "Singapore", nights: 3 }),
+  skeletonPlan({ id: "malaysia-4n", label: "Malaysia 4N 5D — Kuala Lumpur", destination: "Kuala Lumpur", country: "Malaysia", nights: 4 }),
+  skeletonPlan({ id: "bali-5n", label: "Bali 5N 6D", destination: "Bali", country: "Indonesia", nights: 5 }),
+  skeletonPlan({ id: "vietnam-5n", label: "Vietnam 5N 6D — Da Nang / Hoi An", destination: "Da Nang", country: "Vietnam", nights: 5 }),
+  skeletonPlan({ id: "dubai-4n", label: "Dubai 4N 5D", destination: "Dubai", country: "UAE", nights: 4 }),
+  skeletonPlan({ id: "europe-7n", label: "Europe 7N 8D starter", destination: "Paris", country: "France", nights: 7 }),
+];
 
 export function getDestinationQuotePlan(id: string) {
   return DESTINATION_QUOTE_PLANS.find((p) => p.id === id) || null;

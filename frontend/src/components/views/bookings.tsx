@@ -121,10 +121,17 @@ function BookingDetailDialog({
   const [opsAssigneeName, setOpsAssigneeName] = useState("");
   const [payMethod, setPayMethod] = useState("Bank Transfer");
   const [teamEmployees, setTeamEmployees] = useState<{ id: string; name: string; role: string }[]>([]);
+  const [completeness, setCompleteness] = useState<{
+    servicesByType: Record<string, number>;
+    documents: number;
+    hasItinerary: boolean;
+    hasTerms: boolean;
+    pricingLocked: boolean;
+  } | null>(null);
 
   const isAgent = user?.role === "travel_agent";
   const canFinance = user && !isAgent && (hasPermission(user, "finance") || ["super_admin", "agency_admin", "accountant"].includes(user.role));
-  const canOps = user && !isAgent && (user.role === "operations" || user.role === "operations_executive" || ["super_admin", "agency_admin", "branch_manager"].includes(user.role) || hasPermission(user, "suppliers"));
+  const canOps = user && !isAgent && (user.role === "operations" || ["super_admin", "agency_admin", "branch_manager"].includes(user.role) || hasPermission(user, "suppliers"));
   const canAssign = Boolean(user && !isAgent && (canOps || ["sales_executive", "agency_admin", "branch_manager", "super_admin"].includes(user.role)));
   const canApproveDeviation = user && ["super_admin", "agency_admin"].includes(user.role);
   const canAdjustPrice = user && ["super_admin", "agency_admin"].includes(user.role);
@@ -145,6 +152,15 @@ function BookingDetailDialog({
       setPoliciesOk(Boolean(mapped.policiesAcceptedAt));
       setTasks((res.tasks || []) as typeof tasks);
       setAudits((res.audits || []) as typeof audits);
+      setCompleteness(res.completeness
+        ? {
+            servicesByType: res.completeness.servicesByType || {},
+            documents: res.completeness.documents,
+            hasItinerary: res.completeness.hasItinerary,
+            hasTerms: res.completeness.hasTerms,
+            pricingLocked: res.completeness.pricingLocked,
+          }
+        : null);
       const td = (mapped.travelDetails || { flights: [{}], hotel: {} }) as TravelDetailsRecord;
       setTravelForm({
         flights: td.flights?.length ? td.flights : [{}],
@@ -287,6 +303,10 @@ function BookingDetailDialog({
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <SummaryCell label="Booking ID" value={booking.bookingRef} />
                   <SummaryCell label="Quotation" value={booking.quoteNo || "—"} />
+                  <SummaryCell
+                    label="Quote version"
+                    value={booking.quotationVersionNumber != null ? `v${booking.quotationVersionNumber}` : "—"}
+                  />
                   <SummaryCell label="Destination" value={booking.destination || booking.route} />
                   <SummaryCell label="Travel Date" value={booking.travelDate} />
                   <SummaryCell label="Nights" value={String(booking.nights ?? "—")} />
@@ -298,6 +318,23 @@ function BookingDetailDialog({
                   <SummaryCell label="Sales" value={booking.salesExecutiveName || booking.agent} />
                   <SummaryCell label="Operations" value={booking.operationsExecutiveName || "—"} />
                 </div>
+                {completeness && (
+                  <div className="rounded-lg border p-3 text-xs space-y-1">
+                    <p className="font-semibold text-muted-foreground uppercase text-[10px]">Transferred components</p>
+                    <p>
+                      Services:{" "}
+                      {Object.keys(completeness.servicesByType).length
+                        ? Object.entries(completeness.servicesByType).map(([k, v]) => `${k}×${v}`).join(", ")
+                        : "—"}
+                    </p>
+                    <p>
+                      Documents: {completeness.documents}
+                      {" · "}Itinerary: {completeness.hasItinerary ? "Yes" : "No"}
+                      {" · "}Terms: {completeness.hasTerms ? "Yes" : "No"}
+                      {" · "}Pricing locked: {completeness.pricingLocked ? "Yes" : "No"}
+                    </p>
+                  </div>
+                )}
 
                 {canAssign && (
                   <div className="flex flex-wrap items-end gap-2 border rounded-lg p-3">
@@ -518,23 +555,32 @@ function BookingDetailDialog({
                   >
                     Save Passengers
                   </Button>
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                    className="hidden"
+                    id={`lead-doc-${booking.id}`}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (!file) return;
+                      const lead = passengers.find((p) => p.isLead) || passengers[0];
+                      void run("Document uploaded", async () => {
+                        await api.uploadBookingDocument(booking.id, file, {
+                          docType: "OTHER",
+                          visibility: "INTERNAL",
+                          ...(lead?.id ? { passengerId: lead.id } : {}),
+                        });
+                      });
+                    }}
+                  />
                   <Button
                     size="sm"
                     variant="outline"
                     disabled={busy || !passengers[0]?.id}
-                    onClick={() => run("Document recorded", async () => {
-                      const lead = passengers.find((p) => p.isLead) || passengers[0];
-                      await api.uploadBookingDocument(booking.id, {
-                        docType: booking.isInternational ? "Passport Front" : "PAN Card",
-                        fileName: `${lead.firstName}-id.pdf`,
-                        fileUrl: `data:application/pdf;base64,demo`,
-                        mimeType: "application/pdf",
-                        sizeBytes: 1024,
-                        passengerId: lead.id,
-                      });
-                    })}
+                    onClick={() => document.getElementById(`lead-doc-${booking.id}`)?.click()}
                   >
-                    Upload Lead ID (demo)
+                    Upload lead document
                   </Button>
                 </div>
                 {!booking.policiesAcceptedAt && (

@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import type { AuthRequest } from "../middleware/auth.js";
+import { filterDocumentsForRole } from "./documents.js";
 
 export const QUOTE_STATUSES = [
   "Draft",
@@ -39,6 +40,17 @@ export function canTransition(from: string, to: string, override = false): boole
   if (from === to) return true;
   const allowed = STATUS_TRANSITIONS[from] || [];
   return allowed.includes(to);
+}
+
+/**
+ * Staff/agent authenticated accept must obey the same status machine as POST .../status.
+ * Returns null when Accepted is allowed (including already-Accepted no-op via from===to).
+ */
+export function quoteStaffAcceptTransitionBlockReason(status: string | null | undefined): string | null {
+  const from = status || "";
+  const to = "Accepted";
+  if (canTransition(from, to) || canTransition(normalizeStatus(from), to)) return null;
+  return `Invalid transition ${from || "(empty)"} → ${to}`;
 }
 
 export function normalizeStatus(status: string): string {
@@ -85,7 +97,7 @@ export function lineTotals(line: CostLine) {
     selling =
       Number(line.adultRate || 0) * Number(line.adults || 0) +
       Number(line.childRate || 0) * Number(line.children || 0);
-    if (!cost) cost = Math.round(selling * 0.75);
+    if (!cost) cost = 0;
   } else {
     selling = selling * qty;
     cost = cost * qty;
@@ -147,8 +159,12 @@ export function calcPackageCosting(pkg: {
   }
   discountAmount = Math.min(discountAmount, totalSelling);
   const afterDiscount = totalSelling - discountAmount;
-  const taxRate = Number(pkg.taxRate ?? 18);
-  const gst = Math.round(afterDiscount * (taxRate / (100 + taxRate)));
+  // Legacy inclusive extractor — rate must be explicit. Never invent 18% (Phase 16).
+  const taxRateRaw = pkg.taxRate;
+  const taxRate = taxRateRaw == null || Number.isNaN(Number(taxRateRaw)) ? null : Number(taxRateRaw);
+  const gst = taxRate == null
+    ? 0
+    : Math.round(afterDiscount * (taxRate / (100 + taxRate)));
   const taxableAmount = afterDiscount - gst;
   const grossProfit = afterDiscount - totalNetCost;
   const profitMargin = afterDiscount > 0 ? (grossProfit / afterDiscount) * 100 : 0;
@@ -181,62 +197,51 @@ export function isAgentLike(role?: string): boolean {
   return role === "travel_agent" || role === "customer";
 }
 
-/** Strip confidential fields for agents/customers. */
+const SENSITIVE_LINE_KEYS = [
+  "costPrice", "quotedCostPrice", "contractedCost", "supplierCost", "supplier", "supplierId", "supplierRef", "supplierName",
+  "trevioMarkup", "trevioMarkupType", "trevioMarkupValue", "trevioMarkupAmount",
+  "totalNetCost", "grossProfit", "profitMargin",
+  "discountType", "discountValue", "discountAmount",
+  "internalNotes", "internalRemarks", "remarks",
+] as const;
+
+function stripSensitive(value: unknown, hideAgentMarkup: boolean): unknown {
+  if (Array.isArray(value)) return value.map((item) => stripSensitive(item, hideAgentMarkup));
+  if (!value || typeof value !== "object") return value;
+  const next: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if ((SENSITIVE_LINE_KEYS as readonly string[]).includes(key)) continue;
+    if (hideAgentMarkup && (key === "agentMarkup" || key === "agentMarkupType" || key === "agentMarkupAmount" || key === "baseSellingTotal" || key === "markup" || key === "trevioSellingPrice" || key === "totalSelling")) continue;
+    if (key === "approvals" || key === "versions") continue;
+    next[key] = stripSensitive(child, hideAgentMarkup);
+  }
+  return next;
+}
+
+function scrubDocuments<T extends Record<string, unknown>>(quote: T, role?: string): T {
+  if (!Array.isArray(quote.documents)) return quote;
+  return { ...quote, documents: filterDocumentsForRole(quote.documents as Array<{ visibility?: unknown }>, role) };
+}
+
+/** Strip confidential fields for agents/customers. Customers see selling price only. */
 export function sanitizeQuotationForRole<T extends Record<string, unknown>>(quote: T, role?: string): T {
-  if (!isAgentLike(role)) return quote;
-  const clone = JSON.parse(JSON.stringify(quote)) as Record<string, unknown>;
+  if (!isAgentLike(role)) return scrubDocuments(quote, role);
+  const hideAgentMarkup = role === "customer";
+  const clone = stripSensitive(JSON.parse(JSON.stringify(quote)), hideAgentMarkup) as Record<string, unknown>;
   delete clone.internalNotes;
   delete clone.totalNetCost;
   delete clone.grossProfit;
   delete clone.profitMargin;
   delete clone.discountType;
   delete clone.discountValue;
-  // Agents see their markup and platform base price, not internal cost/profit
-  if (clone.agentMarkup == null) clone.agentMarkup = 0;
-  if (clone.baseSellingTotal == null && clone.total != null) {
-    clone.baseSellingTotal = Math.max(0, Number(clone.total) - Number(clone.agentMarkup || 0));
-  }
-  if (Array.isArray(clone.packages)) {
-    clone.packages = (clone.packages as Record<string, unknown>[]).map((p) => sanitizePackage(p));
-  }
-  if (Array.isArray(clone.approvals)) {
-    clone.approvals = (clone.approvals as Record<string, unknown>[]).map((a) => ({
-      stage: a.stage,
-      status: a.status,
-      decidedAt: a.decidedAt,
-    }));
-  }
-  delete clone.versions;
-  return clone as T;
-}
-
-function sanitizePackage(pkg: Record<string, unknown>) {
-  const next = { ...pkg };
-  delete next.totalNetCost;
-  delete next.grossProfit;
-  for (const key of ["hotels", "flights", "transfers", "activities", "meals", "addOns"] as const) {
-    if (Array.isArray(next[key])) {
-      next[key] = (next[key] as Record<string, unknown>[]).map((line) => {
-        const l = { ...line };
-        delete l.costPrice;
-        delete l.supplier;
-        delete l.supplierId;
-        delete l.supplierRef;
-        return l;
-      });
+  delete clone.discountAmount;
+  if (!hideAgentMarkup) {
+    if (clone.agentMarkup == null) clone.agentMarkup = 0;
+    if (clone.baseSellingTotal == null && clone.total != null) {
+      clone.baseSellingTotal = Math.max(0, Number(clone.total) - Number(clone.agentMarkup || 0));
     }
   }
-  if (next.visa && typeof next.visa === "object") {
-    const v = { ...(next.visa as Record<string, unknown>) };
-    delete v.costPrice;
-    next.visa = v;
-  }
-  if (next.insurance && typeof next.insurance === "object") {
-    const v = { ...(next.insurance as Record<string, unknown>) };
-    delete v.costPrice;
-    next.insurance = v;
-  }
-  return next;
+  return scrubDocuments(clone as T, role);
 }
 
 export const QUOTE_INCLUDE = {
@@ -325,24 +330,8 @@ export function buildTermsSnapshot(q: {
   };
 }
 
-export async function expireDueQuotations(agencyWhere: Record<string, unknown>) {
-  const today = new Date().toISOString().slice(0, 10);
-  const due = await db.quotation.findMany({
-    where: {
-      ...agencyWhere,
-      deletedAt: null,
-      status: { in: ["Sent to Agent", "Sent", "Customer Reviewing"] },
-      validTill: { lt: today },
-    },
-    take: 200,
-    select: { id: true, quoteNo: true, agencyId: true },
-  });
-  for (const q of due) {
-    await db.quotation.update({ where: { id: q.id }, data: { status: "Expired" } });
-    await notifyQuote({ agencyId: q.agencyId, title: "Quote expired", message: `${q.quoteNo} expired` });
-  }
-  return due.length;
-}
+/** @deprecated Prefer importing from quotation-expiry.js — re-exported for compatibility. */
+export { expireDueQuotations, runExpireDueQuotations } from "./quotation-expiry.js";
 
 export async function restorePackagesFromSnapshot(quotationId: string, snapshot: Record<string, unknown>) {
   const packages = Array.isArray(snapshot.packages) ? (snapshot.packages as Record<string, unknown>[]) : [];
@@ -375,35 +364,4 @@ export async function restorePackagesFromSnapshot(quotationId: string, snapshot:
       },
     });
   }
-}
-
-export async function snapshotVersion(
-  quotationId: string,
-  createdByName: string,
-  createdById?: string,
-  changeSummary?: string,
-  reason?: string,
-) {
-  const full = await db.quotation.findUnique({
-    where: { id: quotationId },
-    include: QUOTE_INCLUDE,
-  });
-  if (!full) return null;
-  const versionNumber = (full.currentVersion || 1) + 1;
-  const version = await db.quotationVersion.create({
-    data: {
-      quotationId,
-      versionNumber,
-      snapshot: JSON.parse(JSON.stringify(full)),
-      changeSummary: changeSummary || `Version ${versionNumber}`,
-      reason,
-      createdByName,
-      createdById,
-    },
-  });
-  await db.quotation.update({
-    where: { id: quotationId },
-    data: { currentVersion: versionNumber },
-  });
-  return version;
 }

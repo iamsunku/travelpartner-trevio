@@ -267,6 +267,7 @@ export const agentRegistrationSchema = z
     password: passwordSchema,
     confirmPassword: z.string(),
     gstNumber: z.string().trim().max(40).optional().or(z.literal("")),
+    gstProofId: z.string().trim().min(16).max(80).optional(),
     gstProofUrl: z.string().optional(),
     termsAccepted: z.literal(true, { message: "You must accept the terms and conditions" }),
     termsVersion: z.string().optional(),
@@ -296,21 +297,8 @@ export const agentRegistrationSchema = z
         path: ["phone"],
       });
     }
-    if (data.gstProofUrl) {
-      const url = data.gstProofUrl;
-      const okPrefix =
-        url.startsWith("data:image/jpeg") ||
-        url.startsWith("data:image/png") ||
-        url.startsWith("data:application/pdf") ||
-        url.startsWith("/uploads/") ||
-        url.startsWith("https://");
-      if (!okPrefix) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid GST / VAT proof file", path: ["gstProofUrl"] });
-      }
-      // Base64 expands ~4/3; 5MB binary ≈ ~7MB string
-      if (url.startsWith("data:") && url.length > 7_500_000) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "GST / VAT proof must be under 5MB", path: ["gstProofUrl"] });
-      }
+    if ("gstProofUrl" in data && (data as { gstProofUrl?: unknown }).gstProofUrl) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Upload the file. A URL is not accepted as GST / VAT proof.", path: ["gstProofUrl"] });
     }
   });
 

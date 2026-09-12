@@ -298,6 +298,100 @@ export function QuoteTemplateBuilder({ sections, onChange, readOnly }: QuoteTemp
                   />
                 </div>
               )}
+              {["TERMS", "CANCELLATION", "OVERVIEW", "NOTES", "VISA", "CONTACT"].includes(configSection.sectionType) && (
+                <div>
+                  <Label>Reusable text (copied into quotations)</Label>
+                  <Textarea
+                    rows={4}
+                    placeholder="Content applied to empty quotation fields"
+                    value={String(((configSection.settings?.content as { text?: string } | undefined)?.text) || "")}
+                    onChange={(e) => updateSection(configSection.clientKey, {
+                      settings: {
+                        ...configSection.settings,
+                        content: { ...((configSection.settings?.content as object) || {}), text: e.target.value },
+                      },
+                    })}
+                  />
+                </div>
+              )}
+              {["INCLUSIONS", "EXCLUSIONS", "DESTINATION_HIGHLIGHTS"].includes(configSection.sectionType) && (
+                <div>
+                  <Label>Items (one per line)</Label>
+                  <Textarea
+                    rows={4}
+                    value={(((configSection.settings?.content as { items?: string[] } | undefined)?.items) || []).join("\n")}
+                    onChange={(e) => updateSection(configSection.clientKey, {
+                      settings: {
+                        ...configSection.settings,
+                        content: {
+                          ...((configSection.settings?.content as object) || {}),
+                          items: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean),
+                        },
+                      },
+                    })}
+                  />
+                </div>
+              )}
+              {configSection.sectionType === "ITINERARY" && (
+                <div>
+                  <Label>Itinerary JSON (array of days)</Label>
+                  <Textarea
+                    rows={5}
+                    className="font-mono text-xs"
+                    placeholder='[{"day":1,"title":"Day 1","items":[{"activityName":"Arrival"}]}]'
+                    value={JSON.stringify(((configSection.settings?.content as { itinerary?: unknown } | undefined)?.itinerary) || [], null, 2)}
+                    onChange={(e) => {
+                      try {
+                        const parsed = JSON.parse(e.target.value || "[]");
+                        if (!Array.isArray(parsed)) return;
+                        updateSection(configSection.clientKey, {
+                          settings: {
+                            ...configSection.settings,
+                            content: { ...((configSection.settings?.content as object) || {}), itinerary: parsed },
+                          },
+                        });
+                      } catch {
+                        /* keep typing */
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              {["HOTELS", "FLIGHTS", "TRANSFERS", "ACTIVITIES"].includes(configSection.sectionType) && (
+                <div>
+                  <Label>{configSection.sectionType} JSON (sample lines — no supplier cost)</Label>
+                  <Textarea
+                    rows={5}
+                    className="font-mono text-xs"
+                    placeholder="[]"
+                    value={JSON.stringify(
+                      ((configSection.settings?.content as Record<string, unknown> | undefined)?.[configSection.sectionType.toLowerCase()] as unknown[])
+                        || ((configSection.settings?.content as Record<string, unknown> | undefined)?.[configSection.sectionType === "HOTELS" ? "hotels" : configSection.sectionType === "FLIGHTS" ? "flights" : configSection.sectionType === "TRANSFERS" ? "transfers" : "activities"] as unknown[])
+                        || [],
+                      null,
+                      2,
+                    )}
+                    onChange={(e) => {
+                      try {
+                        const parsed = JSON.parse(e.target.value || "[]");
+                        if (!Array.isArray(parsed)) return;
+                        const key = configSection.sectionType === "HOTELS" ? "hotels"
+                          : configSection.sectionType === "FLIGHTS" ? "flights"
+                            : configSection.sectionType === "TRANSFERS" ? "transfers"
+                              : "activities";
+                        updateSection(configSection.clientKey, {
+                          settings: {
+                            ...configSection.settings,
+                            content: { ...((configSection.settings?.content as object) || {}), [key]: parsed },
+                          },
+                        });
+                      } catch {
+                        /* keep typing */
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>

@@ -31,13 +31,176 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { api } from "@/lib/api";
+import { api, type AgentRegistrationRow } from "@/lib/api";
 import { mapApiAgency } from "@/lib/api-mappers";
 import type { Agency } from "@/types";
+import { Textarea } from "@/components/ui/textarea";
 import {
   formatINR, formatFullINR, StatusBadge, PageShell, PageHeader, SectionHeader, MetricCard, initials, avatarGradient,
 } from "@/components/shared/ui-helpers";
 import { cn } from "@/lib/utils";
+
+function PendingRegistrationsPanel() {
+  const { toast } = useToast();
+  const [rows, setRows] = useState<AgentRegistrationRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<AgentRegistrationRow | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [comment, setComment] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function reload() {
+    setLoading(true);
+    api.getAgentRegistrations({ status: "Submitted" })
+      .then((res) => setRows(res.registrations || []))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    reload();
+  }, []);
+
+  async function approve() {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await api.approveAgentRegistration(selected.id, { comment: comment.trim() || undefined });
+      toast({ title: "Registration approved", description: `${selected.companyName} can now sign in.` });
+      setSelected(null);
+      setComment("");
+      reload();
+    } catch (e) {
+      toast({ title: "Approve failed", description: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reject() {
+    if (!selected) return;
+    if (!rejectReason.trim()) {
+      toast({ title: "Rejection reason required", variant: "destructive" });
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.rejectAgentRegistration(selected.id, { reason: rejectReason.trim(), comment: comment.trim() || undefined });
+      toast({ title: "Registration rejected", description: `${selected.companyName} remains blocked from login.` });
+      setSelected(null);
+      setRejectReason("");
+      setComment("");
+      reload();
+    } catch (e) {
+      toast({ title: "Reject failed", description: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openProof() {
+    if (!selected?.hasGstProof) return;
+    try {
+      const blob = await api.downloadAgencyGstProof(selected.id);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      toast({ title: "Could not open GST proof", description: e instanceof Error ? e.message : "Error", variant: "destructive" });
+    }
+  }
+
+  return (
+    <Card className="mb-6 border-amber-200/80 bg-amber-50/40 dark:bg-amber-950/10">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-amber-600" />
+          Pending agent registrations
+        </CardTitle>
+        <CardDescription>
+          Self-registered agencies awaiting admin review. Approved applicants may sign in; rejected applicants stay blocked.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No submitted registrations.</p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Company</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Submitted</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Review</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell className="font-medium text-sm">{r.companyName}</TableCell>
+                  <TableCell className="text-sm">{r.fullName}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{r.email}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {r.createdAt ? new Date(r.createdAt).toLocaleDateString("en-IN") : "—"}
+                  </TableCell>
+                  <TableCell><Badge variant="secondary">{r.registrationStatus}</Badge></TableCell>
+                  <TableCell className="text-right">
+                    <Button size="sm" variant="outline" className="h-7" onClick={() => { setSelected(r); setRejectReason(""); setComment(""); }}>
+                      Review
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        <Dialog open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Review registration</DialogTitle>
+              <DialogDescription>Approve to activate login, or reject with a reason.</DialogDescription>
+            </DialogHeader>
+            {selected && (
+              <div className="space-y-3 text-sm">
+                <div><span className="text-muted-foreground">Company:</span> {selected.companyName}</div>
+                <div><span className="text-muted-foreground">Owner:</span> {selected.fullName}</div>
+                <div><span className="text-muted-foreground">Email / Phone:</span> {selected.email} · {selected.phone}</div>
+                <div><span className="text-muted-foreground">Address:</span> {[selected.address, selected.city, selected.state, selected.country].filter(Boolean).join(", ")}</div>
+                <div><span className="text-muted-foreground">PAN:</span> {selected.panNumber || "—"}</div>
+                <div><span className="text-muted-foreground">GST/VAT:</span> {selected.gstNumber || "—"}</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">GST proof:</span>
+                  {selected.hasGstProof ? (
+                    <Button type="button" size="sm" variant="outline" className="h-7" onClick={openProof}>View private file</Button>
+                  ) : (
+                    <span>—</span>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Internal comment (optional)</Label>
+                  <Textarea rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Rejection reason (required to reject)</Label>
+                  <Textarea rows={2} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
+                </div>
+              </div>
+            )}
+            <DialogFooter className="gap-2">
+              <Button variant="destructive" disabled={busy} onClick={reject}>Reject</Button>
+              <Button className="bg-teal-600 hover:bg-teal-700" disabled={busy} onClick={approve}>Approve</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
+  );
+}
 
 const PLAN_META: Record<Agency["plan"], { icon: React.ElementType; color: string; price: string; features: string[] }> = {
   Starter: {
@@ -250,6 +413,8 @@ export function AgenciesView() {
           </Dialog>
         }
       />
+
+      <PendingRegistrationsPanel />
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <MetricCard icon={Building2} label="Total Agencies" value={String(stats.total)} color="bg-sky-100 text-primary dark:bg-sky-500/15 dark:text-sky-400" subtitle="On platform" index={0} />

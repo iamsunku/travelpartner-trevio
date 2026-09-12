@@ -1,4 +1,4 @@
-/** Display-only costing. Server `calcPackageCosting` is the source of truth on save. */
+/** Display-only costing. Server `pricePackage` is the source of truth on save. */
 
 export type CostLine = {
   costPrice?: number;
@@ -19,7 +19,7 @@ export function lineTotals(line: CostLine) {
     selling =
       Number(line.adultRate || 0) * Number(line.adults || 0) +
       Number(line.childRate || 0) * Number(line.children || 0);
-    if (!cost) cost = Math.round(selling * 0.75);
+    if (!cost) cost = 0;
   } else {
     selling = selling * qty;
     cost = cost * qty;
@@ -81,8 +81,8 @@ export function calcPackageCosting(pkg: {
   }
   discountAmount = Math.min(discountAmount, totalSelling);
   const afterDiscount = totalSelling - discountAmount;
-  const taxRate = Number(pkg.taxRate ?? 18);
-  const gst = Math.round(afterDiscount * (taxRate / (100 + taxRate)));
+  const taxRate = Number(pkg.taxRate ?? 0);
+  const gst = taxRate > 0 ? Math.round(afterDiscount * (taxRate / 100)) : 0;
   const taxableAmount = afterDiscount - gst;
   const grossProfit = afterDiscount - totalNetCost;
   const profitMargin = afterDiscount > 0 ? (grossProfit / afterDiscount) * 100 : 0;
@@ -114,6 +114,10 @@ export type ResolvedQuoteCosting = {
   discountAmount: number;
   perAdultPrice: number;
   perChildPrice: number;
+  trevioSellingPrice?: number;
+  trevioMarkupAmount?: number;
+  agentMarkupAmount?: number;
+  taxConfigured?: boolean;
   adults: number;
   children: number;
   infants: number;
@@ -123,17 +127,14 @@ export type ResolvedQuoteCosting = {
   source: "packages" | "stored" | "derived";
 };
 
-/** Split a package base across adults/children (child ≈ 66% of adult). */
+/** Fallback only, when a stored pricing layer is not available. Equal split across adults and children; infants are not given an invented rate. */
 export function derivePaxRates(packageBase: number, adults: number, children: number) {
   const a = Math.max(0, Number(adults) || 0);
   const c = Math.max(0, Number(children) || 0);
-  const childFactor = 0.66;
-  const weight = a + c * childFactor;
-  if (weight <= 0) {
-    return { perAdultPrice: Math.round(packageBase), perChildPrice: 0 };
-  }
-  const perAdultPrice = Math.round(packageBase / weight);
-  const perChildPrice = Math.round(perAdultPrice * childFactor);
+  const paying = a + c;
+  if (paying <= 0) return { perAdultPrice: 0, perChildPrice: 0 };
+  const perAdultPrice = Math.round(packageBase / paying);
+  const perChildPrice = c > 0 ? perAdultPrice : 0;
   return { perAdultPrice, perChildPrice };
 }
 
@@ -180,12 +181,54 @@ export function resolveQuotationCosting(quote: {
   const adults = Math.max(0, Number(quote.adults ?? 2));
   const children = Math.max(0, Number(quote.children ?? 0));
   const infants = Math.max(0, Number(quote.infants ?? 0));
-  const taxRate = Number(quote.taxRate ?? 18);
+  const taxRate = Number(quote.taxRate ?? 0);
   const packages = Array.isArray(quote.packages) ? quote.packages : [];
   const selected =
     packages.find((p) => p.isSelected) ||
     packages[0] ||
     null;
+
+  const storedPricing = selected?.pricing as {
+    contractedCost?: number;
+    trevioMarkupAmount?: number;
+    trevioSellingPrice?: number;
+    customerPrice?: number;
+    taxAmount?: number | null;
+    taxRate?: number | null;
+    finalPrice?: number | null;
+    perAdultPrice?: number;
+    perChildPrice?: number;
+    discountAmount?: number;
+    agentMarkupAmount?: number;
+    unresolved?: boolean;
+  } | null;
+  if (storedPricing && (storedPricing.contractedCost != null || storedPricing.customerPrice != null)) {
+    const dates = hotelDates(selected?.hotels);
+    return {
+      packageBase: Number(storedPricing.customerPrice ?? 0),
+      gst: Number(storedPricing.taxAmount ?? 0),
+      total: Number(storedPricing.finalPrice ?? storedPricing.customerPrice ?? 0),
+      taxRate: Number(storedPricing.taxRate ?? 0),
+      totalNetCost: Number(storedPricing.contractedCost ?? 0),
+      grossProfit: Number(storedPricing.trevioSellingPrice ?? 0) - Number(storedPricing.contractedCost ?? 0),
+      profitMargin: 0,
+      perPersonCost: Number(storedPricing.perAdultPrice ?? 0),
+      discountAmount: Number(storedPricing.discountAmount ?? 0),
+      perAdultPrice: Number(storedPricing.perAdultPrice ?? 0),
+      perChildPrice: Number(storedPricing.perChildPrice ?? 0),
+      trevioSellingPrice: Number(storedPricing.trevioSellingPrice ?? 0),
+      trevioMarkupAmount: Number(storedPricing.trevioMarkupAmount ?? 0),
+      agentMarkupAmount: Number(storedPricing.agentMarkupAmount ?? 0),
+      taxConfigured: storedPricing.taxAmount != null,
+      adults,
+      children,
+      infants,
+      roomCount: roomCountFromHotels(selected?.hotels, adults, children),
+      checkIn: dates.checkIn || quote.travelStartDate || undefined,
+      checkOut: dates.checkOut || quote.travelEndDate || undefined,
+      source: "stored",
+    };
+  }
 
   if (selected) {
     const live = calcPackageCosting({
@@ -250,8 +293,7 @@ export function resolveQuotationCosting(quote: {
   let source: ResolvedQuoteCosting["source"] = "stored";
 
   if (totalNetCost <= 0 && packageBase > 0) {
-    totalNetCost = Math.round(packageBase * 0.75);
-    source = "derived";
+    source = "stored";
   }
   if ((grossProfit === 0 || quote.grossProfit == null) && packageBase > 0) {
     grossProfit = packageBase - totalNetCost;
@@ -285,5 +327,98 @@ export function resolveQuotationCosting(quote: {
     checkIn: quote.travelStartDate || undefined,
     checkOut: quote.travelEndDate || undefined,
     source,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function previewLineCost(line: Record<string, unknown>, nights: number | null, adults: number, children: number, infants: number): number | null {
+  if (line.includedInPlan === true || line.included === true) return 0;
+  const snap = asRecord(line.rateSnapshot);
+  const unit = typeof snap?.contractedCost === "number" ? Math.round(snap.contractedCost) : typeof line.costPrice === "number" ? Math.round(line.costPrice) : typeof line.fare === "number" ? Math.round(line.fare) : null;
+  if (unit == null) return null;
+  const rateUnit = String(snap?.rateUnit || "");
+  const qty = Math.max(1, Math.round(Number(line.quantity ?? line.qty ?? 1) || 1));
+  if (rateUnit === "PER_ROOM_NIGHT" || (snap && line.productType === "HOTEL")) {
+    const rooms = Math.round(Number(line.rooms ?? 0) || 0);
+    const stay = nights && nights > 0 ? nights : Math.round(Number(line.nights) || 0);
+    if (rooms <= 0 || stay <= 0) return null;
+    const meta = asRecord(snap?.metadata);
+    const child = typeof meta?.childCost === "number" ? meta.childCost * children * stay : 0;
+    const infant = typeof meta?.infantCost === "number" ? meta.infantCost * infants * stay : 0;
+    return unit * rooms * stay + child + infant;
+  }
+  if (rateUnit === "PER_VEHICLE" || rateUnit === "PER_TRANSFER" || (snap && line.productType === "TRANSFER")) {
+    const capacity = Math.round(Number(line.capacity ?? 0) || 0);
+    const pax = adults + children + infants;
+    const vehicles = capacity > 0 ? Math.max(1, Math.ceil(pax / capacity)) * qty : qty;
+    return unit * vehicles;
+  }
+  if (!snap && (line.source === "AMADEUS_API" || line.source === "API" || line.source === "MANUAL")) return unit;
+  const meta = asRecord(snap?.metadata);
+  const childRate = typeof meta?.childCost === "number" ? meta.childCost : 0;
+  const infantRate = typeof meta?.infantCost === "number" ? meta.infantCost : 0;
+  return (unit * adults + childRate * children + infantRate * infants) * qty;
+}
+
+/** Staff preview only. Final amounts are recalculated on the server from the rate snapshot. */
+export function previewPackageLayers(input: {
+  hotels?: unknown;
+  flights?: unknown;
+  transfers?: unknown;
+  activities?: unknown;
+  meals?: unknown;
+  adults?: number;
+  children?: number;
+  infants?: number;
+  nights?: number | null;
+  trevioMarkupValue?: number;
+  agentMarkup?: number;
+  agentMarkupType?: string;
+  discountType?: string | null;
+  discountValue?: number;
+}) {
+  const adults = Math.max(0, Number(input.adults || 0));
+  const children = Math.max(0, Number(input.children || 0));
+  const infants = Math.max(0, Number(input.infants || 0));
+  let contracted = 0;
+  let unresolved = false;
+  for (const rows of [input.hotels, input.flights, input.transfers, input.activities, input.meals]) {
+    if (!Array.isArray(rows)) continue;
+    for (const raw of rows) {
+      const line = asRecord(raw);
+      if (!line) continue;
+      const cost = previewLineCost(line, input.nights ?? null, adults, children, infants);
+      if (cost == null) unresolved = true;
+      else contracted += cost;
+    }
+  }
+  const markup = Math.round(contracted * (Number(input.trevioMarkupValue || 0) / 100));
+  let selling = contracted + markup;
+  let discountAmount = 0;
+  if (input.discountType === "Percentage") discountAmount = Math.min(selling, Math.round(selling * (Number(input.discountValue || 0) / 100)));
+  else if (input.discountType === "Fixed") discountAmount = Math.min(selling, Math.round(Number(input.discountValue || 0)));
+  selling -= discountAmount;
+  const agentAmount = input.agentMarkupType === "Percentage"
+    ? Math.round(selling * (Number(input.agentMarkup || 0) / 100))
+    : Math.max(0, Math.round(Number(input.agentMarkup || 0)));
+  const customer = selling + agentAmount;
+  const paying = adults + children;
+  return {
+    totalNetCost: contracted,
+    totalSelling: selling,
+    grossProfit: selling - contracted,
+    profitMargin: selling > 0 ? Math.round(((selling - contracted) / selling) * 10000) / 100 : 0,
+    discountAmount,
+    taxableAmount: customer,
+    gst: 0,
+    total: customer,
+    perPersonCost: paying > 0 ? Math.round(customer / paying) : 0,
+    trevioMarkupAmount: markup,
+    agentMarkupAmount: agentAmount,
+    unresolved,
   };
 }

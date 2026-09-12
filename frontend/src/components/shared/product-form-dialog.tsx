@@ -234,14 +234,14 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
       } else if (kind === "activities") {
         setForm({
           destinationId: "", name: "", description: "", images: "", duration: "", location: "", meetingPoint: "",
-          inclusions: "", exclusions: "", operatingHours: "", minChildAge: "3",
+          inclusions: "", exclusions: "", operatingHours: "", startTime: "", closingTime: "", ticketType: "", passengerInfo: "", minChildAge: "3",
           adultPrice: "", childPrice: "", infantPrice: "", currency: "INR", cancellationPolicy: "",
           rateValidFrom: "", rateValidTo: "", status: "Draft",
         });
         setTransferLinks([]);
       } else {
         setForm({
-          destinationId: "", name: "", transferType: "Private", vehicleType: "Sedan",
+          destinationId: "", name: "", city: "", description: "", images: "", capacity: "", transferType: "Private", vehicleType: "Sedan",
           pickupLocation: "", dropLocation: "", pickupTime: "", waitingCharges: "",
           privatePrice: "", sharedAdultPrice: "", sharedChildPrice: "", currency: "INR",
           rateValidFrom: "", rateValidTo: "", cancellationPolicy: "", status: "Draft",
@@ -320,6 +320,10 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
         inclusions: Array.isArray(initial.inclusions) ? (initial.inclusions as string[]).join(", ") : "",
         exclusions: Array.isArray(initial.exclusions) ? (initial.exclusions as string[]).join(", ") : "",
         operatingHours: String(initial.operatingHours ?? ""),
+        startTime: String(initial.startTime ?? ""),
+        closingTime: String(initial.closingTime ?? ""),
+        ticketType: String(initial.ticketType ?? ""),
+        passengerInfo: String(initial.passengerInfo ?? ""),
         minChildAge: String(initial.minChildAge ?? 3),
         adultPrice: String(initial.adultPrice ?? ""),
         childPrice: String(initial.childPrice ?? ""),
@@ -349,6 +353,10 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
       setForm({
         destinationId: String(initial.destinationId ?? ""),
         name: String(initial.name ?? ""),
+        city: String(initial.city ?? ""),
+        description: String(initial.description ?? ""),
+        images: Array.isArray(initial.images) ? (initial.images as string[]).join("\n") : String(initial.images ?? ""),
+        capacity: String(initial.capacity ?? ""),
         transferType: String(initial.transferType ?? "Private"),
         vehicleType: String(initial.vehicleType ?? "Sedan"),
         pickupLocation: String(initial.pickupLocation ?? ""),
@@ -447,6 +455,10 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
           inclusions: listFromText(form.inclusions.replace(/\n/g, ",")),
           exclusions: listFromText(form.exclusions.replace(/\n/g, ",")),
           operatingHours: form.operatingHours || null,
+          startTime: form.startTime || null,
+          closingTime: form.closingTime || null,
+          ticketType: form.ticketType || null,
+          passengerInfo: form.passengerInfo || null,
           minChildAge: form.minChildAge ? num(form.minChildAge) : null,
           adultPrice: num(form.adultPrice),
           childPrice: num(form.childPrice),
@@ -464,6 +476,10 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
         payload = {
           ...payload,
           name: form.name,
+          city: form.city || null,
+          description: form.description || null,
+          images: listFromText(form.images),
+          capacity: form.capacity ? num(form.capacity) : null,
           transferType: form.transferType,
           vehicleType: vehicles[0]?.vehicleType || form.vehicleType || null,
           pickupLocation: form.pickupLocation,
@@ -707,10 +723,15 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
                 <Field label="Meeting Point"><Input value={form.meetingPoint || ""} onChange={(e) => set("meetingPoint", e.target.value)} /></Field>
                 <div className="sm:col-span-2"><Field label="Inclusions"><Input value={form.inclusions || ""} onChange={(e) => set("inclusions", e.target.value)} /></Field></div>
                 <div className="sm:col-span-2"><Field label="Exclusions"><Input value={form.exclusions || ""} onChange={(e) => set("exclusions", e.target.value)} /></Field></div>
+                <Field label="Start time"><Input value={form.startTime || ""} onChange={(e) => set("startTime", e.target.value)} placeholder="09:00" /></Field>
+                <Field label="Closing time"><Input value={form.closingTime || ""} onChange={(e) => set("closingTime", e.target.value)} placeholder="18:00" /></Field>
+                <Field label="Ticket type"><Input value={form.ticketType || ""} onChange={(e) => set("ticketType", e.target.value)} /></Field>
+                <Field label="Passenger information"><Input value={form.passengerInfo || ""} onChange={(e) => set("passengerInfo", e.target.value)} /></Field>
                 <Field label="Operating Hours"><Input value={form.operatingHours || ""} onChange={(e) => set("operatingHours", e.target.value)} /></Field>
                 <Field label="Min Child Age"><Input type="number" value={form.minChildAge || ""} onChange={(e) => set("minChildAge", e.target.value)} /></Field>
                 <p className="sm:col-span-2 text-xs text-muted-foreground -mt-1">Below this age the activity cannot be booked (e.g. Sky Diving 18 yrs).</p>
-                <Field label="Adult Price"><Input type="number" value={form.adultPrice || ""} onChange={(e) => set("adultPrice", e.target.value)} /></Field>
+                <p className="sm:col-span-2 text-xs text-muted-foreground">Display price only. Contracted cost is set under Rates and is resolved by travel date.</p>
+                <Field label="Adult display price"><Input type="number" value={form.adultPrice || ""} onChange={(e) => set("adultPrice", e.target.value)} /></Field>
                 <Field label="Child Price"><Input type="number" value={form.childPrice || ""} onChange={(e) => set("childPrice", e.target.value)} /></Field>
                 <Field label="Infant Price (Optional)"><Input type="number" value={form.infantPrice || ""} onChange={(e) => set("infantPrice", e.target.value)} /></Field>
                 <Field label="Currency"><CurrencySelect value={form.currency || "INR"} onChange={(v) => set("currency", v)} /></Field>
@@ -800,6 +821,10 @@ export function ProductFormDialog({ open, onOpenChange, kind, initial, onSubmit 
                   </Field>
                 </div>
                 <Field label="Transfer Name *"><Input value={form.name || ""} onChange={(e) => set("name", e.target.value)} /></Field>
+                <Field label="City"><Input value={form.city || ""} onChange={(e) => set("city", e.target.value)} /></Field>
+                <Field label="Capacity (pax)"><Input type="number" value={form.capacity || ""} onChange={(e) => set("capacity", e.target.value)} /></Field>
+                <div className="sm:col-span-2"><Field label="Description"><Textarea rows={2} value={form.description || ""} onChange={(e) => set("description", e.target.value)} /></Field></div>
+                <div className="sm:col-span-2"><Field label="Image URL"><Input value={form.images || ""} onChange={(e) => set("images", e.target.value)} /></Field></div>
                 <Field label="Transfer Type">
                   <Select value={form.transferType || "Private"} onValueChange={(v) => set("transferType", v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>

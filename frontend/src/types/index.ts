@@ -10,6 +10,7 @@ export type Role =
   | "product_executive"
   | "operations"
   | "travel_agent"
+  | "team_lead"
   | "management";
 
 export type Module =
@@ -271,6 +272,7 @@ export interface Booking {
   createdAt: string;
   quotationId?: string | null;
   quoteNo?: string | null;
+  quotationVersionNumber?: number | null;
   destination?: string | null;
   nights?: number | null;
   totalRooms?: number | null;
@@ -482,6 +484,12 @@ export interface Quotation {
   paymentTerms?: string;
   cancellationPolicy?: string;
   refundPolicy?: string;
+  hotelTerms?: string;
+  flightTerms?: string;
+  visaTerms?: string;
+  insuranceTerms?: string;
+  forceMajeure?: string;
+  travelDisclaimer?: string;
   salesExecutiveName?: string;
   salesExecutivePhone?: string;
   salesExecutiveEmail?: string;
@@ -512,6 +520,10 @@ export interface Quotation {
   discountValue?: number;
   discountAmount?: number;
   taxRate?: number;
+  trevioMarkupType?: "Percentage" | "Fixed" | string;
+  trevioMarkupValue?: number;
+  agentMarkupType?: "Percentage" | "Fixed" | string;
+  pricingStatus?: string;
   perPersonCost?: number;
   currentVersion?: number;
   wizardStep?: number;
@@ -1124,6 +1136,7 @@ export type ViewKey =
   | "flights"
   | "hotels"
   | "hotel-products"
+  | "contracted-rates"
   | "destinations"
   | "activity-packages"
   | "packages"

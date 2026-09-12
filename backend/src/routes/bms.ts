@@ -8,27 +8,26 @@ import {
   categoryForRequestType,
   deriveBookingStatusFromPayments,
   derivePaymentStatus,
-  nextBookingRef,
   nextChangeRequestRef,
   nextInvoiceNo,
   nextPaymentRequestRef,
   notify,
-  passengerSlotsFromRooms,
   recalculateFinancials,
-  seedBookingServices,
-  seedOpsTasks,
   validatePassenger,
   verifyPanStub,
   writeAudit,
 } from "../lib/bms.js";
 import { isAgentLike } from "../lib/quotations.js";
-import { resolveCommissionAmount } from "../lib/commission.js";
+import { filterDocumentsForRole } from "../lib/documents.js";
 import { adjustAgencyWallet } from "../lib/wallet.js";
 import {
   assertRazorpayPayment,
   razorpayKeysForAgency,
 } from "../lib/razorpay.js";
 import { isOfflinePaymentMethod } from "../lib/payments.js";
+import { convertQuotationToBooking, ConversionError } from "../lib/quotation-to-booking.js";
+import { agentBookingScope, agentCanAccessBooking } from "../lib/booking-access.js";
+import { canTransitionBooking } from "../lib/booking-status.js";
 
 /** Hide net cost / supplier / profit fields from travel agents. */
 function sanitizeBookingForRole<T>(booking: T, role?: string): T {
@@ -38,6 +37,19 @@ function sanitizeBookingForRole<T>(booking: T, role?: string): T {
   delete clone.grossProfit;
   delete clone.netProfit;
   delete clone.costDeviationApprovals;
+  if (clone.pricingSnapshot && typeof clone.pricingSnapshot === "object") {
+    const snap = { ...(clone.pricingSnapshot as Record<string, unknown>) };
+    delete snap.totalNetCost;
+    delete snap.grossProfit;
+    delete snap.agentMarkup;
+    if (snap.packagePricing && typeof snap.packagePricing === "object") {
+      const pp = { ...(snap.packagePricing as Record<string, unknown>) };
+      delete pp.contractedCost;
+      delete pp.trevioMarkupAmount;
+      snap.packagePricing = pp;
+    }
+    clone.pricingSnapshot = snap;
+  }
   if (Array.isArray(clone.services)) {
     clone.services = (clone.services as Record<string, unknown>[]).map((svc) => {
       const next = { ...svc };
@@ -50,6 +62,9 @@ function sanitizeBookingForRole<T>(booking: T, role?: string): T {
   }
   if (Array.isArray(clone.supplierPayouts)) {
     clone.supplierPayouts = [];
+  }
+  if (Array.isArray(clone.documents)) {
+    clone.documents = filterDocumentsForRole(clone.documents as Array<{ visibility?: unknown }>, role);
   }
   return clone as T;
 }
@@ -84,171 +99,19 @@ function paramPid(req: AuthRequest): string {
   return Array.isArray(id) ? id[0] : String(id ?? "");
 }
 
-function jsonArr(v: unknown): Record<string, unknown>[] {
-  return Array.isArray(v) ? (v as Record<string, unknown>[]) : [];
-}
-
-function lineNote(line: Record<string, unknown>, extra: Array<string | number | undefined | null>) {
-  return [...extra, line.remarks ? String(line.remarks) : ""].map((x) => (x == null ? "" : String(x))).filter(Boolean).join(" · ") || undefined;
-}
-
-async function copySelectedPackageToBooking(
-  bookingId: string,
-  selected: {
-    hotels: unknown;
-    flights: unknown;
-    transfers: unknown;
-    activities: unknown;
-    meals: unknown;
-    itinerary: unknown;
-    visa: unknown;
-    insurance: unknown;
-    addOns: unknown;
-  },
-) {
-  async function svc(serviceType: string, title: string, line: Record<string, unknown>, notes?: string) {
-    await db.bookingService.create({
-      data: {
-        bookingId,
-        serviceType,
-        title: (title || serviceType).slice(0, 240),
-        status: "Pending",
-        costPrice: Math.round(Number(line.costPrice || 0)),
-        quotedCostPrice: Math.round(Number(line.costPrice || 0)),
-        sellingPrice: Math.round(Number(line.sellingPrice || line.fare || 0)),
-        supplierName: line.supplier ? String(line.supplier) : undefined,
-        confirmationNo: String(line.confirmationNumber || line.pnr || line.policyNumber || "") || undefined,
-        voucherUrl: line.voucherUrl ? String(line.voucherUrl) : undefined,
-        ticketUrl: line.ticketUrl ? String(line.ticketUrl) : undefined,
-        notes,
-      },
-    });
-  }
-
-  for (const h of jsonArr(selected.hotels)) {
-    await svc(
-      "Hotel",
-      String(h.hotelName || h.name || "Hotel"),
-      h,
-      lineNote(h, [
-        h.starCategory ? `${h.starCategory}*` : "",
-        h.roomType ? String(h.roomType) : "",
-        h.mealPlan ? String(h.mealPlan) : "",
-        h.checkIn && h.checkOut ? `${h.checkIn} → ${h.checkOut}` : "",
-        h.rooms ? `${h.rooms} rooms` : "",
-      ]),
-    );
-  }
-  for (const f of jsonArr(selected.flights)) {
-    await svc(
-      "Flight",
-      `${f.airline || "Flight"} ${f.flightNumber || ""}`.trim(),
-      f,
-      lineNote(f, [
-        f.from && f.to ? `${f.from} → ${f.to}` : "",
-        f.date ? String(f.date) : "",
-        f.cabinClass ? String(f.cabinClass) : "",
-      ]),
-    );
-  }
-  for (const t of jsonArr(selected.transfers)) {
-    await svc(
-      "Transfer",
-      String(t.transferType || t.name || "Transfer"),
-      t,
-      lineNote(t, [
-        t.vehicleType ? String(t.vehicleType) : "",
-        t.pickup ? String(t.pickup) : "",
-        t.drop ? String(t.drop) : "",
-        t.date ? String(t.date) : "",
-      ]),
-    );
-  }
-  for (const a of jsonArr(selected.activities)) {
-    await svc(
-      "Attraction",
-      String(a.activityName || a.name || "Activity"),
-      a,
-      lineNote(a, [a.ticketType ? String(a.ticketType) : "", a.date ? String(a.date) : ""]),
-    );
-  }
-  for (const m of jsonArr(selected.meals)) {
-    await svc(
-      "Other",
-      `${m.mealType || "Meal"} ${m.restaurant || ""}`.trim(),
-      m,
-      lineNote(m, [m.cuisine ? String(m.cuisine) : "", m.date ? String(m.date) : ""]),
-    );
-  }
-  const visa = selected.visa && typeof selected.visa === "object" ? (selected.visa as Record<string, unknown>) : null;
-  if (visa?.enabled) {
-    await svc(
-      "Visa",
-      `Visa — ${visa.visaType || "Tourist"}`,
-      visa,
-      lineNote(visa, [visa.entryType ? String(visa.entryType) : "", visa.processingTime ? String(visa.processingTime) : ""]),
-    );
-  }
-  const ins = selected.insurance && typeof selected.insurance === "object" ? (selected.insurance as Record<string, unknown>) : null;
-  if (ins?.enabled) {
-    await svc(
-      "Insurance",
-      `${ins.provider || "Insurance"} ${ins.planName || ""}`.trim(),
-      ins,
-      lineNote(ins, [ins.coverage ? String(ins.coverage) : "", ins.validity ? String(ins.validity) : ""]),
-    );
-  }
-  for (const day of jsonArr(selected.itinerary)) {
-    const items = Array.isArray(day.items) ? (day.items as Array<{ activityName?: string; description?: string }>) : [];
-    const notes = items.map((i) => i.activityName || i.description || "").filter(Boolean).join("; ");
-    await svc("Other", String(day.title || `Day ${day.day || ""}`), { costPrice: 0, sellingPrice: 0 }, notes || undefined);
-  }
-  for (const a of jsonArr(selected.addOns)) {
-    if (a.enabled === false) continue;
-    await db.bookingAddOn.create({
-      data: {
-        bookingId,
-        addOnType: String(a.name || a.addOnType || "Other"),
-        title: String(a.name || "Add-on"),
-        amount: Math.round(Number(a.sellingPrice || 0)),
-        costPrice: Math.round(Number(a.costPrice || 0)),
-      },
-    });
-  }
-}
-
-function packageHasCopiedLines(selected: {
-  hotels: unknown;
-  flights: unknown;
-  transfers: unknown;
-  activities: unknown;
-  meals: unknown;
-  itinerary: unknown;
-  visa: unknown;
-  insurance: unknown;
-  addOns: unknown;
-}) {
-  const visa = selected.visa && typeof selected.visa === "object" ? (selected.visa as { enabled?: boolean }) : null;
-  const ins = selected.insurance && typeof selected.insurance === "object" ? (selected.insurance as { enabled?: boolean }) : null;
-  return (
-    jsonArr(selected.hotels).length +
-      jsonArr(selected.flights).length +
-      jsonArr(selected.transfers).length +
-      jsonArr(selected.activities).length +
-      jsonArr(selected.meals).length +
-      jsonArr(selected.itinerary).length +
-      jsonArr(selected.addOns).length >
-      0 ||
-    Boolean(visa?.enabled) ||
-    Boolean(ins?.enabled)
-  );
-}
-
 async function findBooking(req: AuthRequest, agencyScope: ScopeFn, branchScope: BranchScopeFn) {
-  return db.booking.findFirst({
-    where: { id: paramId(req), ...agencyScope(req), ...branchScope(req, "agentId") },
+  const booking = await db.booking.findFirst({
+    where: {
+      id: paramId(req),
+      ...agencyScope(req),
+      ...branchScope(req, "agentId"),
+      ...agentBookingScope(req.auth?.role, req.auth?.userId),
+    },
     include: BOOKING_INCLUDE,
   });
+  if (!booking) return null;
+  if (!agentCanAccessBooking(req.auth?.role, req.auth?.userId, booking)) return null;
+  return booking;
 }
 
 async function refreshBookingTotals(bookingId: string) {
@@ -295,260 +158,61 @@ export function mountBmsRoutes(
   ownBranchId: OwnBranchFn,
   branchScope: BranchScopeFn,
 ) {
-  // ── Proceed to Booking from Quotation ────────────────────────────────────
+  // ── Proceed to Booking from Quotation (authoritative Phase 10 path) ──────
   app.post(
     "/api/quotations/:id/proceed-to-booking",
     requireAuth,
     requireAnyPermission("quotations", "bookings"),
     async (req: AuthRequest, res: Response) => {
       try {
-        const quoteId = paramId(req);
         if (isAgentLike(req.auth?.role)) {
           res.status(403).json({ error: "Agents cannot convert quotations to bookings" });
           return;
         }
-        const quote = await db.quotation.findFirst({
-          where: { id: quoteId, ...agencyScope(req) },
-          include: { packages: true },
-        });
-        if (!quote) {
-          res.status(404).json({ error: "Quotation not found" });
-          return;
-        }
-        if (quote.status === "Expired") {
-          res.status(400).json({ error: "Renew expired quotation before conversion" });
-          return;
-        }
-        if (quote.status === "Converted to Booking" && quote.convertedBookingId) {
-          const prior = await db.booking.findFirst({ where: { id: quote.convertedBookingId } });
-          res.status(409).json({ error: "Booking already exists for this quotation", booking: prior });
-          return;
-        }
-        if (quote.status !== "Accepted") {
-          res.status(400).json({
-            error: "Quotation must be Accepted before proceeding to booking",
-          });
-          return;
-        }
-        if (!quote.customerName?.trim()) {
-          res.status(400).json({ error: "Customer name is required before conversion" });
-          return;
-        }
-
-        // Allow travel dates from request body (UI) or hotel package lines when quote fields are empty.
-        const bodyStart = typeof req.body?.travelStartDate === "string" ? req.body.travelStartDate.trim() : "";
-        const bodyEnd = typeof req.body?.travelEndDate === "string" ? req.body.travelEndDate.trim() : "";
-        let travelStartDate = bodyStart || quote.travelStartDate || quote.travelDates || "";
-        let travelEndDate = bodyEnd || quote.travelEndDate || "";
-        if (!travelStartDate) {
-          const pkg = quote.packages.find((p) => p.isSelected) || quote.packages[0];
-          const hotels = Array.isArray(pkg?.hotels) ? (pkg.hotels as Array<{ checkIn?: string; checkOut?: string }>) : [];
-          travelStartDate = hotels[0]?.checkIn || "";
-          travelEndDate = travelEndDate || hotels[0]?.checkOut || "";
-        }
-        if (!travelStartDate) {
-          res.status(400).json({ error: "Travel dates are required before conversion" });
-          return;
-        }
-        if (bodyStart || bodyEnd) {
-          await db.quotation.update({
-            where: { id: quote.id },
-            data: {
-              travelStartDate: travelStartDate || null,
-              travelEndDate: travelEndDate || null,
-              travelDates: travelStartDate || quote.travelDates,
-            },
-          });
-        }
-        const existing = await db.booking.findFirst({ where: { quotationId: quote.id } });
-        if (existing) {
-          res.status(409).json({ error: "Booking already exists for this quotation", booking: existing });
-          return;
-        }
-
-        const adults = quote.adults ?? 2;
-        const children = quote.children ?? 0;
-        const infants = quote.infants ?? 0;
-        const rooms = Math.max(1, Math.ceil((adults + children) / 3));
-        const packageValue = quote.total;
-        let costPrice = Number(quote.totalNetCost || 0);
-        if (costPrice <= 0 && packageValue > 0) {
-          // Older quotes often stored selling totals without net cost — derive a working cost.
-          costPrice = Math.round((quote.amount || packageValue - (quote.gst || 0)) * 0.75);
-        }
-        const grossProfit = Number(quote.grossProfit || 0) || packageValue - costPrice;
-        const bookingRef = await nextBookingRef();
-        const salesName = quote.salesExecutiveName || quote.createdBy || req.auth?.email || "Sales";
-        const opsName = (req.body?.operationsExecutiveName as string) || "Operations";
-        const opsId = (req.body?.operationsExecutiveId as string) || undefined;
-
-        const settings = quote.agencyId
-          ? await db.settings.findUnique({
-              where: { agencyId: quote.agencyId },
-              select: { commissionRules: true },
-            })
-          : null;
-        const commission = resolveCommissionAmount(
-          packageValue,
-          quote.service,
-          settings?.commissionRules,
-        );
-
-        const booking = await db.booking.create({
-          data: {
-            bookingRef,
-            customerName: quote.customerName,
-            service: quote.service === "International" ? "Holiday" : (quote.service as string) || "Holiday",
-            route: quote.destination || travelStartDate || "Package",
-            travelDate: (travelStartDate || quote.travelDates || quote.validTill || "").slice(0, 32) || new Date().toISOString().slice(0, 10),
-            amount: packageValue,
-            commission,
-            status: "Awaiting Passenger Details",
-            paymentStatus: "Pending",
-            agentId: req.auth?.userId,
-            agentName: salesName,
-            agencyId: ownAgencyId(req, quote.agencyId ?? undefined),
-            agencyName: "",
-            branchId: ownBranchId(req) ?? quote.branchId ?? undefined,
-            quotationId: quote.id,
-            quoteNo: quote.quoteNo,
-            destination: quote.destination,
-            nights: quote.nights,
-            totalRooms: rooms,
-            adults,
-            children,
-            infants,
-            packageValue,
-            amountPaid: 0,
-            balanceAmount: packageValue,
-            costPrice,
-            grossProfit,
-            netProfit: Math.round(grossProfit * 0.9),
-            salesExecutiveId: quote.createdById ?? req.auth?.userId,
-            salesExecutiveName: salesName,
-            operationsExecutiveId: opsId,
-            operationsExecutiveName: opsName,
-            isInternational: quote.isInternational,
-            pricingLocked: true,
-            pricingSnapshot: {
-              quoteNo: quote.quoteNo,
-              amount: quote.amount,
-              gst: quote.gst,
-              total: quote.total,
-              totalNetCost: quote.totalNetCost,
-              couponCode: quote.couponCode,
-              couponDiscount: quote.couponDiscount,
-              lineItems: quote.lineItems,
-              lockedAt: new Date().toISOString(),
-            },
-            termsAndConditions: quote.termsAndConditions,
-            paymentTerms: quote.paymentTerms,
-            cancellationPolicy: quote.cancellationPolicy,
-            packageIncludes: quote.packageIncludes ?? [],
-            packageExcludes: quote.packageExcludes ?? [],
-            currency: quote.currency || "INR",
-          },
-        });
-
-        const slots = passengerSlotsFromRooms(rooms, adults, children, infants);
-        const nameParts = quote.customerName.trim().split(/\s+/);
-        await db.bookingPassenger.createMany({
-          data: slots.map((s, idx) => ({
-            bookingId: booking.id,
-            roomIndex: s.roomIndex,
-            isLead: s.isLead,
-            firstName: idx === 0 ? (nameParts[0] || "Lead") : `Passenger`,
-            lastName: idx === 0 ? (nameParts.slice(1).join(" ") || "Traveller") : String(idx + 1),
-          })),
-        });
-
-        const selected =
-          quote.packages.find((p) => p.id === quote.selectedPackageId) ||
-          quote.packages.find((p) => p.isSelected) ||
-          quote.packages[0];
-        const hasPackageLines = selected ? packageHasCopiedLines(selected) : false;
-
-        if (!hasPackageLines) {
-          await seedBookingServices(booking.id, quote.isInternational);
-        }
-        await seedOpsTasks({
-          bookingId: booking.id,
-          bookingRef,
-          agencyId: booking.agencyId,
-          branchId: booking.branchId,
-          assignedBy: req.auth?.email || "System",
-          isInternational: quote.isInternational,
-        });
-
-        if (selected) {
-          await copySelectedPackageToBooking(booking.id, selected);
-          const itinerary = jsonArr(selected.itinerary);
-          if (itinerary.length > 0) {
-            await db.booking.update({
-              where: { id: booking.id },
-              data: { itinerary: itinerary as object },
-            });
-          }
-        }
-
-        const services = await db.bookingService.findMany({ where: { bookingId: booking.id } });
-        if (services.length > 0) {
-          await db.booking.update({
-            where: { id: booking.id },
-            data: { travelDetails: seedTravelDetailsFromServices(services) as object },
-          });
-        }
-
-        await db.quotation.update({
-          where: { id: quote.id },
-          data: {
-            status: "Converted to Booking",
-            convertedBookingId: booking.id,
-            convertedAt: new Date(),
-            convertedBy: req.auth?.email,
-          },
-        });
-
-        await writeAudit({
+        // Ignore client-supplied totals/status/version — server validates from DB.
+        const result = await convertQuotationToBooking({
+          quotationId: paramId(req),
+          agencyScope: agencyScope(req),
+          ownAgencyId: ownAgencyId(req),
+          ownBranchId: ownBranchId(req),
+          role: req.auth?.role,
+          userId: req.auth?.userId,
+          email: req.auth?.email,
+          travelStartDate: typeof req.body?.travelStartDate === "string" ? req.body.travelStartDate : undefined,
+          travelEndDate: typeof req.body?.travelEndDate === "string" ? req.body.travelEndDate : undefined,
+          operationsExecutiveName: typeof req.body?.operationsExecutiveName === "string" ? req.body.operationsExecutiveName : undefined,
+          operationsExecutiveId: typeof req.body?.operationsExecutiveId === "string" ? req.body.operationsExecutiveId : undefined,
           req,
-          agencyId: booking.agencyId,
-          bookingId: booking.id,
-          action: "Proceed to Booking",
-          details: `Created ${bookingRef} from ${quote.quoteNo}`,
-          updatedValue: { bookingRef, quotationId: quote.id, version: quote.currentVersion },
-        });
-        await notify({
-          agencyId: booking.agencyId,
-          title: "Booking Created",
-          message: `${bookingRef} created from quotation ${quote.quoteNo}`,
-          priority: "high",
         });
 
-        if (commission > 0 && booking.agencyId) {
+        if (result.booking && result.booking.commission > 0 && result.booking.agencyId) {
           try {
             await adjustAgencyWallet({
-              agencyId: booking.agencyId,
+              agencyId: result.booking.agencyId,
               type: "Credit",
-              amount: commission,
+              amount: result.booking.commission,
               source: "Commission",
-              description: `Commission: ${bookingRef} (${booking.service})`,
-              paymentRef: `comm_${booking.id}`,
+              description: `Commission: ${result.booking.bookingRef} (${result.booking.service})`,
+              paymentRef: `comm_${result.booking.id}`,
             });
           } catch (walletErr) {
-            logger.warn({ err: walletErr, bookingRef }, "Commission wallet credit skipped");
+            logger.warn({ err: walletErr, bookingRef: result.booking.bookingRef }, "Commission wallet credit skipped");
           }
         }
 
-        if (quote.leadId) {
-          await db.lead.updateMany({
-            where: { id: quote.leadId, agencyId: booking.agencyId ?? undefined },
-            data: { stage: "Won" },
-          });
-        }
-
-        const full = await db.booking.findUnique({ where: { id: booking.id }, include: BOOKING_INCLUDE });
-        res.status(201).json({ booking: full });
+        res.status(result.idempotent ? 200 : 201).json({
+          booking: sanitizeBookingForRole(result.booking, req.auth?.role),
+          idempotent: result.idempotent,
+        });
       } catch (e) {
+        if (e instanceof ConversionError) {
+          res.status(e.statusCode).json({
+            error: e.message,
+            code: e.code,
+            booking: e.booking ? sanitizeBookingForRole(e.booking, req.auth?.role) : undefined,
+          });
+          return;
+        }
         logger.error(e);
         res.status(500).json({ error: "Server error" });
       }
@@ -576,10 +240,55 @@ export function mountBmsRoutes(
           orderBy: { createdAt: "desc" },
           take: 100,
         });
+        const sourceQuotation = booking.quotationId
+          ? await db.quotation.findFirst({
+              where: { id: booking.quotationId },
+              select: {
+                id: true,
+                quoteNo: true,
+                status: true,
+                currentVersion: true,
+                acceptedVersionNumber: true,
+                validTill: true,
+                customerName: true,
+                destination: true,
+              },
+            })
+          : null;
+        const servicesByType = (booking.services || []).reduce<Record<string, number>>((acc, s) => {
+          acc[s.serviceType] = (acc[s.serviceType] || 0) + 1;
+          return acc;
+        }, {});
         res.json({
           booking: sanitizeBookingForRole(booking, req.auth?.role),
           tasks: isAgentLike(req.auth?.role) ? [] : tasks,
           audits: isAgentLike(req.auth?.role) ? [] : audits,
+          source: {
+            quotationId: booking.quotationId,
+            quoteNo: booking.quoteNo,
+            quotationVersionNumber: booking.quotationVersionNumber,
+            quotation: sourceQuotation
+              ? {
+                  quoteNo: sourceQuotation.quoteNo,
+                  status: sourceQuotation.status,
+                  currentVersion: sourceQuotation.currentVersion,
+                  acceptedVersionNumber: sourceQuotation.acceptedVersionNumber,
+                  validTill: sourceQuotation.validTill,
+                  destination: sourceQuotation.destination,
+                }
+              : null,
+          },
+          completeness: {
+            passengers: booking.passengers?.length || 0,
+            adults: booking.adults ?? 0,
+            children: booking.children ?? 0,
+            infants: booking.infants ?? 0,
+            servicesByType,
+            documents: booking.documents?.length || 0,
+            hasItinerary: Array.isArray(booking.itinerary) && (booking.itinerary as unknown[]).length > 0,
+            hasTerms: Boolean(booking.termsAndConditions || booking.paymentTerms || booking.cancellationPolicy),
+            pricingLocked: booking.pricingLocked,
+          },
         });
       } catch (e) {
         logger.error(e);
@@ -595,9 +304,7 @@ export function mountBmsRoutes(
     requirePermission("bookings"),
     async (req: AuthRequest, res: Response) => {
       try {
-        const existing = await db.booking.findFirst({
-          where: { id: paramId(req), ...agencyScope(req) },
-        });
+        const existing = await findBooking(req, agencyScope, branchScope);
         if (!existing) {
           res.status(404).json({ error: "Not found" });
           return;
@@ -615,7 +322,7 @@ export function mountBmsRoutes(
           previousValue: { policiesAcceptedAt: existing.policiesAcceptedAt },
           updatedValue: { policiesAcceptedAt: booking.policiesAcceptedAt },
         });
-        res.json({ booking });
+        res.json({ booking: sanitizeBookingForRole(booking, req.auth?.role) });
       } catch (e) {
         logger.error(e);
         res.status(500).json({ error: "Server error" });
@@ -631,10 +338,15 @@ export function mountBmsRoutes(
     async (req: AuthRequest, res: Response) => {
       try {
         const existing = await db.booking.findFirst({
-          where: { id: paramId(req), ...agencyScope(req) },
+          where: {
+            id: paramId(req),
+            ...agencyScope(req),
+            ...branchScope(req, "agentId"),
+            ...agentBookingScope(req.auth?.role, req.auth?.userId),
+          },
           include: { passengers: true },
         });
-        if (!existing) {
+        if (!existing || !agentCanAccessBooking(req.auth?.role, req.auth?.userId, existing)) {
           res.status(404).json({ error: "Not found" });
           return;
         }
@@ -763,60 +475,7 @@ export function mountBmsRoutes(
     },
   );
 
-  // ── Documents (metadata; file stored as URL / data URL ≤10MB) ────────────
-  app.post(
-    "/api/bookings/:id/documents",
-    requireAuth,
-    requirePermission("bookings"),
-    async (req: AuthRequest, res: Response) => {
-      try {
-        const booking = await db.booking.findFirst({
-          where: { id: paramId(req), ...agencyScope(req) },
-        });
-        if (!booking) {
-          res.status(404).json({ error: "Not found" });
-          return;
-        }
-        const { docType, fileName, fileUrl, mimeType, sizeBytes, passengerId } = req.body || {};
-        if (!docType || !fileName || !fileUrl) {
-          res.status(400).json({ error: "docType, fileName, fileUrl required" });
-          return;
-        }
-        const allowed = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
-        if (mimeType && !allowed.includes(String(mimeType).toLowerCase()) && !String(mimeType).includes("pdf") && !String(mimeType).includes("image")) {
-          res.status(400).json({ error: "Supported formats: PDF, JPG, PNG" });
-          return;
-        }
-        if (sizeBytes && Number(sizeBytes) > 10 * 1024 * 1024) {
-          res.status(400).json({ error: "Maximum file size is 10 MB" });
-          return;
-        }
-        const doc = await db.bookingDocument.create({
-          data: {
-            bookingId: booking.id,
-            passengerId: passengerId || null,
-            docType,
-            fileName,
-            fileUrl,
-            mimeType: mimeType || null,
-            sizeBytes: Number(sizeBytes) || 0,
-            uploadedBy: req.auth?.email,
-          },
-        });
-        await writeAudit({
-          req,
-          agencyId: booking.agencyId,
-          bookingId: booking.id,
-          action: "Document Uploaded",
-          details: `${docType}: ${fileName}`,
-        });
-        res.status(201).json({ document: doc });
-      } catch (e) {
-        logger.error(e);
-        res.status(500).json({ error: "Server error" });
-      }
-    },
-  );
+  // Booking documents are uploaded through routes/documents.ts (multipart, private storage).
 
   // ── Payment requests (Finance / Admin) ───────────────────────────────────
   app.post(
@@ -1727,10 +1386,19 @@ export function mountBmsRoutes(
     async (req: AuthRequest, res: Response) => {
       try {
         const existing = await db.booking.findFirst({
-          where: { id: paramId(req), ...agencyScope(req) },
+          where: {
+            id: paramId(req),
+            ...agencyScope(req),
+            ...branchScope(req, "agentId"),
+            ...agentBookingScope(req.auth?.role, req.auth?.userId),
+          },
         });
         if (!existing) {
           res.status(404).json({ error: "Not found" });
+          return;
+        }
+        if (!canTransitionBooking(existing.status, "Travel Documents Ready")) {
+          res.status(400).json({ error: `Invalid booking transition ${existing.status} → Travel Documents Ready` });
           return;
         }
         const booking = await db.booking.update({
@@ -1744,7 +1412,7 @@ export function mountBmsRoutes(
           message: `${booking.bookingRef} documents issued`,
           priority: "high",
         });
-        res.json({ booking });
+        res.json({ booking: sanitizeBookingForRole(booking, req.auth?.role) });
       } catch (e) {
         logger.error(e);
         res.status(500).json({ error: "Server error" });
@@ -1759,10 +1427,19 @@ export function mountBmsRoutes(
     async (req: AuthRequest, res: Response) => {
       try {
         const existing = await db.booking.findFirst({
-          where: { id: paramId(req), ...agencyScope(req) },
+          where: {
+            id: paramId(req),
+            ...agencyScope(req),
+            ...branchScope(req, "agentId"),
+            ...agentBookingScope(req.auth?.role, req.auth?.userId),
+          },
         });
         if (!existing) {
           res.status(404).json({ error: "Not found" });
+          return;
+        }
+        if (!canTransitionBooking(existing.status, "Completed")) {
+          res.status(400).json({ error: `Invalid booking transition ${existing.status} → Completed` });
           return;
         }
         const booking = await db.booking.update({
@@ -1778,7 +1455,7 @@ export function mountBmsRoutes(
           previousValue: { status: existing.status },
           updatedValue: { status: "Completed" },
         });
-        res.json({ booking });
+        res.json({ booking: sanitizeBookingForRole(booking, req.auth?.role) });
       } catch (e) {
         logger.error(e);
         res.status(500).json({ error: "Server error" });
@@ -1794,15 +1471,21 @@ export function mountBmsRoutes(
     async (req: AuthRequest, res: Response) => {
       try {
         const existing = await db.booking.findFirst({
-          where: { id: paramId(req), ...agencyScope(req) },
+          where: {
+            id: paramId(req),
+            ...agencyScope(req),
+            ...branchScope(req, "agentId"),
+            ...agentBookingScope(req.auth?.role, req.auth?.userId),
+          },
         });
         if (!existing) {
           res.status(404).json({ error: "Not found" });
           return;
         }
         const role = req.auth?.role || "";
+        // Real role slug is `operations` (not operations_executive).
         const canAssign =
-          ["super_admin", "agency_admin", "branch_manager", "operations_executive", "sales_executive"].includes(role) ||
+          ["super_admin", "agency_admin", "branch_manager", "operations", "sales_executive"].includes(role) ||
           role === "employee";
         if (!canAssign) {
           res.status(403).json({ error: "Not allowed to assign executives" });
@@ -1840,10 +1523,15 @@ export function mountBmsRoutes(
     requireAnyPermission("bookings", "tasks"),
     async (req: AuthRequest, res: Response) => {
       try {
+        if (isAgentLike(req.auth?.role)) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
         const mine = String(req.query.mine || "") === "1";
         const unassigned = String(req.query.unassigned || "") === "1";
         const where: Record<string, unknown> = {
           ...agencyScope(req),
+          ...branchScope(req, "agentId"),
           status: {
             notIn: ["Completed", "Cancelled", "Refunded", "Failed"],
           },
@@ -1880,6 +1568,10 @@ export function mountBmsRoutes(
     requireAnyPermission("reports", "finance", "bookings"),
     async (req: AuthRequest, res: Response) => {
       try {
+        if (isAgentLike(req.auth?.role)) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
         const where = agencyScope(req);
         const bookings = await db.booking.findMany({ where, take: 2000 });
         const quotations = await db.quotation.findMany({ where, take: 2000 });

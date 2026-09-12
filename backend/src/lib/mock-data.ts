@@ -57,11 +57,11 @@ export const ROLE_USERS: Record<string, User> = {
   },
 };
 
-/** Shared demo password for all ROLE_USERS accounts after seed. */
-export const DEMO_LOGIN_PASSWORD = "Passw0rd@123";
+/** Demo login emails only. Passwords are not stored in source. Set SEED_DEMO_PASSWORD when seeding. */
+export const DEMO_LOGIN_PASSWORD = process.env.SEED_DEMO_PASSWORD || "";
 
 export const DEMO_LOGIN_ROWS: Array<{ role: string; email: string; password: string; note?: string }> = [
-  { role: "Developer (full platform)", email: "dev@trevioglobal.com", password: "Dev@Trevio2026!", note: "Your developer Super Admin — agencies, analytics, monitoring UI, marketing/coupons shells" },
+  { role: "Developer (full platform)", email: "dev@trevioglobal.com", password: "", note: "Set SEED_DEV_PASSWORD when seeding. Do not commit the password." },
   { role: "Super Admin", email: "superadmin@travelpartner.pro", password: DEMO_LOGIN_PASSWORD },
   { role: "Agency Admin", email: "admin@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
   { role: "Branch Manager", email: "manager.mumbai@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
@@ -72,7 +72,7 @@ export const DEMO_LOGIN_ROWS: Array<{ role: string; email: string; password: str
   { role: "Operations", email: "ops@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
   { role: "Travel Agent", email: "agent@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
   { role: "Management", email: "management@wanderlusttravels.in", password: DEMO_LOGIN_PASSWORD },
-  { role: "Platform Super Admin (alt)", email: "admin@travelpartner.pro", password: "TravioAdmin@2024!", note: "Created separately by seed" },
+  { role: "Platform Super Admin (alt)", email: "admin@travelpartner.pro", password: "", note: "Set SEED_SUPER_ADMIN_PASSWORD when seeding." },
 ];
 
 export const AGENCIES: Agency[] = [
@@ -257,6 +257,7 @@ export function generateFlights(origin: string, destination: string, count = 8):
       seatsLeft: 4 + (i % 12),
       refundable: i % 3 !== 0,
       aircraft: al.aircraft,
+      baggage: i % 6 === 0 ? "2 × 32kg" : "1 × 23kg + 7kg cabin",
       rating: al.rating,
     });
   }

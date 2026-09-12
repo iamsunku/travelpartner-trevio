@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken, type JwtPayload } from "../lib/jwt.js";
 import { hasPermission, hasCrudPermission, type Module, type CrudAction } from "../lib/permissions.js";
+import { isAuthenticatableUserStatus } from "../lib/agent-registration.js";
 import { db } from "../lib/db.js";
 
 export interface AuthRequest extends Request {
@@ -43,7 +44,7 @@ export function requireRole(...roles: string[]) {
     }
     try {
       const user = await db.user.findUnique({ where: { id: req.auth.userId }, select: { role: true, status: true } });
-      if (!user || user.status !== "Active" || !roles.includes(user.role)) {
+      if (!user || !isAuthenticatableUserStatus(user.status) || !roles.includes(user.role)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -75,7 +76,7 @@ export function requirePermission(module: Module) {
     }
     try {
       const user = await currentPermissionSubject(req.auth.userId);
-      if (!user || user.status !== "Active") {
+      if (!user || !isAuthenticatableUserStatus(user.status)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -117,7 +118,7 @@ export function requireCrudPermission(module: Module, action: CrudAction) {
     }
     try {
       const user = await currentPermissionSubject(req.auth.userId);
-      if (!user || user.status !== "Active") {
+      if (!user || !isAuthenticatableUserStatus(user.status)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -160,7 +161,7 @@ export function requireAnyPermission(...modules: Module[]) {
     }
     try {
       const user = await currentPermissionSubject(req.auth.userId);
-      if (!user || user.status !== "Active" || !modules.some((m) => hasPermission(user, m))) {
+      if (!user || !isAuthenticatableUserStatus(user.status) || !modules.some((m) => hasPermission(user, m))) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }

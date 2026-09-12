@@ -12,6 +12,7 @@ import {
   destinationBulkStatusSchema,
   destinationImportSchema,
 } from "../lib/validation.js";
+import { buildVisaCatalogueRecommendation } from "../lib/visa-recommendation.js";
 
 type ScopeFn = (req: AuthRequest) => Record<string, unknown>;
 
@@ -129,6 +130,57 @@ export function mountDestinationRoutes(app: Express, agencyScope: ScopeFn) {
       const countries = [...new Set(rows.map((r: { country: string }) => r.country).filter(Boolean))].sort();
       const regions = [...new Set(rows.map((r: { region: string | null }) => r.region).filter(Boolean))].sort() as string[];
       res.json({ countries, regions });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  /** Catalogue visa recommendation — not immigration advice. */
+  app.get(`${base}/visa-recommendation`, requireAuth, requireCrudPermission("destinations", "view"), async (req: AuthRequest, res: Response) => {
+    try {
+      const q = String(req.query.q || req.query.destination || "").trim();
+      const country = String(req.query.country || "").trim();
+      if (!q && !country) {
+        res.status(400).json({ error: "destination or country required" });
+        return;
+      }
+      const where: Prisma.DestinationWhereInput = {
+        ...agencyScope(req),
+        deletedAt: null,
+        status: "Active",
+      };
+      if (q) {
+        where.OR = [
+          { name: { contains: q, mode: "insensitive" } },
+          { country: { contains: q, mode: "insensitive" } },
+          { city: { contains: q, mode: "insensitive" } },
+        ];
+      } else if (country) {
+        where.country = { contains: country, mode: "insensitive" };
+      }
+      const hit = await db.destination.findFirst({
+        where,
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, country: true, visaRequired: true, visaDetails: true },
+      });
+      if (!hit) {
+        res.json({
+          recommendation: buildVisaCatalogueRecommendation({
+            name: q || country || "Destination",
+            country: country || null,
+            visaRequired: false,
+            visaDetails: "No destination catalogue match. Confirm visa requirements independently.",
+          }),
+          matched: false,
+        });
+        return;
+      }
+      res.json({
+        recommendation: buildVisaCatalogueRecommendation(hit),
+        matched: true,
+        destinationId: hit.id,
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });

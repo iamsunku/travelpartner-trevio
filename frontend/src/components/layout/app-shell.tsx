@@ -53,6 +53,7 @@ const QuoteTemplatesView = lazy(() => import("@/components/views/quote-templates
 const TravelProposalsView = lazy(() => import("@/components/views/travel-proposals"), "TravelProposalsView");
 const DestinationsView = lazy(() => import("@/components/views/destinations"), "DestinationsView");
 const HotelProductsView = lazy(() => import("@/components/views/hotel-products"), "HotelProductsView");
+const ContractedRatesView = lazy(() => import("@/components/views/contracted-rates"), "ContractedRatesView");
 const ActivityPackagesView = lazy(() => import("@/components/views/activity-packages"), "ActivityPackagesView");
 const ProductApprovalsView = lazy(() => import("@/components/views/product-approvals"), "ProductApprovalsView");
 const AttendanceLeaveView = lazy(() => import("@/components/views/attendance-leave"), "AttendanceLeaveView");
@@ -63,6 +64,7 @@ const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   flights: FlightsView,
   hotels: HotelsView,
   "hotel-products": HotelProductsView,
+  "contracted-rates": ContractedRatesView,
   destinations: DestinationsView,
   packages: PackagesView,
   "activity-packages": ActivityPackagesView,

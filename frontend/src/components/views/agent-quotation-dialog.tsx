@@ -21,8 +21,8 @@ import { formatFullINR } from "@/components/shared/ui-helpers";
 import type { Quotation, TravelPackageRecord } from "@/types";
 import {
   downloadQuotationPdf,
-  shareQuotationViaEmail,
-  shareQuotationViaWhatsApp,
+  deliverQuotationEmail,
+  deliverQuotationWhatsApp,
 } from "@/lib/quotation-actions";
 import type { ClientBrochureOptions } from "@/lib/client-quotation-brochure";
 import { useDemoDataStore } from "@/store/demo-data-store";
@@ -187,9 +187,15 @@ export function AgentQuotationDialog({ open, onOpenChange, onCreated }: AgentQuo
         await api.shareQuotation(quote.id, { channel: "Link", message: optionalNote || undefined });
       }
       toast({
-        title: ok ? "PDF ready" : "Popup blocked",
-        description: ok ? "Save as PDF and share with your customer." : "Allow popups for this site.",
+        title: ok ? "PDF ready" : "PDF failed",
+        description: ok ? "Customer PDF downloaded. Share it with your customer." : "Could not generate the PDF.",
         variant: ok ? "default" : "destructive",
+      });
+    } catch (e) {
+      toast({
+        title: "PDF blocked",
+        description: e instanceof Error ? e.message : "Could not generate the PDF",
+        variant: "destructive",
       });
     } finally {
       setLoading(false);
@@ -198,14 +204,38 @@ export function AgentQuotationDialog({ open, onOpenChange, onCreated }: AgentQuo
 
   async function sendEmail() {
     if (!quote) return;
-    await sendPdf();
-    shareQuotationViaEmail({ ...quote, contactEmail, customerName });
+    setLoading(true);
+    try {
+      const res = await deliverQuotationEmail(
+        { ...quote, contactEmail, customerName },
+        { recipient: contactEmail, message: optionalNote || undefined },
+      );
+      toast({
+        title: res.ok ? "Email sent" : "Email failed",
+        description: res.ok ? "Customer PDF emailed by the server." : res.error,
+        variant: res.ok ? "default" : "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function sendWhatsApp() {
     if (!quote) return;
-    await sendPdf();
-    shareQuotationViaWhatsApp({ ...quote, contactPhone, customerName }, contactPhone);
+    setLoading(true);
+    try {
+      const res = await deliverQuotationWhatsApp(
+        { ...quote, contactPhone, customerName },
+        { recipient: contactPhone, message: optionalNote || undefined },
+      );
+      toast({
+        title: res.ok ? "WhatsApp sent" : "WhatsApp failed",
+        description: res.ok ? "Customer PDF delivered by WhatsApp." : res.error,
+        variant: res.ok ? "default" : "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

@@ -38,6 +38,27 @@ function getToken(): string | null {
   }
 }
 
+export async function apiUpload<T>(path: string, file: File, fields: Record<string, string> = {}): Promise<T> {
+  const body = new FormData();
+  body.append("file", file);
+  for (const [key, value] of Object.entries(fields)) body.append(key, value);
+  const token = getToken();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", body, headers, cache: "no-store" }).catch(() => {
+    throw new ApiError("Unable to reach the server. Check your connection and try again.", 0);
+  });
+  if (!res.ok) {
+    let message = "Upload failed";
+    try {
+      const parsed = await res.json();
+      message = (parsed.error || parsed.message || message) as string;
+    } catch { /* ignore */ }
+    throw new ApiError(message, res.status);
+  }
+  return res.json() as Promise<T>;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
@@ -72,8 +93,9 @@ export async function apiFetch<T>(
       /* ignore */
     }
     if (res.status === 401) message = "Your session has expired. Please sign in again.";
-    else if (res.status === 403) message = "You don't have permission to perform this action.";
-    else if (res.status >= 500 && message === (res.statusText || "Request failed")) {
+    else if (res.status === 403 && !(body?.error || body?.message)) {
+      message = "You don't have permission to perform this action.";
+    } else if (res.status >= 500 && !(body?.error || body?.message)) {
       message = "Something went wrong on our end. Please try again shortly.";
     }
     throw new ApiError(message, res.status, code, body);
@@ -137,10 +159,39 @@ export const api = {
     }),
 
   registerAgent: (body: AgentRegistrationBody) =>
-    apiFetch<{ user: ApiUser; token: string }>("/api/auth/register", {
+    apiFetch<{
+      ok: boolean;
+      status: string;
+      message: string;
+      registrationId?: string;
+      user?: { id: string; name: string; email: string; status: string; agencyId?: string | null };
+      token?: string;
+    }>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getAgentRegistrations: (params?: { status?: string }) => {
+    const q = params?.status ? `?status=${encodeURIComponent(params.status)}` : "";
+    return apiFetch<{ registrations: AgentRegistrationRow[]; total: number }>(`/api/agent-registrations${q}`);
+  },
+
+  getAgentRegistration: (id: string) =>
+    apiFetch<{ registration: AgentRegistrationRow }>(`/api/agent-registrations/${id}`),
+
+  approveAgentRegistration: (id: string, body?: { comment?: string }) =>
+    apiFetch<{ registration: AgentRegistrationRow; alreadyApproved?: boolean }>(
+      `/api/agent-registrations/${id}/approve`,
+      { method: "POST", body: JSON.stringify(body || {}) },
+    ),
+
+  rejectAgentRegistration: (id: string, body: { reason: string; comment?: string }) =>
+    apiFetch<{ registration: AgentRegistrationRow }>(`/api/agent-registrations/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  downloadAgencyGstProof: (agencyId: string) => apiFetchBlob(`/api/agencies/${agencyId}/gst-proof`),
 
   getBookings: (params?: Record<string, string>) => {
     const q = params ? `?${new URLSearchParams(params)}` : "";
@@ -160,13 +211,41 @@ export const api = {
     }),
 
   proceedToBooking: (quotationId: string, body?: Record<string, unknown>) =>
-    apiFetch<{ booking: ApiBooking }>(`/api/quotations/${quotationId}/proceed-to-booking`, {
+    apiFetch<{ booking: ApiBooking; idempotent?: boolean }>(`/api/quotations/${quotationId}/proceed-to-booking`, {
       method: "POST",
       body: JSON.stringify(body || {}),
     }),
 
   getBookingFull: (id: string) =>
-    apiFetch<{ booking: ApiBooking; tasks: unknown[]; audits: unknown[] }>(`/api/bookings/${id}/full`),
+    apiFetch<{
+      booking: ApiBooking;
+      tasks: unknown[];
+      audits: unknown[];
+      source?: {
+        quotationId?: string | null;
+        quoteNo?: string | null;
+        quotationVersionNumber?: number | null;
+        quotation?: {
+          quoteNo?: string;
+          status?: string;
+          currentVersion?: number;
+          acceptedVersionNumber?: number | null;
+          validTill?: string | null;
+          destination?: string | null;
+        } | null;
+      };
+      completeness?: {
+        passengers: number;
+        adults: number;
+        children: number;
+        infants: number;
+        servicesByType: Record<string, number>;
+        documents: number;
+        hasItinerary: boolean;
+        hasTerms: boolean;
+        pricingLocked: boolean;
+      };
+    }>(`/api/bookings/${id}/full`),
 
   acceptBookingPolicies: (id: string) =>
     apiFetch<{ booking: ApiBooking }>(`/api/bookings/${id}/accept-policies`, { method: "POST", body: "{}" }),
@@ -183,11 +262,16 @@ export const api = {
       { method: "POST", body: JSON.stringify(body) },
     ),
 
-  uploadBookingDocument: (id: string, body: Record<string, unknown>) =>
-    apiFetch<{ document: unknown }>(`/api/bookings/${id}/documents`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+  uploadBookingDocument: (id: string, file: File, fields: Record<string, string>) =>
+    apiUpload<{ document: { id: string; fileName: string; docType: string; downloadPath: string } }>(`/api/bookings/${id}/documents`, file, fields),
+  uploadQuotationDocument: (id: string, file: File, fields: Record<string, string>) =>
+    apiUpload<{ document: { id: string; fileName: string; docType: string; downloadPath: string } }>(
+      `/api/quotations/${id}/documents`,
+      file,
+      fields,
+    ),
+  uploadGstProof: (file: File) =>
+    apiUpload<{ gstProofId: string }>("/api/auth/register/gst-proof", file),
 
   createPaymentRequest: (bookingId: string, body: Record<string, unknown>) =>
     apiFetch<{ paymentRequest: unknown }>(`/api/bookings/${bookingId}/payment-requests`, {
@@ -489,10 +573,26 @@ export const api = {
 
   getQuotationAnalytics: () => apiFetch<Record<string, number | Record<string, number> | undefined>>("/api/quotations/analytics"),
 
+  generateQuotationPdf: (id: string, mode: "customer" | "preview" = "customer") =>
+    apiFetch<{
+      document: { id: string; fileName: string; downloadPath: string; sizeBytes: number; visibility: string };
+      pageCount: number;
+      packageCount: number;
+      mode: string;
+      quoteId: string;
+      quoteNo: string;
+    }>(`/api/quotations/${id}/pdf`, { method: "POST", body: JSON.stringify({ mode }) }),
+
   getQuotationFull: (id: string) => apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/full`),
 
   createQuotationWizard: (body: Record<string, unknown>) =>
     apiFetch<{ quotation: ApiQuotation }>("/api/quotations/wizard", { method: "POST", body: JSON.stringify(body) }),
+
+  applyQuotationTemplate: (id: string, body: { templateId: string; mode?: "fill-empty" | "merge-append"; packageIndex?: number }) =>
+    apiFetch<{ quotation: ApiQuotation; appliedFields: string[]; message?: string }>(`/api/quotations/${id}/apply-template`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   createAgentQuotationFromPackage: (body: Record<string, unknown>) =>
     apiFetch<{ quotation: ApiQuotation }>("/api/quotations/agent/from-package", {
@@ -599,9 +699,109 @@ export const api = {
     }),
 
   shareQuotation: (id: string, body: Record<string, unknown>) =>
-    apiFetch<{ share: unknown; mailto?: string; whatsappUrl?: string; link: string; note: string }>(
+    apiFetch<{ share: unknown; link: string; note: string }>(
       `/api/quotations/${id}/share`,
       { method: "POST", body: JSON.stringify(body) },
+    ),
+
+  emailQuotation: (id: string, body?: { recipient?: string; message?: string; appOrigin?: string }) =>
+    apiFetch<{
+      ok: boolean;
+      configured?: boolean;
+      error?: string;
+      delivery: {
+        id: string;
+        channel: string;
+        status: string;
+        recipient?: string | null;
+        provider?: string | null;
+        documentId?: string | null;
+        attachmentName?: string | null;
+        packageCount?: number | null;
+        deliveredAt?: string | null;
+        failureReason?: string | null;
+      };
+      document: { id: string; fileName: string; mimeType: string; sizeBytes: number; visibility: string };
+      quoteId: string;
+      quoteNo: string;
+    }>(`/api/quotations/${id}/email`, { method: "POST", body: JSON.stringify(body || {}) }),
+
+  whatsappQuotation: (id: string, body?: { recipient?: string; message?: string; appOrigin?: string }) =>
+    apiFetch<{
+      ok: boolean;
+      configured?: boolean;
+      error?: string;
+      delivery: {
+        id: string;
+        channel: string;
+        status: string;
+        recipient?: string | null;
+        provider?: string | null;
+        documentId?: string | null;
+        attachmentName?: string | null;
+        packageCount?: number | null;
+        deliveredAt?: string | null;
+        failureReason?: string | null;
+      };
+      document: { id: string; fileName: string; mimeType: string; sizeBytes: number; visibility: string };
+      quoteId: string;
+      quoteNo: string;
+    }>(`/api/quotations/${id}/whatsapp`, { method: "POST", body: JSON.stringify(body || {}) }),
+
+  createQuotationCustomerLink: (id: string, body?: { appOrigin?: string }) =>
+    apiFetch<{
+      accessId: string;
+      versionNumber: number;
+      expiresAt: string | null;
+      url: string | null;
+      token: string;
+    }>(`/api/quotations/${id}/customer-link`, {
+      method: "POST",
+      body: JSON.stringify({ appOrigin: typeof window !== "undefined" ? window.location.origin : body?.appOrigin, ...body }),
+    }),
+
+  revokeQuotationCustomerLinks: (id: string) =>
+    apiFetch<{ revoked: number }>(`/api/quotations/${id}/customer-link/revoke`, { method: "POST", body: "{}" }),
+
+  getQuotationCustomerResponses: (id: string) =>
+    apiFetch<{
+      responses: Array<{
+        id: string;
+        versionNumber: number;
+        responseType: string;
+        comment?: string | null;
+        customerName?: string | null;
+        customerEmail?: string | null;
+        selectedPackageId?: string | null;
+        createdAt: string;
+      }>;
+      acceptedVersionNumber?: number | null;
+      currentVersion: number;
+    }>(`/api/quotations/${id}/customer-responses`),
+
+  /** Public customer response API — no auth header required. */
+  getCustomerQuotationByToken: (token: string) =>
+    apiFetch<{
+      quotation: Record<string, unknown>;
+      access: { versionNumber: number; expiresAt?: string | null };
+    }>(`/api/customer/quotations/${encodeURIComponent(token)}`),
+
+  acceptCustomerQuotation: (token: string, body?: Record<string, unknown>) =>
+    apiFetch<{ ok: boolean; idempotent?: boolean; quotation: Record<string, unknown>; response?: Record<string, unknown> }>(
+      `/api/customer/quotations/${encodeURIComponent(token)}/accept`,
+      { method: "POST", body: JSON.stringify(body || {}) },
+    ),
+
+  rejectCustomerQuotation: (token: string, body?: Record<string, unknown>) =>
+    apiFetch<{ ok: boolean; idempotent?: boolean; quotation: Record<string, unknown>; response?: Record<string, unknown> }>(
+      `/api/customer/quotations/${encodeURIComponent(token)}/reject`,
+      { method: "POST", body: JSON.stringify(body || {}) },
+    ),
+
+  requestCustomerQuotationRevision: (token: string, body?: Record<string, unknown>) =>
+    apiFetch<{ ok: boolean; idempotent?: boolean; quotation: Record<string, unknown>; response?: Record<string, unknown> }>(
+      `/api/customer/quotations/${encodeURIComponent(token)}/revision-request`,
+      { method: "POST", body: JSON.stringify(body || {}) },
     ),
 
   createQuotationVersion: (id: string, body?: Record<string, unknown>) =>
@@ -619,9 +819,28 @@ export const api = {
         reason?: string | null;
         createdAt: string;
         createdByName?: string | null;
+        status?: string | null;
+        destination?: string | null;
+        total?: number | null;
+        packageCount?: number;
       }>;
       currentVersion: number;
     }>(`/api/quotations/${id}/versions`),
+
+  getQuotationVersion: (id: string, versionNumber: number) =>
+    apiFetch<{
+      version: {
+        id: string;
+        versionNumber: number;
+        changeSummary?: string | null;
+        reason?: string | null;
+        createdByName?: string | null;
+        createdAt: string;
+        readOnly: boolean;
+        snapshot: Record<string, unknown>;
+      };
+      currentVersion: number;
+    }>(`/api/quotations/${id}/versions/${versionNumber}`),
 
   restoreQuotationVersion: (id: string, versionId: string) =>
     apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/versions/${versionId}/restore`, {
@@ -767,6 +986,19 @@ export const api = {
       { method: "POST", body: JSON.stringify(body) }
     ),
 
+  getTaxRules: () =>
+    apiFetch<{
+      rules: Array<{
+        id: string;
+        name: string;
+        rate: number;
+        method: string;
+        active: boolean;
+        effectiveFrom?: string | null;
+        effectiveTo?: string | null;
+      }>;
+    }>("/api/tax-rules"),
+
   getCmsPages: () => apiFetch<{ pages: any[] }>("/api/cms/pages"),
   createCmsPage: (body: any) => apiFetch<any>("/api/cms/pages", { method: "POST", body: JSON.stringify(body) }),
 
@@ -822,7 +1054,7 @@ export interface AgentRegistrationBody {
   password: string;
   confirmPassword: string;
   gstNumber?: string;
-  gstProofUrl?: string;
+  gstProofId?: string;
   termsAccepted: true;
   termsVersion?: string;
 }
@@ -862,6 +1094,7 @@ export interface ApiBooking {
   createdAt: string;
   quotationId?: string | null;
   quoteNo?: string | null;
+  quotationVersionNumber?: number | null;
   destination?: string | null;
   nights?: number | null;
   totalRooms?: number | null;
@@ -999,6 +1232,7 @@ export interface ApiAgency {
   phone: string;
   plan: string;
   status: string;
+  registrationStatus?: string;
   walletBalance: number;
   commissionEarned?: number;
   totalBookings?: number;
@@ -1007,6 +1241,32 @@ export interface ApiAgency {
   branches?: number;
   employees?: number;
   createdAt?: string;
+}
+
+export interface AgentRegistrationRow {
+  id: string;
+  companyName: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  address?: string | null;
+  country?: string | null;
+  state?: string | null;
+  city?: string | null;
+  panNumber?: string | null;
+  gstNumber?: string | null;
+  vatNumber?: string | null;
+  hasGstProof: boolean;
+  gstProofDocumentId?: string | null;
+  registrationStatus: string;
+  registrationReviewComment?: string | null;
+  registrationRejectionReason?: string | null;
+  registrationReviewedAt?: string | null;
+  registrationReviewedByName?: string | null;
+  termsAcceptedAt?: string | null;
+  agencyStatus: string;
+  createdAt: string;
+  applicants?: Array<{ id: string; name: string; email: string; role: string; status: string }>;
 }
 
 export interface ApiBranch {

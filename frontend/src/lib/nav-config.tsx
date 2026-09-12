@@ -23,6 +23,8 @@ export interface NavItem {
   mockInventoryOnly?: boolean;
   /** When true, item is only shown when stub/demo modules are enabled. */
   stubOnly?: boolean;
+  /** Internal catalogue/rate management. Hidden from agents and customers. */
+  internalOnly?: boolean;
 }
 
 export interface NavSection {
@@ -50,8 +52,9 @@ export const NAV_SECTIONS: NavSection[] = [
     title: "Products",
     items: [
       { key: "destinations", label: "Destinations", icon: Globe, module: "destinations" },
-      { key: "hotel-products", label: "Hotels", icon: Hotel, module: "hotels" },
-      { key: "activity-packages", label: "Activities", icon: MapPin, module: "activities" },
+      { key: "hotel-products", label: "Hotels", icon: Hotel, module: "hotels", internalOnly: true },
+      { key: "activity-packages", label: "Activities", icon: MapPin, module: "activities", internalOnly: true },
+      { key: "contracted-rates", label: "Contracted Rates", icon: Receipt, module: "hotels", internalOnly: true },
       { key: "packages", label: "Packages", icon: Layers, module: "packages" },
       { key: "product-approvals", label: "Rate Approvals", icon: CheckCircle, module: "activities", roles: ["super_admin", "agency_admin"] },
     ],
@@ -124,6 +127,7 @@ export function getNavForUser(user: Pick<User, "role" | "permissions" | "product
     items: section.items.filter((item) => {
       if (item.mockInventoryOnly && !mockOk) return false;
       if (item.stubOnly && !stubsOk) return false;
+      if (item.internalOnly && (user.role === "travel_agent")) return false;
       if (item.roles && !item.roles.includes(user.role)) return false;
       if (user.role === "travel_agent") {
         if (item.key === "flights" && !canBookProduct(user, "flights")) return false;
@@ -143,6 +147,7 @@ export function canAccessView(user: Pick<User, "role" | "permissions" | "product
       if (item.key !== view) return false;
       if (item.mockInventoryOnly && !mockOk) return false;
       if (item.stubOnly && !stubsOk) return false;
+      if (item.internalOnly && (user.role === "travel_agent")) return false;
       if (item.roles && !item.roles.includes(user.role)) return false;
       if (user.role === "travel_agent") {
         if (item.key === "flights" && !canBookProduct(user, "flights")) return false;
@@ -164,6 +169,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   product_executive: "Product Executive",
   operations: "Operations",
   travel_agent: "Travel Agent",
+  team_lead: "Team Lead",
   management: "Management",
 };
 
@@ -177,5 +183,6 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   product_executive: "Product team — manage hotels, activities & transfers",
   operations: "Operations team — confirm services, vouchers & suppliers",
   travel_agent: "B2B agency partner — book flights/hotels/packages for clients, or send quotes for Trevio ops to fulfill",
+  team_lead: "Approves quotations before they can be sent. Cannot send a quote that is still pending.",
   management: "Leadership — dashboards, reports & approvals",
 };

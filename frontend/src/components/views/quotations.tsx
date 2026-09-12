@@ -11,6 +11,7 @@ import { useAuthStore, useAppStore } from "@/store/app-store";
 import { api, ApiError } from "@/lib/api";
 import type { Quotation } from "@/types";
 import { mapApiQuotation } from "@/lib/api-mappers";
+import { pickActiveTaxRule, taxFromConfiguredRule, type ClientTaxRule } from "@/lib/tax-config";
 import {
   formatINR, formatFullINR, StatusBadge, PageHeader, PageShell, MetricCard,
 } from "@/components/shared/ui-helpers";
@@ -46,8 +47,8 @@ import { AgentTripComposerDialog } from "@/components/views/agent-trip-composer"
 import {
   downloadQuotationPdf,
   getQuotationLineItems,
-  shareQuotationViaEmail,
-  shareQuotationViaWhatsApp,
+  deliverQuotationEmail,
+  deliverQuotationWhatsApp,
 } from "@/lib/quotation-actions";
 import { resolveQuotationCosting } from "@/lib/quote-costing";
 import { QuotePriceBreakdown } from "@/components/shared/quote-price-breakdown";
@@ -100,10 +101,20 @@ function useProceedToBooking() {
       upsertQuotation({ ...quote, status: "Converted to Booking", convertedBookingId: booking.id });
       await hydrateFromApi().catch(() => undefined);
       toast({
-        title: "Booking created",
+        title: res.idempotent ? "Booking already exists" : "Booking created",
         description: `${booking.bookingRef} — open Bookings to continue passenger details`,
       });
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.body?.booking) {
+        const booking = (await import("@/lib/api-mappers")).mapApiBooking(e.body.booking as never);
+        upsertBooking(booking);
+        upsertQuotation({ ...quote, status: "Converted to Booking", convertedBookingId: booking.id });
+        toast({
+          title: "Booking already exists",
+          description: `${booking.bookingRef} — open Bookings to continue`,
+        });
+        return;
+      }
       toast({
         title: "Proceed to Booking failed",
         description: e instanceof ApiError ? e.message : "Could not create booking",
@@ -135,35 +146,62 @@ function useQuoteActions() {
 
   async function pdf(quote: Quotation) {
     const full = await loadFull(quote);
-    const ok = await downloadQuotationPdf(full);
-    toast({
-      title: ok ? "Client PDF ready" : "Popup blocked",
-      description: ok
-        ? "Print dialog → Save as PDF. This is the customer brochure (no cost/profit). Attach it in email/WhatsApp."
-        : "Allow popups to open the quotation PDF.",
-      variant: ok ? "default" : "destructive",
-    });
-    return ok;
+    try {
+      const ok = await downloadQuotationPdf(full);
+      toast({
+        title: ok ? "Client PDF ready" : "PDF failed",
+        description: ok
+          ? "A real PDF was generated and downloaded. It uses customer-facing pricing only."
+          : "Could not generate the quotation PDF.",
+        variant: ok ? "default" : "destructive",
+      });
+      return ok;
+    } catch (e) {
+      toast({
+        title: "PDF blocked",
+        description: e instanceof ApiError ? e.message : "Could not generate the quotation PDF",
+        variant: "destructive",
+      });
+      return false;
+    }
   }
 
-  function email(quote: Quotation) {
-    pdf(quote);
-    shareQuotationViaEmail(quote);
-    if (quote.status === "Draft") updateQuotationStatus(quote.id, "Sent");
-    toast({
-      title: "Email draft opened",
-      description: "Attach the PDF from the print dialog, then send to the client.",
-    });
+  async function email(quote: Quotation) {
+    try {
+      const res = await deliverQuotationEmail(quote);
+      toast({
+        title: res.ok ? "Email sent" : "Email failed",
+        description: res.ok
+          ? "Customer quotation PDF was emailed by the server."
+          : res.error || "Could not send email",
+        variant: res.ok ? "default" : "destructive",
+      });
+    } catch (e) {
+      toast({
+        title: "Email failed",
+        description: e instanceof ApiError ? e.message : "Could not send email",
+        variant: "destructive",
+      });
+    }
   }
 
-  function whatsapp(quote: Quotation) {
-    pdf(quote);
-    shareQuotationViaWhatsApp(quote);
-    if (quote.status === "Draft") updateQuotationStatus(quote.id, "Sent");
-    toast({
-      title: "WhatsApp opened",
-      description: "Message pre-filled. Attach the PDF quotation if the client needs the full document.",
-    });
+  async function whatsapp(quote: Quotation) {
+    try {
+      const res = await deliverQuotationWhatsApp(quote);
+      toast({
+        title: res.ok ? "WhatsApp sent" : "WhatsApp failed",
+        description: res.ok
+          ? "Customer quotation PDF was delivered by WhatsApp."
+          : res.error || "Could not send WhatsApp",
+        variant: res.ok ? "default" : "destructive",
+      });
+    } catch (e) {
+      toast({
+        title: "WhatsApp failed",
+        description: e instanceof ApiError ? e.message : "Could not send WhatsApp",
+        variant: "destructive",
+      });
+    }
   }
 
   function markSent(quote: Quotation) {
@@ -198,8 +236,26 @@ function CreateQuotationDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const afterCoupon = Math.max(0, subtotal - couponDiscountAmount);
   const manualDiscountAmount = Math.round((afterCoupon * discount) / 100);
   const taxableAmount = Math.max(0, afterCoupon - manualDiscountAmount);
-  const gst = Math.round(taxableAmount * 0.18);
-  const total = taxableAmount + gst;
+  const [taxRule, setTaxRule] = useState<ClientTaxRule | null>(null);
+  useEffect(() => {
+    api.getTaxRules()
+      .then((res) => {
+        const mapped = (res.rules || []).map((r) => ({
+          id: r.id,
+          name: r.name,
+          rate: r.rate,
+          method: (r.method === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE") as "EXCLUSIVE" | "INCLUSIVE",
+          active: r.active,
+          effectiveFrom: r.effectiveFrom,
+          effectiveTo: r.effectiveTo,
+        }));
+        setTaxRule(pickActiveTaxRule(mapped));
+      })
+      .catch(() => setTaxRule(null));
+  }, []);
+  const tax = taxFromConfiguredRule(taxableAmount, taxRule);
+  const gst = tax.amount ?? 0;
+  const total = tax.configured ? (tax.total ?? taxableAmount) : taxableAmount;
 
   async function applyCoupon() {
     const code = couponCode.trim().toUpperCase();
@@ -411,7 +467,10 @@ function CreateQuotationDialog({ open, onOpenChange }: { open: boolean; onOpenCh
                   <span>-{formatFullINR(manualDiscountAmount)}</span>
                 </div>
               )}
-              <div className="flex justify-between"><span className="text-muted-foreground">GST @ 18%</span><span>{formatFullINR(gst)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">{tax.label}</span><span>{tax.configured ? formatFullINR(gst) : "—"}</span></div>
+              {!tax.configured && (
+                <p className="text-[10px] text-amber-700">Configure an active TaxRule before finalizing. No default rate is applied.</p>
+              )}
               <Separator className="my-1" />
               <div className="flex justify-between font-semibold text-sm"><span>Total</span><span className="text-teal-600">{formatFullINR(total)}</span></div>
             </div>
@@ -443,15 +502,17 @@ function CreateQuotationDialog({ open, onOpenChange }: { open: boolean; onOpenCh
             </Button>
             <Button
               variant="outline"
+              disabled={shareQuote?.status === "Expired"}
               onClick={() => shareQuote && email(shareQuote)}
             >
-              <Mail className="w-4 h-4 mr-2" /> Email client
+              <Mail className="w-4 h-4 mr-2" /> Email PDF
             </Button>
             <Button
               variant="outline"
+              disabled={shareQuote?.status === "Expired"}
               onClick={() => shareQuote && whatsapp(shareQuote)}
             >
-              <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp client
+              <MessageCircle className="w-4 h-4 mr-2" /> WhatsApp PDF
             </Button>
           </div>
           <DialogFooter>
@@ -489,7 +550,29 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
   const [extendDate, setExtendDate] = useState("");
   const [convertStart, setConvertStart] = useState("");
   const [convertEnd, setConvertEnd] = useState("");
-  const [versions, setVersions] = useState<NonNullable<Quotation["versions"]>>([]);
+  const [versions, setVersions] = useState<Array<{
+    id: string;
+    versionNumber: number;
+    changeSummary?: string | null;
+    createdByName?: string | null;
+    createdAt: string;
+    status?: string | null;
+  }>>([]);
+  const [customerResponses, setCustomerResponses] = useState<Array<{
+    id: string;
+    versionNumber: number;
+    responseType: string;
+    comment?: string | null;
+    customerName?: string | null;
+    createdAt: string;
+  }>>([]);
+  const [historyView, setHistoryView] = useState<{
+    versionNumber: number;
+    createdAt: string;
+    createdByName?: string | null;
+    changeSummary?: string | null;
+    snapshot: Record<string, unknown>;
+  } | null>(null);
 
   useEffect(() => {
     if (!open || !quote) return;
@@ -508,11 +591,12 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
         setConvertEnd((mapped.travelEndDate || "").slice(0, 10));
       })
       .catch(() => undefined);
-    if (!isAgent) {
-      api.getQuotationVersions(quote.id)
-        .then((res) => setVersions(res.versions || []))
-        .catch(() => undefined);
-    }
+    api.getQuotationVersions(quote.id)
+      .then((res) => setVersions(res.versions || []))
+      .catch(() => undefined);
+    api.getQuotationCustomerResponses(quote.id)
+      .then((res) => setCustomerResponses(res.responses || []))
+      .catch(() => setCustomerResponses([]));
   }, [open, quote, isAgent, upsertQuotation]);
 
   if (!quote) return null;
@@ -605,7 +689,13 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-1 text-xs">
-              <div className="flex justify-between"><span className="text-muted-foreground">Valid Till</span><span>{new Date(display.validTill).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span></div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Valid Till</span>
+                <span className={display.status === "Expired" ? "text-destructive font-medium" : ""}>
+                  {new Date(display.validTill).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                  {display.status === "Expired" ? " · Expired" : ""}
+                </span>
+              </div>
               <div className="flex justify-between"><span className="text-muted-foreground">Created By</span><span>{display.createdBy}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Items</span><span>{display.items}</span></div>
               {display.contactEmail && <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span>{display.contactEmail}</span></div>}
@@ -623,7 +713,8 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 checkIn: convertStart || costing.checkIn,
                 checkOut: convertEnd || costing.checkOut,
               }}
-              showInternal={!isAgent}
+              audience={String(user?.role) === "customer" ? "customer" : isAgent ? "agent" : "internal"}
+              showInternal={!isAgent && String(user?.role) !== "customer"}
               editable={!isAgent && display.status === "Accepted"}
               onChangeDates={(start, end) => {
                 setConvertStart(start);
@@ -654,6 +745,16 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 }}>Extend / renew</Button>
                 <Button size="sm" variant="outline" onClick={async () => {
                   try {
+                    const res = await api.createQuotationCustomerLink(display.id);
+                    const url = res.url || `${window.location.origin}/q/${res.token}`;
+                    await navigator.clipboard.writeText(url);
+                    toast({ title: "Customer link copied", description: `Bound to version ${res.versionNumber}` });
+                  } catch (e) {
+                    toast({ title: "Link failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                  }
+                }}>Copy customer link</Button>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  try {
                     await api.createQuotationVersion(display.id, { changeSummary: "Manual snapshot" });
                     const res = await api.getQuotationVersions(display.id);
                     setVersions(res.versions || []);
@@ -664,21 +765,50 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 }}>Save version</Button>
               </div>
               {versions.length > 0 && (
-                <div className="max-h-28 overflow-y-auto text-xs space-y-1">
+                <div className="max-h-36 overflow-y-auto text-xs space-y-1">
                   {versions.map((v) => (
-                    <div key={v.id} className="flex justify-between items-center gap-2">
-                      <span>v{v.versionNumber} · {v.changeSummary || "Snapshot"} · {new Date(v.createdAt).toLocaleString("en-IN")}</span>
-                      <Button size="sm" variant="ghost" className="h-7" onClick={async () => {
-                        try {
-                          const res = await api.restoreQuotationVersion(display.id, v.id);
-                          const mapped = mapApiQuotation(res.quotation);
-                          setFull(mapped);
-                          upsertQuotation(mapped);
-                          toast({ title: `Restored v${v.versionNumber}` });
-                        } catch (e) {
-                          toast({ title: "Restore failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
-                        }
-                      }}>Restore</Button>
+                    <div key={v.id} className="flex justify-between items-center gap-2 rounded border px-2 py-1">
+                      <span className="min-w-0 truncate">
+                        v{v.versionNumber}
+                        {v.status ? ` · ${v.status}` : ""}
+                        {" · "}
+                        {v.changeSummary || "Revision"}
+                        {" · "}
+                        {v.createdByName || "System"}
+                        {" · "}
+                        {new Date(v.createdAt).toLocaleString("en-IN")}
+                      </span>
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="sm" variant="ghost" className="h-7" onClick={async () => {
+                          try {
+                            const res = await api.getQuotationVersion(display.id, v.versionNumber);
+                            setHistoryView({
+                              versionNumber: res.version.versionNumber,
+                              createdAt: res.version.createdAt,
+                              createdByName: res.version.createdByName,
+                              changeSummary: res.version.changeSummary,
+                              snapshot: res.version.snapshot,
+                            });
+                          } catch (e) {
+                            toast({ title: "View failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                          }
+                        }}>View</Button>
+                        {!isAgent && (
+                          <Button size="sm" variant="ghost" className="h-7" onClick={async () => {
+                            try {
+                              const res = await api.restoreQuotationVersion(display.id, v.id);
+                              const mapped = mapApiQuotation(res.quotation);
+                              setFull(mapped);
+                              upsertQuotation(mapped);
+                              const vers = await api.getQuotationVersions(display.id);
+                              setVersions(vers.versions || []);
+                              toast({ title: `Restored as new revision from v${v.versionNumber}` });
+                            } catch (e) {
+                              toast({ title: "Restore failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                            }
+                          }}>Restore</Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -686,11 +816,51 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             </div>
           )}
 
+          {customerResponses.length > 0 && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase">Customer responses</p>
+              <div className="max-h-28 overflow-y-auto text-xs space-y-1">
+                {customerResponses.map((r) => (
+                  <div key={r.id} className="rounded border px-2 py-1">
+                    <span className="font-medium">{r.responseType}</span>
+                    {" · v"}{r.versionNumber}
+                    {" · "}{r.customerName || "Customer"}
+                    {" · "}{new Date(r.createdAt).toLocaleString("en-IN")}
+                    {r.comment ? ` — ${r.comment}` : ""}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {historyView && (
+            <div className="rounded-lg border p-3 bg-amber-50/40 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-semibold uppercase text-amber-900">
+                  Historical v{historyView.versionNumber} (read-only)
+                </p>
+                <Button size="sm" variant="ghost" className="h-7" onClick={() => setHistoryView(null)}>Close</Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {historyView.changeSummary || "Revision"} · {historyView.createdByName || "System"} · {new Date(historyView.createdAt).toLocaleString("en-IN")}
+              </p>
+              <div className="grid sm:grid-cols-2 gap-2 text-xs">
+                <div>Customer: <span className="font-medium">{String(historyView.snapshot.customerName || "—")}</span></div>
+                <div>Destination: <span className="font-medium">{String(historyView.snapshot.destination || "—")}</span></div>
+                <div>Dates: <span className="font-medium">{String(historyView.snapshot.travelStartDate || historyView.snapshot.travelDates || "—")}</span></div>
+                <div>Total: <span className="font-medium">{formatFullINR(Number(historyView.snapshot.total || 0))}</span></div>
+                <div>Packages: <span className="font-medium">{Array.isArray(historyView.snapshot.packages) ? historyView.snapshot.packages.length : 0}</span></div>
+                <div>Status then: <span className="font-medium">{String(historyView.snapshot.status || "—")}</span></div>
+              </div>
+              <p className="text-[10px] text-muted-foreground">This snapshot is immutable. Restore creates a new current revision and requires re-approval before send.</p>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => pdf(display)}><FileDown className="w-3.5 h-3.5 mr-1" /> Download PDF</Button>
-            <Button variant="outline" size="sm" onClick={() => email(display)}><Mail className="w-3.5 h-3.5 mr-1" /> Email</Button>
-            <Button variant="outline" size="sm" onClick={() => whatsapp(display)}><MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp</Button>
-            {["Sent", "Sent to Agent", "Customer Reviewing", "Draft", "In Progress"].includes(display.status) && (
+            <Button variant="outline" size="sm" disabled={display.status === "Expired"} onClick={() => email(display)}><Mail className="w-3.5 h-3.5 mr-1" /> Email</Button>
+            <Button variant="outline" size="sm" disabled={display.status === "Expired"} onClick={() => whatsapp(display)}><MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp</Button>
+            {["Sent", "Sent to Agent", "Customer Reviewing", "Draft", "In Progress"].includes(display.status) && display.status !== "Expired" && (
               <Button variant="outline" size="sm" onClick={async () => {
                 try {
                   await api.acceptQuotation(display.id, { personName: display.customerName });
@@ -726,6 +896,9 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 {busyId === display.id ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Ticket className="w-3.5 h-3.5 mr-1" />}
                 {display.status === "Converted to Booking" ? "Booking Created" : "Convert to Booking"}
               </Button>
+            )}
+            {display.status === "Expired" && (
+              <p className="text-xs text-destructive w-full">This quotation has expired. Extend validity and re-approve before sending or converting.</p>
             )}
             {!isAgent && ["Draft", "In Progress"].includes(display.status) && (
               <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={async () => {
@@ -1034,14 +1207,24 @@ export function QuotationsView() {
                             <Copy className="w-3.5 h-3.5" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-cyan-600" title="Share / send" onClick={() => runAction("Shared", async () => {
-                          const res = await api.shareQuotation(q.id, {
-                            channel: "Email",
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-cyan-600" title="Email quotation PDF" onClick={() => runAction("Emailed", async () => {
+                          const res = await deliverQuotationEmail(q);
+                          if (!res.ok) throw new Error(res.error || "Email failed");
+                        })}>
+                          <Mail className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-emerald-600" title="WhatsApp quotation PDF" onClick={() => runAction("WhatsApp sent", async () => {
+                          const res = await deliverQuotationWhatsApp(q);
+                          if (!res.ok) throw new Error(res.error || "WhatsApp failed");
+                        })}>
+                          <MessageCircle className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-sky-600" title="Record link share" onClick={() => runAction("Shared", async () => {
+                          await api.shareQuotation(q.id, {
+                            channel: "Link",
                             recipient: q.contactEmail,
                             appOrigin: window.location.origin,
                           });
-                          if (res.mailto) window.location.href = res.mailto;
-                          else markSent(q);
                         })}>
                           <Send className="w-3.5 h-3.5" />
                         </Button>

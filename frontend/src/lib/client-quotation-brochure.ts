@@ -311,7 +311,7 @@ export async function downloadClientQuotationBrochure(
       <p><strong>Note</strong></p>
       <ul>
         <li>Above quote is not blocked or booked. It is strictly subject to availability.</li>
-        <li>Includes GST ${escapeHtml(String(quote.taxRate ?? 18))}% on our service charges (tax-inclusive split).</li>
+        <li>${Number(quote.taxRate) > 0 ? `Applicable tax ${escapeHtml(String(quote.taxRate))}% is shown in the price summary.` : "Applicable tax is shown once a tax rule is configured."}</li>
         <li>The above quote is as per twin/double sharing unless stated otherwise.</li>
         <li>Valid until ${escapeHtml(new Date(quote.validTill).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }))}.</li>
       </ul>

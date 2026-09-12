@@ -4,7 +4,7 @@ import { app } from "../app.js";
 import { db } from "../lib/db.js";
 
 const SEEDED_EMAIL = "superadmin@travelpartner.pro";
-const SEEDED_PASSWORD = "Passw0rd@123";
+const SEEDED_PASSWORD = process.env.SEED_DEMO_PASSWORD || "";
 const EMPLOYEE_EMAIL = "sneha@wanderlusttravels.in";
 const BRANCH_MANAGER_EMAIL = "manager.mumbai@wanderlusttravels.in";
 const AGENCY_ADMIN_EMAIL = "admin@wanderlusttravels.in";
@@ -13,6 +13,12 @@ const ACCOUNTANT_EMAIL = "accounts@wanderlusttravels.in";
 describe("smoke", () => {
   afterAll(async () => {
     await db.$disconnect();
+  });
+
+  it("documents that live seeded-login checks need SEED_DEMO_PASSWORD", () => {
+    if (!SEEDED_PASSWORD) {
+      expect.fail("BLOCKED — SEED_DEMO_PASSWORD is not set. Live login smoke tests were not executed. A demo password is no longer stored in source.");
+    }
   });
 
   it("GET /api/health returns 200", async () => {
@@ -28,7 +34,7 @@ describe("smoke", () => {
     expect(res.status).toBe(401);
   });
 
-  it("logs in with the seeded demo password and returns a token", async () => {
+  it.skipIf(!SEEDED_PASSWORD)("logs in with the seeded demo password and returns a token", async () => {
     const res = await request(app)
       .post("/api/auth/login")
       .send({ email: SEEDED_EMAIL, password: SEEDED_PASSWORD });
@@ -37,7 +43,7 @@ describe("smoke", () => {
     expect(res.body.user.password).toBeUndefined();
   });
 
-  it("blocks an employee-role token from creating an agency (RBAC regression guard)", async () => {
+  it.skipIf(!SEEDED_PASSWORD)("blocks an employee-role token from creating an agency (RBAC regression guard)", async () => {
     const login = await request(app)
       .post("/api/auth/login")
       .send({ email: EMPLOYEE_EMAIL, password: SEEDED_PASSWORD });
@@ -50,7 +56,7 @@ describe("smoke", () => {
     expect(res.status).toBe(403);
   });
 
-  it("no longer accepts Bus/Train/Visa/Insurance as a booking service", async () => {
+  it.skipIf(!SEEDED_PASSWORD)("no longer accepts Bus/Train/Visa/Insurance as a booking service", async () => {
     const login = await request(app)
       .post("/api/auth/login")
       .send({ email: EMPLOYEE_EMAIL, password: SEEDED_PASSWORD });
@@ -62,7 +68,7 @@ describe("smoke", () => {
     expect(res.status).toBe(400);
   });
 
-  it("an employee can check in, request leave, and their branch manager can approve it", async () => {
+  it.skipIf(!SEEDED_PASSWORD)("an employee can check in, request leave, and their branch manager can approve it", async () => {
     const employeeLogin = await request(app)
       .post("/api/auth/login")
       .send({ email: EMPLOYEE_EMAIL, password: SEEDED_PASSWORD });
@@ -94,7 +100,7 @@ describe("smoke", () => {
     expect(approve.body.leave.status).toBe("Approved");
   });
 
-  it("scopes bookings to an employee's own records, not the whole agency", async () => {
+  it.skipIf(!SEEDED_PASSWORD)("scopes bookings to an employee's own records, not the whole agency", async () => {
     const employeeLogin = await request(app)
       .post("/api/auth/login")
       .send({ email: EMPLOYEE_EMAIL, password: SEEDED_PASSWORD });
@@ -108,7 +114,7 @@ describe("smoke", () => {
     }
   });
 
-  it("enforces a restricted employee's per-module permissions on the API itself, and picks up admin changes without a re-login", async () => {
+  it.skipIf(!SEEDED_PASSWORD)("enforces a restricted employee's per-module permissions on the API itself, and picks up admin changes without a re-login", async () => {
     const adminLogin = await request(app)
       .post("/api/auth/login")
       .send({ email: AGENCY_ADMIN_EMAIL, password: SEEDED_PASSWORD });
@@ -199,7 +205,7 @@ describe("smoke", () => {
     expect(res.body.resetToken).toBeUndefined();
   });
 
-  it("paginates /api/bookings and reports a real total count", async () => {
+  it.skipIf(!SEEDED_PASSWORD)("paginates /api/bookings and reports a real total count", async () => {
     const login = await request(app)
       .post("/api/auth/login")
       .send({ email: SEEDED_EMAIL, password: SEEDED_PASSWORD });

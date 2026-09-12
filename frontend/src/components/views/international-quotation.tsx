@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Send, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,8 @@ import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { formatFullINR } from "@/components/shared/ui-helpers";
 import { downloadInternationalQuotationPdf } from "@/lib/quotation-pdf";
+import { api } from "@/lib/api";
+import { pickActiveTaxRule, taxFromConfiguredRule, type ClientTaxRule } from "@/lib/tax-config";
 import type { NewQuotationInput } from "@/types";
 
 function persistQuotation(input: NewQuotationInput) {
@@ -63,8 +65,26 @@ export function InternationalQuotationDialog({ open, onOpenChange }: Internation
   const [form, setForm] = useState(EMPTY_FORM);
 
   const budgetNum = parseInt(form.budget || "0", 10);
-  const gst = Math.round(budgetNum * 0.18);
-  const total = budgetNum + gst;
+  const [taxRule, setTaxRule] = useState<ClientTaxRule | null>(null);
+  useEffect(() => {
+    api.getTaxRules()
+      .then((res) => {
+        const mapped = (res.rules || []).map((r) => ({
+          id: r.id,
+          name: r.name,
+          rate: r.rate,
+          method: (r.method === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE") as "EXCLUSIVE" | "INCLUSIVE",
+          active: r.active,
+          effectiveFrom: r.effectiveFrom,
+          effectiveTo: r.effectiveTo,
+        }));
+        setTaxRule(pickActiveTaxRule(mapped));
+      })
+      .catch(() => setTaxRule(null));
+  }, []);
+  const tax = taxFromConfiguredRule(budgetNum, taxRule);
+  const gst = tax.amount ?? 0;
+  const total = tax.configured ? (tax.total ?? budgetNum) : budgetNum;
   const totalPax = useMemo(
     () => (parseInt(form.adults, 10) || 0) + (parseInt(form.children, 10) || 0) + (parseInt(form.infants, 10) || 0),
     [form.adults, form.children, form.infants]
@@ -169,6 +189,9 @@ export function InternationalQuotationDialog({ open, onOpenChange }: Internation
       amount: budgetNum,
       gst,
       total,
+      taxRate: tax.rate,
+      taxLabel: tax.label,
+      taxConfigured: tax.configured,
       createdBy: form.salesExecutiveName || user?.name || "Sales Executive",
     });
     toast({
@@ -278,7 +301,7 @@ export function InternationalQuotationDialog({ open, onOpenChange }: Internation
         {budgetNum > 0 && (
           <div className="rounded-lg bg-muted/40 p-3 text-sm">
             <div className="flex justify-between"><span>Total Cost</span><span>{formatFullINR(budgetNum)}</span></div>
-            <div className="flex justify-between"><span>GST @ 18%</span><span>{formatFullINR(gst)}</span></div>
+            <div className="flex justify-between"><span>{tax.label}</span><span>{tax.configured ? formatFullINR(gst) : "—"}</span></div>
             <div className="flex justify-between font-semibold"><span>Grand Total</span><span>{formatFullINR(total)}</span></div>
           </div>
         )}

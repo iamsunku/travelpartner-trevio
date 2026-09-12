@@ -17,13 +17,14 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
-import { apiFetch } from "@/lib/api";
+import { api, apiFetch } from "@/lib/api";
 import type { NewQuotationInput } from "@/types";
 import { formatProductPrice } from "@/lib/currency";
 import { CurrencySelect } from "@/components/shared/currency-select";
 import { DestinationSelect } from "@/components/shared/destination-select";
 import { downloadProductQuotationPdf, type ProductQuoteLine } from "@/lib/product-quotation-pdf";
-import { shareQuotationViaWhatsApp } from "@/lib/quotation-actions";
+import { deliverQuotationWhatsApp } from "@/lib/quotation-actions";
+import { pickActiveTaxRule, taxFromConfiguredRule, type ClientTaxRule } from "@/lib/tax-config";
 import type { ProductRecord } from "@/types";
 
 type Destination = { id: string; name: string; country?: string };
@@ -219,8 +220,26 @@ export function ProductQuoteBuilderDialog({ open, onOpenChange }: ProductQuoteBu
   }
 
   const subtotal = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
-  const gst = Math.round(subtotal * 0.18);
-  const total = subtotal + gst;
+  const [taxRule, setTaxRule] = useState<ClientTaxRule | null>(null);
+  useEffect(() => {
+    api.getTaxRules()
+      .then((res) => {
+        const mapped = (res.rules || []).map((r) => ({
+          id: r.id,
+          name: r.name,
+          rate: r.rate,
+          method: (r.method === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE") as "EXCLUSIVE" | "INCLUSIVE",
+          active: r.active,
+          effectiveFrom: r.effectiveFrom,
+          effectiveTo: r.effectiveTo,
+        }));
+        setTaxRule(pickActiveTaxRule(mapped));
+      })
+      .catch(() => setTaxRule(null));
+  }, []);
+  const tax = taxFromConfiguredRule(subtotal, taxRule);
+  const gst = tax.amount ?? 0;
+  const total = tax.configured ? (tax.total ?? subtotal) : subtotal;
 
   async function saveQuote(send: boolean) {
     if (!customerName || !destinationName || !travelFrom) {
@@ -283,10 +302,16 @@ export function ProductQuoteBuilderDialog({ open, onOpenChange }: ProductQuoteBu
           paymentTerms,
           cancellationPolicy,
           currency,
-          gst,
+          gst: tax.configured ? gst : undefined,
+          taxRate: tax.rate ?? undefined,
+          taxLabel: tax.label,
+          taxConfigured: tax.configured,
           createdBy: user?.name || "Team",
         });
-        shareQuotationViaWhatsApp(quote);
+        const wa = await deliverQuotationWhatsApp(quote);
+        if (!wa.ok) {
+          toast({ title: "WhatsApp failed", description: wa.error, variant: "destructive" });
+        }
       }
       setOpen(false);
     } catch {
@@ -468,7 +493,8 @@ export function ProductQuoteBuilderDialog({ open, onOpenChange }: ProductQuoteBu
             {lines.length > 0 && (
               <div className="text-right text-sm space-y-1 border-t pt-3">
                 <p>Subtotal: {formatProductPrice(subtotal, currency)}</p>
-                <p>GST 18%: {formatProductPrice(gst, currency)}</p>
+                <p>{tax.label}: {tax.configured ? formatProductPrice(gst, currency) : "—"}</p>
+                {!tax.configured && <p className="text-[10px] text-amber-700">No TaxRule configured — no default rate applied.</p>}
                 <p className="font-bold text-base">Total: {formatProductPrice(total, currency)}</p>
               </div>
             )}

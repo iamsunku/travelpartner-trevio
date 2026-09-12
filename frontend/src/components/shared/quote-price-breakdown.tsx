@@ -97,6 +97,7 @@ export type QuotePriceBreakdownProps = {
   onChangeRooms?: (rooms: number) => void;
   onChangeTravellers?: (adults: number, children: number, infants: number) => void;
   showInternal?: boolean;
+  audience?: "internal" | "agent" | "customer";
   className?: string;
 };
 
@@ -107,8 +108,10 @@ export function QuotePriceBreakdown({
   onChangeRooms,
   onChangeTravellers,
   showInternal,
+  audience,
   className,
 }: QuotePriceBreakdownProps) {
+  const view = audience || (showInternal ? "internal" : "customer");
   const checkIn = costing.checkIn || "";
   const checkOut = costing.checkOut || "";
 
@@ -222,18 +225,29 @@ export function QuotePriceBreakdown({
       </SectionCard>
 
       <SectionCard icon={ListOrdered} title="Price Summary">
-        <Row label="Package Price (Base)" value={formatFullINR(costing.packageBase)} />
-        {costing.discountAmount > 0 && (
-          <Row label="Discount" value={`− ${formatFullINR(costing.discountAmount)}`} />
+        {view === "internal" && (
+          <Row label="Contracted Cost" value={formatFullINR(costing.totalNetCost)} />
         )}
-        <Row label={`GST Amount (${costing.taxRate}%)`} value={formatFullINR(costing.gst)} />
+        {view === "internal" && (
+          <Row label="Trevio Markup" value={formatFullINR(costing.trevioMarkupAmount || 0)} />
+        )}
+        {view !== "customer" && (
+          <Row label="Trevio Selling Price" value={formatFullINR(costing.trevioSellingPrice || 0)} />
+        )}
+        {view !== "customer" && (
+          <Row label="Agent Markup" value={formatFullINR(costing.agentMarkupAmount || 0)} />
+        )}
+        <Row label="Package Price (Base)" value={formatFullINR(costing.packageBase)} />
+        <Row
+          label={costing.taxConfigured === false || costing.taxRate <= 0 ? "Tax configuration required" : `Applicable tax (${costing.taxRate}%)`}
+          value={costing.taxRate > 0 ? formatFullINR(costing.gst) : "—"}
+        />
         <div className="border-t border-dashed my-1" />
-        <Row label="Total Price (Before Markup)" value={formatFullINR(costing.total)} bold />
-        {showInternal && (
+        <Row label="Total Price" value={formatFullINR(costing.total)} bold />
+        {view === "internal" && (
           <>
             <div className="border-t border-dashed my-1" />
             <Row label="Per person" value={formatFullINR(costing.perPersonCost)} />
-            <Row label="Net cost" value={formatFullINR(costing.totalNetCost)} />
             <Row label="Profit" value={formatFullINR(costing.grossProfit)} />
             <Row label="Margin" value={`${costing.profitMargin}%`} />
           </>

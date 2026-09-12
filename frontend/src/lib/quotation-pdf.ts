@@ -19,6 +19,9 @@ export function downloadInternationalQuotationPdf(data: {
   amount: number;
   gst: number;
   total: number;
+  taxRate?: number | null;
+  taxLabel?: string;
+  taxConfigured?: boolean;
   createdBy?: string;
 }) {
   const currency = data.currency || "INR";
@@ -28,6 +31,9 @@ export function downloadInternationalQuotationPdf(data: {
   const quoteNo = data.quoteNo || `IQ-${Date.now().toString().slice(-6)}`;
   const includes = (data.includes || []).map((i) => `<li>${escapeHtml(i)}</li>`).join("") || "<li>—</li>";
   const excludes = (data.excludes || []).map((i) => `<li>${escapeHtml(i)}</li>`).join("") || "<li>—</li>";
+  const taxLabel = data.taxLabel
+    || (data.taxRate != null ? `Tax @ ${data.taxRate}%` : "Tax (configuration required)");
+  const showTax = data.taxConfigured !== false && Number(data.gst) >= 0;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -95,7 +101,7 @@ export function downloadInternationalQuotationPdf(data: {
   <h2>Commercials</h2>
   <table class="totals">
     <tr><td>Subtotal</td><td style="text-align:right">${fmt(data.amount)}</td></tr>
-    <tr><td>GST @ 18%</td><td style="text-align:right">${fmt(data.gst)}</td></tr>
+    <tr><td>${escapeHtml(taxLabel)}</td><td style="text-align:right">${showTax ? fmt(data.gst) : "—"}</td></tr>
     <tr class="grand"><td>Total</td><td style="text-align:right">${fmt(data.total)}</td></tr>
   </table>
 

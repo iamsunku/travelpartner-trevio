@@ -27,6 +27,9 @@ export type ProductQuotePdfData = {
   cancellationPolicy?: string;
   currency: string;
   gst?: number;
+  taxRate?: number;
+  taxLabel?: string;
+  taxConfigured?: boolean;
   createdBy?: string;
   agencyName?: string;
 };
@@ -42,8 +45,11 @@ function escapeHtml(value: string) {
 export function downloadProductQuotationPdf(data: ProductQuotePdfData): boolean {
   const currency = data.currency || "INR";
   const subtotal = data.lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
-  const gst = data.gst ?? Math.round(subtotal * 0.18);
-  const total = subtotal + gst;
+  // Never invent 18%. Use provided tax only when TaxRule-configured.
+  const configured = data.taxConfigured === true && data.gst != null;
+  const gst = configured ? Number(data.gst) : null;
+  const total = configured ? subtotal + Number(gst) : subtotal;
+  const taxLabel = data.taxLabel || (data.taxRate != null ? `Tax @ ${data.taxRate}%` : "Tax (configuration required)");
   const quoteNo = data.quoteNo || `PQ-${Date.now().toString().slice(-6)}`;
   const brand = data.agencyName || "Trevio Global";
 
@@ -126,7 +132,7 @@ export function downloadProductQuotationPdf(data: ProductQuotePdfData): boolean 
 
   <table class="totals">
     <tr><td>Subtotal</td><td style="text-align:right">${formatProductPrice(subtotal, currency)}</td></tr>
-    <tr><td>GST @ 18%</td><td style="text-align:right">${formatProductPrice(gst, currency)}</td></tr>
+    <tr><td>${escapeHtml(taxLabel)}</td><td style="text-align:right">${configured && gst != null ? formatProductPrice(gst, currency) : "—"}</td></tr>
     <tr class="grand"><td>Grand Total</td><td style="text-align:right">${formatProductPrice(total, currency)}</td></tr>
   </table>
 

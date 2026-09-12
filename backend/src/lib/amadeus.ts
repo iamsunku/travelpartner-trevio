@@ -159,6 +159,13 @@ export async function searchAmadeusFlights(opts: {
     const cabin = cabinFromAmadeus(String(fareDetails?.cabin || ""));
     const aircraftCode = String((first.aircraft as { code?: string } | undefined)?.code || "");
     const price = Math.round(Number(priceObj?.total || 0));
+    const bags = fareDetails?.includedCheckedBags as { quantity?: number; weight?: number; weightUnit?: string } | undefined;
+    let baggage = "";
+    if (bags?.quantity != null && bags.quantity > 0) {
+      baggage = bags.weight
+        ? `${bags.quantity} × ${bags.weight}${bags.weightUnit || "kg"}`
+        : `${bags.quantity} checked bag(s)`;
+    }
 
     return {
       id: String(offer.id || `amadeus-fl-${i + 1}`),
@@ -179,6 +186,7 @@ export async function searchAmadeusFlights(opts: {
       seatsLeft: Number(offer.numberOfBookableSeats || 9),
       refundable: false,
       aircraft: aircraftDict[aircraftCode] || aircraftCode || "—",
+      baggage,
       rating: 4.2,
     } satisfies Flight;
   });

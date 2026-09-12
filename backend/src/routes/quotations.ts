@@ -1,4 +1,5 @@
 import type { Express, Response } from "express";
+import { Prisma } from "@prisma/client";
 import type { AuthRequest } from "../middleware/auth.js";
 import { requireAuth, requirePermission, requireRole } from "../middleware/auth.js";
 import { db } from "../lib/db.js";
@@ -15,23 +16,64 @@ import {
   normalizeStatus,
   notifyQuote,
   expireDueQuotations,
+  quoteStaffAcceptTransitionBlockReason,
   restorePackagesFromSnapshot,
   sanitizeQuotationForRole,
-  snapshotVersion,
   writeQuoteAudit,
 } from "../lib/quotations.js";
-import { sendHtmlEmail } from "../lib/email.js";
-import { escapeHtml } from "../lib/html.js";
+import { agentQuoteScope, canApproveStage, quoteSendBlockReason } from "../lib/quote-access.js";
+import { freshValidTill, isPastValidTill, quotePastValidityBlockReason, runExpireDueQuotations } from "../lib/quotation-expiry.js";
+import {
+  createQuotationVersion,
+  ensureInitialQuotationVersion,
+  recordQuotationRevisionIfNeeded,
+  sanitizeVersionSnapshot,
+  snapshotVersion,
+  summarizeVersionForList,
+} from "../lib/quotation-versions.js";
+import { generateQuotationPdf, QuotationPdfError } from "../lib/quotation-pdf/index.js";
+import { TAX_CONFIGURATION_REQUIRED, pricePackage, pricingBlockReason, ruleApplies, stripAgentPricingOverrides, type TaxRuleInput } from "../lib/pricing.js";
+import {
+  NO_VALID_RATE_MESSAGE,
+  RATE_SOURCES,
+  applyResolvedSnapshot,
+  applyUnresolvedLine,
+  buildRateSnapshot,
+  catalogDisplayPrice,
+  freezePackageLines,
+  getApplicableContractedRate,
+  isIsoDate,
+  isProductType,
+  loadOwnedProduct,
+  quoteUnresolvedRateReason,
+  rateVariantKey,
+} from "../lib/contracted-rates.js";
+import { deliverQuotation, QuotationDeliveryError } from "../lib/quotation-delivery/index.js";
+import { verifyDeliveryMediaToken } from "../lib/quotation-delivery/whatsapp-provider.js";
+import {
+  createCustomerAccessLink,
+  resolveAppOrigin,
+} from "../lib/quotation-customer-access.js";
+import { readPrivateObject } from "../lib/document-storage.js";
 import {
   buildQuotationPackageFromTravelPackage,
   loadPublishedPackage,
-  totalsWithAgentMarkup,
 } from "../lib/package-to-quotation.js";
+import { extractTemplateContent, mergeTemplateIntoQuotation, type MergeMode } from "../lib/quote-template-merge.js";
 
 type ScopeFn = (req: AuthRequest) => Record<string, unknown>;
 type OwnAgencyFn = (req: AuthRequest, fallback?: string) => string | undefined;
 type OwnBranchFn = (req: AuthRequest) => string | undefined;
 type BranchScopeFn = (req: AuthRequest, ownField?: string) => Record<string, unknown>;
+
+function pricingFinalizationBlock(packages: Array<{ pricing?: unknown }> | undefined): string | null {
+  if (!packages?.length) return TAX_CONFIGURATION_REQUIRED;
+  for (const pkg of packages) {
+    const pricing = pkg.pricing as { unresolved?: boolean; reasons?: string[]; taxRequired?: boolean } | null;
+    if (!pricing || pricing.unresolved || pricing.taxRequired) return pricingBlockReason(pricing || { taxRequired: true });
+  }
+  return null;
+}
 
 function paramId(req: AuthRequest): string {
   const id = req.params.id;
@@ -70,6 +112,97 @@ function packageWriteData(
     gst: costing.gst,
     total: costing.total,
     perPersonCost: costing.perPersonCost,
+    pricing: pkg.pricing ?? undefined,
+  };
+}
+
+async function loadActiveTaxRule(scope: Record<string, unknown>, asOf?: string | null): Promise<TaxRuleInput | null> {
+  const rules = await db.taxRule.findMany({ where: { active: true, ...scope }, orderBy: { createdAt: "desc" } });
+  const match = rules.find((rule) => ruleApplies({
+    id: rule.id,
+    name: rule.name,
+    rate: rule.rate,
+    method: rule.method === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
+    active: rule.active,
+    effectiveFrom: rule.effectiveFrom,
+    effectiveTo: rule.effectiveTo,
+  }, asOf));
+  if (!match) return null;
+  return {
+    id: match.id,
+    name: match.name,
+    rate: match.rate,
+    method: match.method === "INCLUSIVE" ? "INCLUSIVE" : "EXCLUSIVE",
+    active: true,
+    effectiveFrom: match.effectiveFrom,
+    effectiveTo: match.effectiveTo,
+  };
+}
+
+function layersFromPackage(priced: ReturnType<typeof pricePackage>) {
+  const profit = priced.trevioSellingPrice - priced.contractedCost;
+  return {
+    totalNetCost: priced.contractedCost,
+    totalSelling: priced.trevioSellingPrice,
+    grossProfit: profit,
+    profitMargin: priced.trevioSellingPrice > 0 ? Math.round((profit / priced.trevioSellingPrice) * 10000) / 100 : 0,
+    discountAmount: priced.discountAmount,
+    taxableAmount: priced.customerPrice,
+    gst: priced.taxAmount ?? 0,
+    total: priced.finalPrice ?? priced.customerPrice,
+    perPersonCost: priced.perAdultPrice,
+    amount: priced.customerPrice,
+  };
+}
+
+async function priceFrozenPackage(
+  frozen: Record<string, unknown>,
+  input: {
+    currency?: string | null;
+    nights?: number | null;
+    adults?: number | null;
+    children?: number | null;
+    infants?: number | null;
+    trevioMarkupType?: string | null;
+    trevioMarkupValue?: number | null;
+    agentMarkupType?: string | null;
+    agentMarkup?: number | null;
+    discountType?: string | null;
+    discountValue?: number | null;
+    travelStartDate?: string | null;
+    exchangeRate?: number | null;
+    exchangeRateExplicit?: boolean | null;
+    scope: Record<string, unknown>;
+    allowClientTax?: boolean;
+  },
+) {
+  const taxRule = await loadActiveTaxRule(input.scope, input.travelStartDate);
+  const priced = pricePackage(frozen, {
+    currency: input.currency || "INR",
+    nights: input.nights,
+    adults: Number(input.adults ?? 0),
+    children: Number(input.children ?? 0),
+    infants: Number(input.infants ?? 0),
+    trevioMarkup: {
+      type: input.trevioMarkupType === "Fixed" ? "Fixed" : "Percentage",
+      value: Number(input.trevioMarkupValue ?? 0),
+    },
+    agentMarkup: {
+      type: input.agentMarkupType === "Percentage" ? "Percentage" : "Fixed",
+      value: Number(input.agentMarkup ?? 0),
+    },
+    discountType: input.discountType,
+    discountValue: Number(input.discountValue ?? 0),
+    taxRule,
+    asOfDate: input.travelStartDate,
+    exchangeRate: input.exchangeRate,
+    exchangeRateExplicit: Boolean(input.exchangeRateExplicit),
+  });
+  return {
+    frozen: { ...frozen, ...priced.lines, pricing: priced } as Record<string, unknown>,
+    priced,
+    taxRuleId: taxRule?.id ?? null,
+    taxRate: taxRule?.rate ?? 0,
   };
 }
 
@@ -85,57 +218,9 @@ async function loadQuote(req: AuthRequest, agencyScope: ScopeFn, branchScope: Br
   });
 }
 
-function applyCostingToQuote(
-  quote: {
-    adults?: number | null;
-    children?: number | null;
-    infants?: number | null;
-    taxRate?: number | null;
-    discountType?: string | null;
-    discountValue?: number | null;
-  },
-  packages: Array<Record<string, unknown>>,
-) {
-  const selected =
-    packages.find((p) => p.isSelected) ||
-    packages[0] ||
-    null;
-  if (!selected) {
-    return {
-      totalNetCost: 0,
-      totalSelling: 0,
-      grossProfit: 0,
-      profitMargin: 0,
-      discountAmount: 0,
-      taxableAmount: 0,
-      gst: 0,
-      total: 0,
-      amount: 0,
-      perPersonCost: 0,
-      items: 0,
-    };
-  }
-  const costing = calcPackageCosting({
-    hotels: selected.hotels,
-    flights: selected.flights,
-    transfers: selected.transfers,
-    activities: selected.activities,
-    meals: selected.meals,
-    addOns: selected.addOns,
-    visa: selected.visa as { enabled?: boolean; costPrice?: number; sellingPrice?: number } | null,
-    insurance: selected.insurance as { enabled?: boolean; costPrice?: number; sellingPrice?: number } | null,
-    taxRate: Number(quote.taxRate ?? 18),
-    discountType: quote.discountType,
-    discountValue: Number(quote.discountValue || 0),
-    adults: quote.adults ?? 2,
-    children: quote.children ?? 0,
-    infants: quote.infants ?? 0,
-  });
-  return {
-    ...costing,
-    amount: costing.totalSelling,
-    items: packages.length,
-  };
+async function loadQuoteForActor(req: AuthRequest, agencyScope: ScopeFn, branchScope: BranchScopeFn) {
+  if (isAgentLike(req.auth?.role)) return loadAgentQuote(req, agencyScope);
+  return loadQuote(req, agencyScope, branchScope);
 }
 
 async function loadAgentQuote(req: AuthRequest, agencyScope: ScopeFn) {
@@ -148,6 +233,113 @@ async function loadAgentQuote(req: AuthRequest, agencyScope: ScopeFn) {
     },
     include: QUOTE_INCLUDE,
   });
+}
+
+function agentProductType(line: Record<string, unknown>) {
+  if (isProductType(line.productType)) return line.productType;
+  const type = String(line.type || "");
+  if (/hotel/i.test(type)) return "HOTEL" as const;
+  if (/transfer/i.test(type)) return "TRANSFER" as const;
+  if (/activit|attraction/i.test(type)) return "ACTIVITY" as const;
+  if (/meal/i.test(type)) return "MEAL" as const;
+  if (/flight/i.test(type)) return "FLIGHT" as const;
+  return null;
+}
+
+function collectionFor(type: string) {
+  if (type === "HOTEL") return "hotels" as const;
+  if (type === "TRANSFER") return "transfers" as const;
+  if (type === "ACTIVITY") return "activities" as const;
+  if (type === "MEAL") return "meals" as const;
+  return "flights" as const;
+}
+
+async function prepareAgentTripLines(
+  lines: Array<Record<string, unknown>>,
+  options: { travelDate?: string | null; scope: Record<string, unknown> },
+) {
+  const lineItems: Array<{ id: string; type: string; description: string; qty: number; price: number; amount: number }> = [];
+  const packages = {
+    hotels: [] as Record<string, unknown>[],
+    flights: [] as Record<string, unknown>[],
+    transfers: [] as Record<string, unknown>[],
+    activities: [] as Record<string, unknown>[],
+    meals: [] as Record<string, unknown>[],
+  };
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = { ...lines[i] };
+    delete raw.contractedCost;
+    delete raw.costPrice;
+    delete raw.supplier;
+    delete raw.supplierId;
+    const qty = Math.max(1, Number(raw.qty || 1));
+    const productType = raw.productId ? agentProductType(raw) : null;
+    if (raw.productId && productType) {
+      const travelDate = [raw.checkIn, raw.date, options.travelDate].find((value) => isIsoDate(value));
+      if (!travelDate) return { error: NO_VALID_RATE_MESSAGE };
+      const result = await getApplicableContractedRate({
+        productType,
+        productId: String(raw.productId),
+        travelDate: String(travelDate),
+        scope: options.scope,
+        variantKey: rateVariantKey(raw) || undefined,
+      });
+      if (result.status !== "OK") return { error: result.message };
+      const product = await loadOwnedProduct(productType, String(raw.productId), options.scope);
+      const display = product ? catalogDisplayPrice(product, productType) : Number(raw.sellingPrice || raw.price || 0);
+      const snapshot = buildRateSnapshot({
+        productType,
+        productId: String(raw.productId),
+        rate: result.rate,
+        travelDate: String(travelDate),
+      });
+      const selling = Math.max(0, Math.round(Number(raw.sellingPrice || raw.price || display || 0)));
+      const stored = applyResolvedSnapshot({
+        ...raw,
+        sellingPrice: selling || snapshot.contractedCost,
+        hotelName: raw.hotelName || raw.description || product?.name,
+        activityName: raw.activityName || raw.description || product?.name,
+        airline: raw.airline || product?.airline || raw.description,
+      }, snapshot, display);
+      packages[collectionFor(productType)].push(stored);
+      const price = Number(stored.sellingPrice || 0);
+      lineItems.push({
+        id: `line-${i + 1}`,
+        type: String(raw.type || productType),
+        description: String(raw.description || product?.name || productType),
+        qty,
+        price,
+        amount: qty * price,
+      });
+      continue;
+    }
+    const price = Math.max(0, Math.round(Number(raw.sellingPrice || raw.price || 0)));
+    const source = raw.source === RATE_SOURCES.AMADEUS_API || raw.source === RATE_SOURCES.API
+      ? raw.source
+      : RATE_SOURCES.MANUAL;
+    const manual: Record<string, unknown> = { ...raw, source, sellingPrice: price };
+    delete manual.contractedCost;
+    delete manual.costPrice;
+    delete manual.trevioMarkup;
+    delete manual.trevioSellingPrice;
+    if ((source === RATE_SOURCES.AMADEUS_API || source === RATE_SOURCES.API) && typeof raw.fare === "number") {
+      manual.fare = Math.round(Number(raw.fare));
+    }
+    const type = agentProductType(raw) || "FLIGHT";
+    if (raw.productId) return { error: NO_VALID_RATE_MESSAGE };
+    if (/hotel|transfer|activit|meal|flight/i.test(String(raw.type || "")) || source === RATE_SOURCES.AMADEUS_API) {
+      packages[collectionFor(agentProductType(raw) || "FLIGHT")].push(manual);
+    }
+    lineItems.push({
+      id: `line-${i + 1}`,
+      type: String(raw.type || type),
+      description: String(raw.description || raw.type || "Service"),
+      qty,
+      price,
+      amount: qty * price,
+    });
+  }
+  return { lineItems, packages };
 }
 
 export function mountQuotationRoutes(
@@ -208,16 +400,7 @@ export function mountQuotationRoutes(
       }
 
       if (isAgentLike(req.auth?.role)) {
-        where.AND = [
-          ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
-          {
-            OR: [
-              { createdById: req.auth?.userId },
-              { agentId: req.auth?.userId },
-              { status: { in: ["Sent to Agent", "Customer Reviewing", "Accepted", "Revision Requested"] } },
-            ],
-          },
-        ];
+        Object.assign(where, agentQuoteScope(req.auth?.role, req.auth?.userId));
       }
 
       const sort = String(req.query.sort || "latest");
@@ -246,7 +429,12 @@ export function mountQuotationRoutes(
   // ── Dashboard KPIs ───────────────────────────────────────────────────────
   app.get("/api/quotations/analytics", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      const where = { deletedAt: null, ...agencyScope(req), ...branchScope(req, "createdById") };
+      const where = {
+        deletedAt: null,
+        ...agencyScope(req),
+        ...branchScope(req, "createdById"),
+        ...agentQuoteScope(req.auth?.role, req.auth?.userId),
+      };
       const rows = await db.quotation.findMany({ where, take: 5000 });
       const byStatus: Record<string, number> = {};
       let totalValue = 0;
@@ -301,7 +489,7 @@ export function mountQuotationRoutes(
   // ── Get one ──────────────────────────────────────────────────────────────
   app.get("/api/quotations/:id/full", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      const quote = await loadQuote(req, agencyScope, branchScope);
+      const quote = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!quote) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -394,7 +582,12 @@ export function mountQuotationRoutes(
           paymentTerms: body.paymentTerms,
           cancellationPolicy: body.cancellationPolicy,
           refundPolicy: body.refundPolicy,
-          taxRate: Number(body.taxRate ?? 18),
+          taxRate: 0,
+          trevioMarkupType: body.trevioMarkupType === "Fixed" ? "Fixed" : "Percentage",
+          trevioMarkupValue: Number(body.trevioMarkupValue ?? 0),
+          agentMarkupType: body.agentMarkupType === "Percentage" ? "Percentage" : "Fixed",
+          agentMarkup: Math.max(0, Math.round(Number(body.agentMarkup ?? 0))),
+          exchangeRateExplicit: body.exchangeRateExplicit === true,
           wizardStep: Number(body.wizardStep || 1),
           isInternational: Boolean(body.isInternational),
         },
@@ -413,17 +606,63 @@ export function mountQuotationRoutes(
       }
 
       if (Array.isArray(body.packages) && body.packages.length) {
+        let selectedLayers: ReturnType<typeof layersFromPackage> | null = null;
+        let selectedUnresolved = false;
+        let selectedTaxRuleId: string | null = null;
+        let selectedTaxRate = 0;
         for (const pkg of body.packages) {
-          const costing = calcPackageCosting({
-            ...pkg,
-            taxRate: Number(body.taxRate ?? 18),
-            discountType: body.discountType,
-            discountValue: Number(body.discountValue || 0),
-            adults: Number(body.adults ?? 2),
-            children: Number(body.children ?? 0),
+          const frozen = await freezePackageLines(pkg, {
+            travelDate: body.travelStartDate || null,
+            travelEndDate: body.travelEndDate || null,
+            scope: agencyScope(req),
           });
+          const priced = await priceFrozenPackage(frozen, {
+            currency: body.currency,
+            nights,
+            adults: body.adults,
+            children: body.children,
+            infants: body.infants,
+            trevioMarkupType: body.trevioMarkupType,
+            trevioMarkupValue: body.trevioMarkupValue,
+            agentMarkupType: body.agentMarkupType,
+            agentMarkup: body.agentMarkup,
+            discountType: body.discountType,
+            discountValue: body.discountValue,
+            travelStartDate: body.travelStartDate,
+            exchangeRate: body.exchangeRate,
+            exchangeRateExplicit: body.exchangeRateExplicit,
+            scope: agencyScope(req),
+          });
+          const layers = layersFromPackage(priced.priced);
+          if (pkg.isSelected || !selectedLayers) {
+            selectedLayers = layers;
+            selectedUnresolved = priced.priced.unresolved;
+            selectedTaxRuleId = priced.taxRuleId;
+            selectedTaxRate = priced.taxRate;
+          }
           await db.quotationPackage.create({
-            data: { quotationId: quote.id, ...packageWriteData(pkg, costing) },
+            data: { quotationId: quote.id, ...packageWriteData(priced.frozen, layers) },
+          });
+        }
+        if (selectedLayers) {
+          await db.quotation.update({
+            where: { id: quote.id },
+            data: {
+              amount: selectedLayers.amount,
+              gst: selectedLayers.gst,
+              total: selectedLayers.total,
+              totalSelling: selectedLayers.totalSelling,
+              totalNetCost: selectedLayers.totalNetCost,
+              grossProfit: selectedLayers.grossProfit,
+              profitMargin: selectedLayers.profitMargin,
+              discountAmount: selectedLayers.discountAmount,
+              taxableAmount: selectedLayers.taxableAmount,
+              perPersonCost: selectedLayers.perPersonCost,
+              items: body.packages.length,
+              taxRate: selectedTaxRate,
+              taxRuleId: selectedTaxRuleId,
+              pricingStatus: selectedUnresolved ? "UNRESOLVED" : "OK",
+            },
           });
         }
       } else {
@@ -446,6 +685,12 @@ export function mountQuotationRoutes(
         action: "Quote Created",
         updatedValue: { quoteNo },
       });
+      await ensureInitialQuotationVersion({
+        quotationId: quote.id,
+        createdByName: req.auth?.email || "System",
+        createdById: req.auth?.userId,
+        changeSummary: "Version 1",
+      });
       await notifyQuote({
         agencyId: quote.agencyId,
         title: "New quote created",
@@ -467,7 +712,7 @@ export function mountQuotationRoutes(
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -503,8 +748,7 @@ export function mountQuotationRoutes(
         if (body[k] !== undefined) data[k] = body[k];
       }
       if (body.budget != null) data.budget = Number(body.budget);
-      if (body.exchangeRate != null) data.exchangeRate = Number(body.exchangeRate);
-      if (body.taxRate != null) data.taxRate = Number(body.taxRate);
+      if (body.exchangeRate != null && body.exchangeRateExplicit === true) data.exchangeRate = Number(body.exchangeRate);
       if (body.discountValue != null) data.discountValue = Number(body.discountValue);
       if (body.wizardStep != null) data.wizardStep = Number(body.wizardStep);
       if (body.isInternational != null) data.isInternational = Boolean(body.isInternational);
@@ -520,6 +764,7 @@ export function mountQuotationRoutes(
 
       await db.quotation.update({ where: { id: existing.id }, data });
 
+      let pricedTaxRuleId: string | null = existing.taxRuleId;
       if (Array.isArray(body.packages)) {
         const keepIds = body.packages.map((p: { id?: string }) => p.id).filter((id: string | undefined): id is string => Boolean(id));
         await db.quotationPackage.deleteMany({
@@ -529,15 +774,31 @@ export function mountQuotationRoutes(
           },
         });
         for (const pkg of body.packages) {
-          const costing = calcPackageCosting({
-            ...pkg,
-            taxRate: Number(body.taxRate ?? existing.taxRate ?? 18),
-            discountType: body.discountType ?? existing.discountType,
-            discountValue: Number(body.discountValue ?? existing.discountValue ?? 0),
-            adults: Number(body.adults ?? existing.adults ?? 2),
-            children: Number(body.children ?? existing.children ?? 0),
+          const frozen = await freezePackageLines(pkg, {
+            travelDate: body.travelStartDate ?? existing.travelStartDate,
+            travelEndDate: body.travelEndDate ?? existing.travelEndDate,
+            existingPackages: existing.packages as unknown as Array<Record<string, unknown>>,
+            scope: agencyScope(req),
           });
-          const pkgData = packageWriteData(pkg, costing);
+          const pricedPkg = await priceFrozenPackage(frozen, {
+            currency: body.currency ?? existing.currency,
+            nights: nights ?? existing.nights,
+            adults: body.adults ?? existing.adults,
+            children: body.children ?? existing.children,
+            infants: body.infants ?? existing.infants,
+            trevioMarkupType: isAgentLike(req.auth?.role) ? existing.trevioMarkupType : (body.trevioMarkupType ?? existing.trevioMarkupType),
+            trevioMarkupValue: isAgentLike(req.auth?.role) ? existing.trevioMarkupValue : (body.trevioMarkupValue ?? existing.trevioMarkupValue),
+            agentMarkupType: body.agentMarkupType ?? existing.agentMarkupType,
+            agentMarkup: body.agentMarkup ?? existing.agentMarkup,
+            discountType: isAgentLike(req.auth?.role) ? existing.discountType : (body.discountType ?? existing.discountType),
+            discountValue: isAgentLike(req.auth?.role) ? existing.discountValue : (body.discountValue ?? existing.discountValue),
+            travelStartDate: body.travelStartDate ?? existing.travelStartDate,
+            exchangeRate: existing.exchangeRate,
+            exchangeRateExplicit: body.exchangeRateExplicit === true || existing.exchangeRateExplicit,
+            scope: agencyScope(req),
+          });
+          if (pkg.isSelected || pricedTaxRuleId === existing.taxRuleId) pricedTaxRuleId = pricedPkg.taxRuleId;
+          const pkgData = packageWriteData(pricedPkg.frozen, layersFromPackage(pricedPkg.priced));
           if (pkg.id) {
             await db.quotationPackage.updateMany({
               where: { id: pkg.id, quotationId: existing.id },
@@ -552,17 +813,31 @@ export function mountQuotationRoutes(
       }
 
       const packages = await db.quotationPackage.findMany({ where: { quotationId: existing.id } });
-      const rolled = applyCostingToQuote(
-        {
-          adults: (data.adults as number) ?? existing.adults,
-          children: (data.children as number) ?? existing.children,
-          infants: (data.infants as number) ?? existing.infants,
-          taxRate: (data.taxRate as number) ?? existing.taxRate,
-          discountType: (data.discountType as string) ?? existing.discountType,
-          discountValue: (data.discountValue as number) ?? existing.discountValue,
-        },
-        packages as unknown as Record<string, unknown>[],
-      );
+      const selectedStored = packages.find((p) => p.isSelected) || packages[0];
+      const selectedPricing = selectedStored?.pricing as { unresolved?: boolean; reasons?: string[]; taxRate?: number | null; taxRequired?: boolean } | null;
+      const rolled = {
+        totalNetCost: selectedStored?.totalNetCost ?? 0,
+        totalSelling: selectedStored?.totalSelling ?? 0,
+        grossProfit: selectedStored ? selectedStored.totalSelling - selectedStored.totalNetCost : 0,
+        profitMargin: selectedStored && selectedStored.totalSelling > 0
+          ? Math.round(((selectedStored.totalSelling - selectedStored.totalNetCost) / selectedStored.totalSelling) * 10000) / 100
+          : 0,
+        discountAmount: Number((selectedStored?.pricing as { discountAmount?: number } | null)?.discountAmount ?? existing.discountAmount ?? 0),
+        taxableAmount: Number((selectedStored?.pricing as { customerPrice?: number } | null)?.customerPrice ?? selectedStored?.totalSelling ?? 0),
+        gst: selectedStored?.gst ?? 0,
+        total: selectedStored?.total ?? 0,
+        amount: Number((selectedStored?.pricing as { customerPrice?: number } | null)?.customerPrice ?? selectedStored?.total ?? 0),
+        perPersonCost: selectedStored?.perPersonCost ?? 0,
+        items: packages.length,
+      };
+      if (body.trevioMarkupType && !isAgentLike(req.auth?.role)) data.trevioMarkupType = body.trevioMarkupType === "Fixed" ? "Fixed" : "Percentage";
+      if (body.trevioMarkupValue != null && !isAgentLike(req.auth?.role)) data.trevioMarkupValue = Number(body.trevioMarkupValue);
+      if (body.agentMarkup != null) data.agentMarkup = Math.max(0, Math.round(Number(body.agentMarkup)));
+      if (body.agentMarkupType) data.agentMarkupType = body.agentMarkupType === "Percentage" ? "Percentage" : "Fixed";
+      if (body.exchangeRateExplicit === true) data.exchangeRateExplicit = true;
+      data.taxRate = selectedPricing?.taxRate ?? 0;
+      data.taxRuleId = pricedTaxRuleId;
+      data.pricingStatus = selectedPricing?.unresolved ? "UNRESOLVED" : "OK";
 
       const updated = await db.quotation.update({
         where: { id: existing.id },
@@ -579,20 +854,184 @@ export function mountQuotationRoutes(
           perPersonCost: rolled.perPersonCost,
           items: Math.max(1, packages.length),
           lineItems: buildLineItemsFromPackages(packages),
+          taxRate: data.taxRate as number,
+          taxRuleId: (data.taxRuleId as string | null) ?? null,
+          pricingStatus: data.pricingStatus as string,
+          ...(data.trevioMarkupType ? { trevioMarkupType: data.trevioMarkupType as string } : {}),
+          ...(data.trevioMarkupValue != null ? { trevioMarkupValue: data.trevioMarkupValue as number } : {}),
+          ...(data.agentMarkup != null ? { agentMarkup: data.agentMarkup as number } : {}),
+          ...(data.agentMarkupType ? { agentMarkupType: data.agentMarkupType as string } : {}),
+          ...(data.exchangeRateExplicit === true ? { exchangeRateExplicit: true } : {}),
         },
         include: QUOTE_INCLUDE,
       });
+
+      await recordQuotationRevisionIfNeeded({
+        quotationId: existing.id,
+        before: existing as unknown as Record<string, unknown>,
+        after: updated as unknown as Record<string, unknown>,
+        createdByName: req.auth?.email || "System",
+        createdById: req.auth?.userId,
+        changeSummary: "Wizard save",
+        reason: "wizard_update",
+      });
+
+      const latest = await db.quotation.findUnique({ where: { id: existing.id }, include: QUOTE_INCLUDE });
 
       await writeQuoteAudit({
         req,
         agencyId: existing.agencyId,
         quotationId: existing.id,
         action: "Quote Edited",
-        previousValue: { total: existing.total, status: existing.status },
-        updatedValue: { total: updated.total, status: updated.status, wizardStep: updated.wizardStep },
+        previousValue: { total: existing.total, status: existing.status, currentVersion: existing.currentVersion },
+        updatedValue: { total: latest?.total, status: latest?.status, wizardStep: latest?.wizardStep, currentVersion: latest?.currentVersion },
       });
 
-      res.json({ quotation: sanitizeQuotationForRole(updated as unknown as Record<string, unknown>, req.auth?.role) });
+      res.json({ quotation: sanitizeQuotationForRole((latest || updated) as unknown as Record<string, unknown>, req.auth?.role) });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  /**
+   * Phase 13 TM-02 — Apply QuoteTemplate section content into the quotation.
+   * fill-empty (default) never overwrites non-empty user fields.
+   * Snapshot stored on quotation so later template edits do not rewrite history.
+   */
+  app.post("/api/quotations/:id/apply-template", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.auth?.role === "customer") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
+      if (!existing) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      if (["Converted to Booking", "Expired", "Cancelled", "Archived"].includes(existing.status)) {
+        res.status(400).json({ error: `Cannot apply template to a quotation in status ${existing.status}` });
+        return;
+      }
+      const templateId = String(req.body?.templateId || "");
+      if (!templateId) {
+        res.status(400).json({ error: "templateId required" });
+        return;
+      }
+      const mode: MergeMode = req.body?.mode === "merge-append" ? "merge-append" : "fill-empty";
+      const packageIndex = Math.max(0, Number(req.body?.packageIndex ?? 0));
+
+      const template = await db.quoteTemplate.findFirst({
+        where: {
+          id: templateId,
+          ...agencyScope(req),
+          deletedAt: null,
+          status: "Active",
+        },
+        include: { sections: { orderBy: { sortOrder: "asc" } } },
+      });
+      if (!template) {
+        res.status(404).json({ error: "Active quote template not found" });
+        return;
+      }
+
+      const content = extractTemplateContent({
+        templateId: template.id,
+        templateName: template.templateName,
+        sections: template.sections,
+      });
+      const packages = [...(existing.packages || [])] as Array<Record<string, unknown>>;
+      if (!packages.length) {
+        res.status(400).json({ error: "Quotation has no packages to merge into" });
+        return;
+      }
+      const pkgIdx = Math.min(packageIndex, packages.length - 1);
+      const targetPkg = packages[pkgIdx];
+      const { quotePatch, packagePatch, appliedFields } = mergeTemplateIntoQuotation({
+        mode,
+        quote: existing as unknown as Record<string, unknown>,
+        pkg: targetPkg,
+        content,
+      });
+
+      if (!appliedFields.length) {
+        res.json({
+          quotation: sanitizeQuotationForRole(existing as unknown as Record<string, unknown>, req.auth?.role),
+          appliedFields: [],
+          message: "No empty fields to fill from this template",
+        });
+        return;
+      }
+
+      packages[pkgIdx] = { ...targetPkg, ...packagePatch };
+      const frozenPackages: Array<Record<string, unknown>> = [];
+      for (const pkg of packages) {
+        frozenPackages.push(await freezePackageLines(pkg, {
+          travelDate: existing.travelStartDate,
+          travelEndDate: existing.travelEndDate,
+          existingPackages: existing.packages as unknown as Array<Record<string, unknown>>,
+          scope: agencyScope(req),
+        }));
+      }
+
+      await db.$transaction(async (tx) => {
+        await tx.quotation.update({
+          where: { id: existing.id },
+          data: {
+            ...quotePatch,
+            templateSnapshot: content as unknown as Prisma.InputJsonValue,
+            appliedTemplateId: template.id,
+          },
+        });
+        for (let i = 0; i < frozenPackages.length; i += 1) {
+          const pkg = frozenPackages[i];
+          const id = String((packages[i] as { id?: string }).id || "");
+          if (!id) continue;
+          await tx.quotationPackage.update({
+            where: { id },
+            data: {
+              description: pkg.description != null ? String(pkg.description) : undefined,
+              hotels: (pkg.hotels ?? []) as Prisma.InputJsonValue,
+              flights: (pkg.flights ?? []) as Prisma.InputJsonValue,
+              transfers: (pkg.transfers ?? []) as Prisma.InputJsonValue,
+              activities: (pkg.activities ?? []) as Prisma.InputJsonValue,
+              meals: (pkg.meals ?? []) as Prisma.InputJsonValue,
+              itinerary: (pkg.itinerary ?? []) as Prisma.InputJsonValue,
+              inclusions: (pkg.inclusions ?? []) as Prisma.InputJsonValue,
+              exclusions: (pkg.exclusions ?? []) as Prisma.InputJsonValue,
+              visa: (pkg.visa ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            },
+          });
+        }
+      });
+
+      const after = await db.quotation.findUnique({ where: { id: existing.id }, include: QUOTE_INCLUDE });
+      await recordQuotationRevisionIfNeeded({
+        quotationId: existing.id,
+        before: existing as unknown as Record<string, unknown>,
+        after: after as unknown as Record<string, unknown>,
+        createdByName: req.auth?.email || "System",
+        createdById: req.auth?.userId,
+        changeSummary: `Applied quote template ${template.templateName}`,
+        reason: "template_apply",
+      });
+
+      const latest = await db.quotation.findUnique({ where: { id: existing.id }, include: QUOTE_INCLUDE });
+      await writeQuoteAudit({
+        req,
+        agencyId: existing.agencyId,
+        quotationId: existing.id,
+        action: "Quote Template Applied",
+        updatedValue: { templateId: template.id, mode, appliedFields },
+      });
+
+      res.json({
+        quotation: sanitizeQuotationForRole(latest as unknown as Record<string, unknown>, req.auth?.role),
+        appliedFields,
+        templateSnapshot: content,
+        mode,
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -602,7 +1041,7 @@ export function mountQuotationRoutes(
   // ── Status transition ────────────────────────────────────────────────────
   app.post("/api/quotations/:id/status", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -617,13 +1056,19 @@ export function mountQuotationRoutes(
         res.status(403).json({ error: "Agents can only accept, reject, or request revision" });
         return;
       }
+      if (to === "Sent to Agent" || to === "Sent") {
+        const blocked = quoteSendBlockReason(existing);
+        if (blocked) {
+          res.status(403).json({ error: blocked });
+          return;
+        }
+      }
 
       const data: Record<string, unknown> = { status: to };
       if (to === "Archived") data.archivedAt = new Date();
       if (to === "Sent to Agent" || to === "Sent") {
         data.status = "Sent to Agent";
         data.termsSnapshot = buildTermsSnapshot(existing);
-        data.approvalStatus = "Approved";
       }
       if (to === "Pending Approval") data.approvalStatus = "Pending";
 
@@ -663,9 +1108,15 @@ export function mountQuotationRoutes(
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const unresolved = quoteUnresolvedRateReason(existing.packages as unknown as Array<Record<string, unknown>>)
+        || pricingFinalizationBlock(existing.packages);
+      if (unresolved) {
+        res.status(400).json({ error: unresolved });
         return;
       }
       await db.quotationApproval.create({
@@ -675,6 +1126,15 @@ export function mountQuotationRoutes(
           status: "Pending",
         },
       });
+      if (req.body?.financeApprovalRequired === true) {
+        await db.quotationApproval.create({
+          data: {
+            quotationId: existing.id,
+            stage: "Finance",
+            status: "Pending",
+          },
+        });
+      }
       const quotation = await db.quotation.update({
         where: { id: existing.id },
         data: { status: "Pending Approval", approvalStatus: "Pending" },
@@ -689,14 +1149,28 @@ export function mountQuotationRoutes(
     }
   });
 
-  app.post("/api/quotations/:id/approve", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager", "management", "accountant"), async (req: AuthRequest, res: Response) => {
+  app.post("/api/quotations/:id/approve", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager", "management", "accountant", "team_lead"), async (req: AuthRequest, res: Response) => {
     try {
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
       }
       const stage = String(req.body?.stage || "Team Lead");
+      if (!canApproveStage(req.auth?.role, stage)) {
+        res.status(403).json({ error: "You cannot approve this stage" });
+        return;
+      }
+      const approvals = existing.approvals || [];
+      const latest = (name: string) => [...approvals].reverse().find((row) => row.stage === name);
+      if (stage === "Finance" && latest("Team Lead")?.status !== "Approved") {
+        res.status(403).json({ error: "Team Lead approval is required before Finance approval" });
+        return;
+      }
+      if (stage === "Team Lead" && latest("Team Lead")?.status === "Rejected") {
+        res.status(403).json({ error: "This approval was rejected" });
+        return;
+      }
       await db.quotationApproval.create({
         data: {
           quotationId: existing.id,
@@ -708,40 +1182,43 @@ export function mountQuotationRoutes(
           decidedAt: new Date(),
         },
       });
-      const ready = stage === "Finance" || stage === "Ready to Send" || req.body?.readyToSend;
+      const finance = stage === "Finance" ? { status: "Approved" } : latest("Finance");
+      const teamApproved = stage === "Team Lead" || latest("Team Lead")?.status === "Approved";
+      const financeDone = !finance || finance.status === "Approved";
+      const ready = teamApproved && financeDone;
       const quotation = await db.quotation.update({
         where: { id: existing.id },
         data: {
-          approvalStatus: "Approved",
-          status: ready ? "Sent to Agent" : existing.status === "Pending Approval" ? "Pending Approval" : existing.status,
-          ...(ready ? { termsSnapshot: buildTermsSnapshot(existing) } : {}),
+          approvalStatus: ready ? "Approved" : "Pending",
+          status: existing.status === "Pending Approval" || existing.status === "In Progress" ? "Pending Approval" : existing.status,
         },
         include: QUOTE_INCLUDE,
       });
-      if (ready) {
-        await db.quotation.update({ where: { id: existing.id }, data: { status: "Sent to Agent" } });
-      }
-      await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Approved", details: stage });
+      await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Approved", details: stage, updatedValue: { stage, comments: req.body?.comments, approver: req.auth?.email } });
       await notifyQuote({ agencyId: existing.agencyId, title: "Approval approved", message: `${existing.quoteNo} approved (${stage})` });
-      const full = await db.quotation.findUnique({ where: { id: existing.id }, include: QUOTE_INCLUDE });
-      res.json({ quotation: full || quotation });
+      res.json({ quotation });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
     }
   });
 
-  app.post("/api/quotations/:id/reject-approval", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager", "management", "accountant"), async (req: AuthRequest, res: Response) => {
+  app.post("/api/quotations/:id/reject-approval", requireAuth, requireRole("super_admin", "agency_admin", "branch_manager", "management", "accountant", "team_lead"), async (req: AuthRequest, res: Response) => {
     try {
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const stage = String(req.body?.stage || "Team Lead");
+      if (!canApproveStage(req.auth?.role, stage)) {
+        res.status(403).json({ error: "You cannot reject this stage" });
         return;
       }
       await db.quotationApproval.create({
         data: {
           quotationId: existing.id,
-          stage: String(req.body?.stage || "Team Lead"),
+          stage,
           status: "Rejected",
           approverName: req.auth?.email,
           approverRole: req.auth?.role,
@@ -766,13 +1243,24 @@ export function mountQuotationRoutes(
   // ── Customer/agent accept / reject / revision ────────────────────────────
   app.post("/api/quotations/:id/accept", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
       }
-      if (existing.status === "Expired") {
+      const transitionBlocked = quoteStaffAcceptTransitionBlockReason(existing.status);
+      if (transitionBlocked) {
+        res.status(400).json({ error: transitionBlocked });
+        return;
+      }
+      if (existing.status === "Expired" || quotePastValidityBlockReason(existing)) {
         res.status(400).json({ error: "Quotation expired — renew before accepting" });
+        return;
+      }
+      const unresolved = quoteUnresolvedRateReason(existing.packages as unknown as Array<Record<string, unknown>>)
+        || pricingFinalizationBlock(existing.packages);
+      if (unresolved) {
+        res.status(400).json({ error: unresolved });
         return;
       }
       const packageId = req.body?.selectedPackageId as string | undefined;
@@ -788,9 +1276,21 @@ export function mountQuotationRoutes(
           acceptedByName: req.body?.personName || req.auth?.email,
           acceptedByEmail: req.body?.email || req.auth?.email,
           acceptedAt: new Date(),
+          acceptedVersionNumber: existing.currentVersion || 1,
         },
         include: QUOTE_INCLUDE,
       });
+      await db.quotationCustomerResponse.create({
+        data: {
+          quotationId: existing.id,
+          versionNumber: existing.currentVersion || 1,
+          responseType: "Accept",
+          comment: "Accepted via authenticated staff/agent action",
+          customerName: req.body?.personName || req.auth?.email,
+          customerEmail: req.body?.email || req.auth?.email,
+          selectedPackageId: packageId || existing.selectedPackageId || undefined,
+        },
+      }).catch(() => undefined);
       await writeQuoteAudit({
         req,
         agencyId: existing.agencyId,
@@ -808,7 +1308,7 @@ export function mountQuotationRoutes(
 
   app.post("/api/quotations/:id/reject", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -829,7 +1329,7 @@ export function mountQuotationRoutes(
 
   app.post("/api/quotations/:id/request-revision", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -865,7 +1365,7 @@ export function mountQuotationRoutes(
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -981,7 +1481,7 @@ export function mountQuotationRoutes(
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -1004,7 +1504,7 @@ export function mountQuotationRoutes(
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -1028,7 +1528,7 @@ export function mountQuotationRoutes(
   // ── Extend validity / expire ─────────────────────────────────────────────
   app.post("/api/quotations/:id/extend", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -1038,9 +1538,17 @@ export function mountQuotationRoutes(
         res.status(400).json({ error: "validTill required" });
         return;
       }
-      const data: Record<string, unknown> = { validTill };
-      if (existing.status === "Expired") data.status = "Sent to Agent";
+      const data: Record<string, unknown> = { validTill, expiredAt: null };
+      // Renewing an expired quote returns it to In Progress and clears approval —
+      // never auto-restore Sent/Approved (Phase 1 + Phase 8).
+      if (existing.status === "Expired") {
+        data.status = "In Progress";
+        data.approvalStatus = "Draft";
+      }
       const quotation = await db.quotation.update({ where: { id: existing.id }, data, include: QUOTE_INCLUDE });
+      if (existing.status === "Expired") {
+        await db.quotationApproval.deleteMany({ where: { quotationId: existing.id } });
+      }
       await writeQuoteAudit({
         req,
         agencyId: existing.agencyId,
@@ -1058,8 +1566,8 @@ export function mountQuotationRoutes(
 
   app.post("/api/quotations/expire-due", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res: Response) => {
     try {
-      const expired = await expireDueQuotations({ ...agencyScope(req) });
-      res.json({ expired });
+      const result = await runExpireDueQuotations({ agencyWhere: { ...agencyScope(req) } });
+      res.json({ expired: result.expired, scanned: result.scanned, skipped: result.skipped, errors: result.errors, today: result.today });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -1073,18 +1581,18 @@ export function mountQuotationRoutes(
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
       }
-      const version = await snapshotVersion(
-        existing.id,
-        req.auth?.email || "System",
-        req.auth?.userId,
-        req.body?.changeSummary,
-        req.body?.reason,
-      );
+      const version = await createQuotationVersion({
+        quotationId: existing.id,
+        createdByName: req.auth?.email || "System",
+        createdById: req.auth?.userId,
+        changeSummary: req.body?.changeSummary,
+        reason: req.body?.reason || "manual",
+      });
       await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Version Created", details: `v${version?.versionNumber}` });
       res.status(201).json({ version });
     } catch (e) {
@@ -1095,16 +1603,59 @@ export function mountQuotationRoutes(
 
   app.get("/api/quotations/:id/versions", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      if (isAgentLike(req.auth?.role)) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
       }
-      res.json({ versions: existing.versions, currentVersion: existing.currentVersion });
+      const rows = await db.quotationVersion.findMany({
+        where: { quotationId: existing.id },
+        orderBy: { versionNumber: "desc" },
+      });
+      res.json({
+        versions: rows.map((row) => summarizeVersionForList(row, req.auth?.role)),
+        currentVersion: existing.currentVersion,
+      });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.get("/api/quotations/:id/versions/:versionNumber", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+    try {
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
+      if (!existing) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const versionNumber = parseInt(String(Array.isArray(req.params.versionNumber) ? req.params.versionNumber[0] : req.params.versionNumber), 10);
+      if (!Number.isFinite(versionNumber) || versionNumber < 1) {
+        res.status(400).json({ error: "Invalid version number" });
+        return;
+      }
+      const row = await db.quotationVersion.findFirst({
+        where: { quotationId: existing.id, versionNumber },
+      });
+      if (!row) {
+        res.status(404).json({ error: "Version not found" });
+        return;
+      }
+      const snapshot = sanitizeVersionSnapshot(row.snapshot, req.auth?.role);
+      res.json({
+        version: {
+          id: row.id,
+          versionNumber: row.versionNumber,
+          changeSummary: row.changeSummary,
+          reason: row.reason,
+          createdByName: row.createdByName,
+          createdById: row.createdById,
+          createdAt: row.createdAt,
+          readOnly: true,
+          snapshot,
+        },
+        currentVersion: existing.currentVersion,
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
@@ -1117,7 +1668,7 @@ export function mountQuotationRoutes(
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
@@ -1128,13 +1679,32 @@ export function mountQuotationRoutes(
         res.status(404).json({ error: "Version not found" });
         return;
       }
-      await snapshotVersion(existing.id, req.auth?.email || "System", req.auth?.userId, `Restore before v${version.versionNumber}`);
+      // Freeze current live state before applying restore content.
+      await createQuotationVersion({
+        quotationId: existing.id,
+        createdByName: req.auth?.email || "System",
+        createdById: req.auth?.userId,
+        changeSummary: `Checkpoint before restore of v${version.versionNumber}`,
+        reason: "pre_restore",
+      });
       const snap = version.snapshot as Record<string, unknown>;
       await restorePackagesFromSnapshot(existing.id, snap);
+      await db.quotationApproval.deleteMany({ where: { quotationId: existing.id } });
+      const { revokeCustomerAccessForQuotation } = await import("../lib/quotation-customer-access.js");
+      await revokeCustomerAccessForQuotation(existing.id);
+      const snapValidTill = typeof snap.validTill === "string" ? snap.validTill.slice(0, 10) : existing.validTill;
+      const validTill = isPastValidTill(snapValidTill) ? freshValidTill() : (snapValidTill || freshValidTill());
       const quotation = await db.quotation.update({
         where: { id: existing.id },
         data: {
           status: "In Progress",
+          approvalStatus: "Draft",
+          validTill,
+          expiredAt: null,
+          acceptedVersionNumber: null,
+          acceptedAt: null,
+          acceptedByName: null,
+          acceptedByEmail: null,
           amount: Number(snap.amount || existing.amount),
           gst: Number(snap.gst || existing.gst),
           total: Number(snap.total || existing.total),
@@ -1148,24 +1718,65 @@ export function mountQuotationRoutes(
         },
         include: QUOTE_INCLUDE,
       });
+      await createQuotationVersion({
+        quotationId: existing.id,
+        createdByName: req.auth?.email || "System",
+        createdById: req.auth?.userId,
+        changeSummary: `Restored content from v${version.versionNumber}`,
+        reason: "restore",
+        full: quotation as unknown as Record<string, unknown>,
+      });
+      const latest = await db.quotation.findUnique({ where: { id: existing.id }, include: QUOTE_INCLUDE });
       await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Version Restored", details: `v${version.versionNumber}` });
-      res.json({ quotation });
+      res.json({ quotation: sanitizeQuotationForRole((latest || quotation) as unknown as Record<string, unknown>, req.auth?.role) });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });
     }
   });
 
-  // ── Share tracking (email / WhatsApp — no fake delivery) ─────────────────
+  // ── Share tracking (Link). Email/WhatsApp use dedicated delivery endpoints. ─
   app.post("/api/quotations/:id/share", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      const existing = await loadQuote(req, agencyScope, branchScope);
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
         return;
       }
       const channel = String(req.body?.channel || "Link");
+      if (channel === "Email" || channel === "WhatsApp") {
+        res.status(410).json({
+          error: channel === "Email"
+            ? "Use POST /api/quotations/:id/email for real quotation email delivery with PDF attachment."
+            : "Use POST /api/quotations/:id/whatsapp for real WhatsApp delivery with the customer PDF.",
+        });
+        return;
+      }
+      const blocked = quoteSendBlockReason(existing);
+      if (blocked) {
+        res.status(403).json({ error: blocked });
+        return;
+      }
+      const unresolved = quoteUnresolvedRateReason(existing.packages as unknown as Array<Record<string, unknown>>)
+        || pricingFinalizationBlock(existing.packages);
+      if (unresolved) {
+        res.status(400).json({ error: unresolved });
+        return;
+      }
       const recipient = String(req.body?.recipient || existing.contactEmail || "");
+      const appOrigin = resolveAppOrigin(req.body?.appOrigin);
+      let customerUrl: string | null = null;
+      try {
+        const link = await createCustomerAccessLink({
+          quotationId: existing.id,
+          createdById: req.auth?.userId,
+          createdByName: req.auth?.email,
+          appOrigin,
+        });
+        customerUrl = link.url;
+      } catch (linkErr) {
+        logger.warn({ err: linkErr }, "customer link not created for share");
+      }
       const share = await db.quotationShare.create({
         data: {
           quotationId: existing.id,
@@ -1174,57 +1785,22 @@ export function mountQuotationRoutes(
           senderName: req.auth?.email,
           message: req.body?.message,
           status: "Attempted",
+          versionNumber: existing.currentVersion || 1,
         },
       });
-      const link = `${req.body?.appOrigin || ""}/?view=quotations&quoteId=${existing.id}`;
-      let emailed = false;
-      if (channel === "Email" && recipient) {
-        const html = `
-          <p>Dear ${escapeHtml(existing.customerName)},</p>
-          <p>Please find your travel quotation <strong>${escapeHtml(existing.quoteNo)}</strong>
-          for ${escapeHtml(existing.destination || "your trip")}
-          (${escapeHtml(existing.travelStartDate || existing.travelDates || "")}).</p>
-          ${req.body?.message ? `<p>${escapeHtml(String(req.body.message))}</p>` : ""}
-          <p>View: <a href="${escapeHtml(link)}">${escapeHtml(link || existing.quoteNo)}</a></p>
-          <p>Regards,<br/>Trevio Global</p>
-        `;
-        emailed = await sendHtmlEmail(
-          recipient,
-          `Quotation ${existing.quoteNo} — ${existing.destination || "Travel"}`,
-          html,
-          { agencyId: existing.agencyId },
-        );
-        await db.quotationShare.update({
-          where: { id: share.id },
-          data: { status: emailed ? "Sent" : "Failed" },
-        });
-      }
-      if (["Draft", "In Progress", "Pending Approval"].includes(existing.status) && !isAgentLike(req.auth?.role)) {
-        await db.quotation.update({
-          where: { id: existing.id },
-          data: { status: "Sent to Agent", termsSnapshot: buildTermsSnapshot(existing) },
-        });
-      } else if (existing.status === "Sent to Agent") {
-        await db.quotation.update({ where: { id: existing.id }, data: { status: "Customer Reviewing" } });
-      } else if (isAgentLike(req.auth?.role) && ["Draft", "In Progress"].includes(existing.status)) {
-        await db.quotation.update({ where: { id: existing.id }, data: { status: "Customer Reviewing" } });
-      }
+      const link = customerUrl || `${appOrigin || ""}/?view=quotations&quoteId=${existing.id}`;
       await writeQuoteAudit({
         req,
         agencyId: existing.agencyId,
         quotationId: existing.id,
-        action: channel === "Email" ? "Email Sent" : channel === "WhatsApp" ? "WhatsApp Shared" : "Quote Shared",
+        action: "Quote Shared",
         details: recipient,
       });
       res.status(201).json({
-        share: { ...share, status: emailed ? "Sent" : share.status },
+        share,
         link,
-        emailed,
-        mailto: channel === "Email" && !emailed ? buildMailto(existing, link) : undefined,
-        whatsappUrl: channel === "WhatsApp" ? buildWhatsApp(existing, link, req.body?.recipient || existing.contactPhone || undefined) : undefined,
-        note: emailed
-          ? "Email sent via SMTP/SendGrid"
-          : "Delivery uses client mailto / wa.me unless SMTP/SendGrid is configured",
+        customerUrl,
+        note: "Secure customer response link issued when send-eligible. Use /email or /whatsapp for PDF delivery.",
       });
     } catch (e) {
       logger.error(e);
@@ -1232,85 +1808,150 @@ export function mountQuotationRoutes(
     }
   });
 
-  // ── Documents ────────────────────────────────────────────────────────────
-  app.post("/api/quotations/:id/documents", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+  // ── Real customer email delivery (Phase 6) ────────────────────────────────
+  app.post("/api/quotations/:id/email", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      if (isAgentLike(req.auth?.role)) {
-        res.status(403).json({ error: "Forbidden" });
+      const result = await deliverQuotation({
+        quotationId: paramId(req),
+        channel: "Email",
+        agencyScope: agencyScope(req),
+        role: req.auth?.role,
+        userId: req.auth?.userId,
+        email: req.auth?.email,
+        recipient: req.body?.recipient,
+        message: req.body?.message,
+        appOrigin: resolveAppOrigin(req.body?.appOrigin),
+      });
+      if (!result.ok) {
+        res.status(result.configured ? 502 : 503).json({
+          error: result.error,
+          configured: result.configured,
+          delivery: result.delivery,
+          document: result.document,
+        });
         return;
       }
-      const existing = await loadQuote(req, agencyScope, branchScope);
-      if (!existing) {
+      res.status(201).json(result);
+    } catch (e) {
+      if (e instanceof QuotationDeliveryError || e instanceof QuotationPdfError) {
+        res.status(e.statusCode).json({ error: e.message });
+        return;
+      }
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // ── Real customer WhatsApp delivery (Phase 6) ─────────────────────────────
+  app.post("/api/quotations/:id/whatsapp", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+    try {
+      const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http");
+      const host = String(req.headers["x-forwarded-host"] || req.headers.host || "");
+      const publicBaseUrl = host ? `${proto}://${host}` : undefined;
+      const result = await deliverQuotation({
+        quotationId: paramId(req),
+        channel: "WhatsApp",
+        agencyScope: agencyScope(req),
+        role: req.auth?.role,
+        userId: req.auth?.userId,
+        email: req.auth?.email,
+        recipient: req.body?.recipient,
+        message: req.body?.message,
+        publicBaseUrl,
+        appOrigin: resolveAppOrigin(req.body?.appOrigin),
+      });
+      if (!result.ok) {
+        res.status(result.configured ? 502 : 503).json({
+          error: result.error,
+          configured: result.configured,
+          delivery: result.delivery,
+          document: result.document,
+        });
+        return;
+      }
+      res.status(201).json(result);
+    } catch (e) {
+      if (e instanceof QuotationDeliveryError || e instanceof QuotationPdfError) {
+        res.status(e.statusCode).json({ error: e.message });
+        return;
+      }
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // Short-lived media fetch for Twilio WhatsApp (HMAC token; not a permanent public URL).
+  app.get("/api/delivery-media/:token", async (req: AuthRequest, res: Response) => {
+    try {
+      const token = Array.isArray(req.params.token) ? req.params.token[0] : String(req.params.token || "");
+      const parsed = verifyDeliveryMediaToken(token);
+      if (!parsed) {
         res.status(404).json({ error: "Not found" });
         return;
       }
-      const { docType, fileName, fileUrl, mimeType, sizeBytes, visibility, relatedEntity } = req.body || {};
-      if (!docType || !fileName || !fileUrl) {
-        res.status(400).json({ error: "docType, fileName, fileUrl required" });
-        return;
-      }
-      if (sizeBytes && Number(sizeBytes) > 10 * 1024 * 1024) {
-        res.status(400).json({ error: "Max 10 MB" });
-        return;
-      }
-      const document = await db.quotationDocument.create({
-        data: {
-          quotationId: existing.id,
-          docType,
-          fileName,
-          fileUrl,
-          mimeType,
-          sizeBytes: Number(sizeBytes) || 0,
-          visibility: visibility || "Internal",
-          relatedEntity,
-          uploadedBy: req.auth?.email,
+      const doc = await db.quotationDocument.findFirst({
+        where: {
+          id: parsed.documentId,
+          quotationId: parsed.quotationId,
+          visibility: "CUSTOMER",
+          relatedEntity: "CUSTOMER_QUOTATION_PDF",
+          storageKey: parsed.storageKey,
         },
       });
-      res.status(201).json({ document });
+      if (!doc?.storageKey) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const buffer = await readPrivateObject(doc.storageKey);
+      if (!buffer?.length) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      res.setHeader("Content-Type", doc.mimeType || "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${doc.fileName.replace(/"/g, "")}"`);
+      res.setHeader("Cache-Control", "private, no-store, max-age=0");
+      res.status(200).send(buffer);
     } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  // ── Customer quotation PDF (server-side, Phase 4 storage) ─────────────────
+  app.post("/api/quotations/:id/pdf", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+    try {
+      const mode = String(req.body?.mode || req.query.mode || "customer") === "preview" ? "preview" : "customer";
+      const result = await generateQuotationPdf({
+        quotationId: paramId(req),
+        agencyScope: agencyScope(req),
+        role: req.auth?.role,
+        userId: req.auth?.userId,
+        email: req.auth?.email,
+        mode,
+      });
+      await writeQuoteAudit({
+        req,
+        agencyId: result.agencyId,
+        quotationId: result.quoteId,
+        action: mode === "preview" ? "Quotation PDF Preview Generated" : "Quotation PDF Generated",
+        updatedValue: { documentId: result.document.id, pages: result.pageCount, mode },
+      });
+      res.status(201).json(result);
+    } catch (e) {
+      if (e instanceof QuotationPdfError) {
+        res.status(e.statusCode).json({ error: e.message });
+        return;
+      }
       logger.error(e);
       res.status(500).json({ error: "Server error" });
     }
   });
 
   // ── Mark converted (called after BMS proceed, or wrap) ───────────────────
-  app.post("/api/quotations/:id/mark-converted", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
-    try {
-      const existing = await loadQuote(req, agencyScope, branchScope);
-      if (!existing) {
-        res.status(404).json({ error: "Not found" });
-        return;
-      }
-      if (existing.status === "Converted to Booking" && existing.convertedBookingId) {
-        res.status(409).json({ error: "Already converted", bookingId: existing.convertedBookingId });
-        return;
-      }
-      if (existing.status === "Expired") {
-        res.status(400).json({ error: "Renew expired quotation before conversion" });
-        return;
-      }
-      const quotation = await db.quotation.update({
-        where: { id: existing.id },
-        data: {
-          status: "Converted to Booking",
-          convertedBookingId: req.body?.bookingId,
-          convertedAt: new Date(),
-          convertedBy: req.auth?.email,
-        },
-        include: QUOTE_INCLUDE,
-      });
-      await writeQuoteAudit({
-        req,
-        agencyId: existing.agencyId,
-        quotationId: existing.id,
-        action: "Booking Conversion",
-        updatedValue: { bookingId: req.body?.bookingId },
-      });
-      res.json({ quotation });
-    } catch (e) {
-      logger.error(e);
-      res.status(500).json({ error: "Server error" });
-    }
+  app.post("/api/quotations/:id/mark-converted", requireAuth, requirePermission("quotations"), async (_req: AuthRequest, res: Response) => {
+    res.status(410).json({
+      error: "This route cannot mark a quotation converted. Use POST /api/quotations/:id/proceed-to-booking, which creates the booking first.",
+    });
   });
 
   // ── Agent: create quotation from published package ───────────────────────
@@ -1342,10 +1983,48 @@ export function mountQuotationRoutes(
       const agentMarkup = Math.max(0, Math.round(Number(body.agentMarkup || 0)));
       const adults = Number(body.adults ?? 2);
       const children = Number(body.children ?? 0);
-      const totals = totalsWithAgentMarkup(meta.baseSellingTotal, agentMarkup, adults, children);
       const customerName = String(body.customerName || "Guest").trim() || "Guest";
       const quoteNo = await nextQuoteNo();
       const validTill = body.validTill || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+
+      const frozenLines = await freezePackageLines(
+        {
+          hotels: packagePayload.hotels,
+          flights: packagePayload.flights,
+          transfers: packagePayload.transfers,
+          activities: packagePayload.activities,
+          meals: packagePayload.meals,
+        },
+        {
+          travelDate: body.travelStartDate || null,
+          travelEndDate: body.travelEndDate || null,
+          scope: agencyScope(req),
+        },
+      );
+      const priced = await priceFrozenPackage(
+        {
+          ...packagePayload,
+          hotels: frozenLines.hotels,
+          flights: frozenLines.flights,
+          transfers: frozenLines.transfers,
+          activities: frozenLines.activities,
+          meals: frozenLines.meals,
+        },
+        {
+          currency: meta.currency,
+          nights: meta.nights,
+          adults,
+          children,
+          infants: Number(body.infants ?? 0),
+          trevioMarkupType: "Percentage",
+          trevioMarkupValue: 0,
+          agentMarkupType: "Fixed",
+          agentMarkup,
+          travelStartDate: body.travelStartDate || null,
+          scope: agencyScope(req),
+        },
+      );
+      const layers = layersFromPackage(priced.priced);
 
       const quote = await db.quotation.create({
         data: {
@@ -1355,14 +2034,15 @@ export function mountQuotationRoutes(
           customerName,
           service: "Holiday",
           items: 1,
-          amount: totals.amount,
-          gst: totals.gst,
-          total: totals.total,
-          totalNetCost: packagePayload.totalNetCost,
-          totalSelling: totals.totalSelling,
-          grossProfit: packagePayload.grossProfit + agentMarkup,
-          perPersonCost: totals.perPersonCost,
-          status: customerName === "Guest" ? "In Progress" : "Customer Reviewing",
+          amount: layers.amount,
+          gst: layers.gst,
+          total: layers.total,
+          totalNetCost: layers.totalNetCost,
+          totalSelling: layers.totalSelling,
+          grossProfit: layers.grossProfit,
+          perPersonCost: layers.perPersonCost,
+          pricingStatus: priced.priced.unresolved ? "UNRESOLVED" : "OK",
+          status: priced.priced.unresolved || customerName === "Guest" ? "In Progress" : "Customer Reviewing",
           validTill,
           quoteDate: new Date().toISOString().slice(0, 10),
           createdById: req.auth?.userId,
@@ -1385,13 +2065,14 @@ export function mountQuotationRoutes(
           packageIncludes: meta.packageIncludes,
           packageExcludes: meta.packageExcludes,
           selectedPackageId: packageId,
-          agentMarkup: totals.agentMarkup,
-          baseSellingTotal: totals.baseSellingTotal,
+          agentMarkup,
+          baseSellingTotal: layers.totalSelling,
           specialRequests: body.specialRequests || null,
           travelStartDate: body.travelStartDate || null,
           travelEndDate: body.travelEndDate || null,
           travelDates: body.travelStartDate || null,
-          taxRate: 18,
+          taxRate: priced.taxRate || 0,
+          taxRuleId: priced.taxRuleId,
           approvalStatus: "Approved",
         },
       });
@@ -1399,10 +2080,26 @@ export function mountQuotationRoutes(
       await db.quotationPackage.create({
         data: {
           quotationId: quote.id,
-          ...packagePayload,
-          total: totals.total,
-          totalSelling: totals.totalSelling,
-          perPersonCost: totals.perPersonCost,
+          name: packagePayload.name,
+          sortOrder: 0,
+          isSelected: true,
+          description: packagePayload.description,
+          hotels: (priced.frozen.hotels || []) as Prisma.InputJsonValue,
+          flights: (priced.frozen.flights || []) as Prisma.InputJsonValue,
+          transfers: (priced.frozen.transfers || []) as Prisma.InputJsonValue,
+          activities: (priced.frozen.activities || []) as Prisma.InputJsonValue,
+          meals: (priced.frozen.meals || []) as Prisma.InputJsonValue,
+          itinerary: packagePayload.itinerary as Prisma.InputJsonValue,
+          addOns: [],
+          inclusions: packagePayload.inclusions as Prisma.InputJsonValue,
+          exclusions: packagePayload.exclusions as Prisma.InputJsonValue,
+          pricing: priced.priced as Prisma.InputJsonValue,
+          totalNetCost: layers.totalNetCost,
+          totalSelling: layers.totalSelling,
+          grossProfit: layers.grossProfit,
+          gst: layers.gst,
+          total: layers.total,
+          perPersonCost: layers.perPersonCost,
         },
       });
 
@@ -1412,6 +2109,11 @@ export function mountQuotationRoutes(
         quotationId: quote.id,
         action: "Agent Quote Created",
         updatedValue: { packageId, agentMarkup },
+      });
+      await ensureInitialQuotationVersion({
+        quotationId: quote.id,
+        createdByName: req.auth?.email || "Agent",
+        createdById: req.auth?.userId,
       });
 
       const full = await db.quotation.findUnique({ where: { id: quote.id }, include: QUOTE_INCLUDE });
@@ -1445,47 +2147,33 @@ export function mountQuotationRoutes(
       const agentMarkup = Math.max(0, Math.round(Number(body.agentMarkup || 0)));
       const adults = Number(body.adults ?? 2);
       const children = Number(body.children ?? 0);
-      const taxRate = Number(body.taxRate ?? 18);
 
-      const lineItems = lines.map((l: Record<string, unknown>, i: number) => {
-        const qty = Math.max(1, Number(l.qty || 1));
-        const price = Math.max(0, Math.round(Number(l.sellingPrice || l.price || 0)));
-        return {
-          id: `line-${i + 1}`,
-          type: String(l.type || "Service"),
-          description: String(l.description || l.type || "Service"),
-          qty,
-          price,
-          amount: qty * price,
-        };
+      const prepared = await prepareAgentTripLines(lines, {
+        travelDate: body.travelStartDate,
+        scope: agencyScope(req),
       });
-      const baseSelling = lineItems.reduce((s: number, l: { amount: number }) => s + l.amount, 0) + agentMarkup;
-      const amount = Math.round(baseSelling / (1 + taxRate / 100));
-      const gst = baseSelling - amount;
-      const total = baseSelling;
+      if (prepared.error || !prepared.lineItems || !prepared.packages) {
+        res.status(400).json({ error: prepared.error || NO_VALID_RATE_MESSAGE });
+        return;
+      }
+      const lineItems = prepared.lineItems;
+      const packages = prepared.packages;
+      const { hotels, flights, transfers, activities, meals } = packages;
+      const priced = await priceFrozenPackage({ hotels, flights, transfers, activities, meals }, {
+        currency: "INR",
+        adults,
+        children,
+        infants: Number(body.infants ?? 0),
+        trevioMarkupType: "Percentage",
+        trevioMarkupValue: 0,
+        agentMarkupType: body.agentMarkupType === "Percentage" ? "Percentage" : "Fixed",
+        agentMarkup,
+        travelStartDate: body.travelStartDate,
+        scope: agencyScope(req),
+      });
+      const layers = layersFromPackage(priced.priced);
       const quoteNo = await nextQuoteNo();
       const validTill = body.validTill || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-
-      const hotels = lineItems.filter((l: { type: string }) => /hotel/i.test(l.type)).map((l: { description: string; amount: number }) => ({
-        name: l.description,
-        sellingPrice: l.amount,
-        costPrice: 0,
-      }));
-      const flights = lineItems.filter((l: { type: string }) => /flight/i.test(l.type)).map((l: { description: string; amount: number }) => ({
-        airline: l.description,
-        sellingPrice: l.amount,
-        costPrice: 0,
-      }));
-      const transfers = lineItems.filter((l: { type: string }) => /transfer/i.test(l.type)).map((l: { description: string; amount: number }) => ({
-        title: l.description,
-        sellingPrice: l.amount,
-        costPrice: 0,
-      }));
-      const activities = lineItems.filter((l: { type: string }) => /activit/i.test(l.type)).map((l: { description: string; amount: number }) => ({
-        title: l.description,
-        sellingPrice: l.amount,
-        costPrice: 0,
-      }));
 
       const quote = await db.quotation.create({
         data: {
@@ -1495,14 +2183,15 @@ export function mountQuotationRoutes(
           customerName,
           service: "Holiday",
           items: lineItems.length,
-          amount,
-          gst,
-          total,
-          totalSelling: total,
-          totalNetCost: 0,
-          grossProfit: agentMarkup,
-          perPersonCost: Math.round(total / Math.max(1, adults + children)),
-          status: customerName === "Guest" ? "In Progress" : "Customer Reviewing",
+          amount: layers.amount,
+          gst: layers.gst,
+          total: layers.total,
+          totalSelling: layers.totalSelling,
+          totalNetCost: layers.totalNetCost,
+          grossProfit: layers.grossProfit,
+          perPersonCost: layers.perPersonCost,
+          pricingStatus: priced.priced.unresolved ? "UNRESOLVED" : "OK",
+          status: priced.priced.unresolved || customerName === "Guest" ? "In Progress" : "Customer Reviewing",
           validTill,
           quoteDate: new Date().toISOString().slice(0, 10),
           createdById: req.auth?.userId,
@@ -1520,12 +2209,13 @@ export function mountQuotationRoutes(
           currency: "INR",
           lineItems,
           agentMarkup,
-          baseSellingTotal: baseSelling - agentMarkup,
+          baseSellingTotal: layers.totalSelling,
           specialRequests: body.specialRequests || null,
           travelStartDate: body.travelStartDate || null,
           travelEndDate: body.travelEndDate || null,
           travelDates: body.travelStartDate || null,
-          taxRate,
+          taxRate: priced.taxRate || 0,
+          taxRuleId: priced.taxRuleId,
           approvalStatus: "Approved",
           leadId: body.leadId || null,
         },
@@ -1537,19 +2227,20 @@ export function mountQuotationRoutes(
           name: "Custom Trip",
           isSelected: true,
           sortOrder: 0,
-          hotels,
-          flights,
-          transfers,
-          activities,
-          meals: [],
+          hotels: (priced.frozen.hotels || []) as Prisma.InputJsonValue,
+          flights: (priced.frozen.flights || []) as Prisma.InputJsonValue,
+          transfers: (priced.frozen.transfers || []) as Prisma.InputJsonValue,
+          activities: (priced.frozen.activities || []) as Prisma.InputJsonValue,
+          meals: (priced.frozen.meals || []) as Prisma.InputJsonValue,
           addOns: [],
           itinerary: [],
-          totalNetCost: 0,
-          totalSelling: total,
-          grossProfit: agentMarkup,
-          gst,
-          total,
-          perPersonCost: Math.round(total / Math.max(1, adults + children)),
+          pricing: priced.priced as Prisma.InputJsonValue,
+          totalNetCost: layers.totalNetCost,
+          totalSelling: layers.totalSelling,
+          grossProfit: layers.grossProfit,
+          gst: layers.gst,
+          total: layers.total,
+          perPersonCost: layers.perPersonCost,
         },
       });
 
@@ -1559,6 +2250,11 @@ export function mountQuotationRoutes(
         quotationId: quote.id,
         action: "Agent Trip Composer",
         updatedValue: { lines: lineItems.length, agentMarkup },
+      });
+      await ensureInitialQuotationVersion({
+        quotationId: quote.id,
+        createdByName: req.auth?.email || "Agent",
+        createdById: req.auth?.userId,
       });
 
       const full = await db.quotation.findUnique({ where: { id: quote.id }, include: QUOTE_INCLUDE });
@@ -1586,7 +2282,7 @@ export function mountQuotationRoutes(
         return;
       }
 
-      const body = req.body || {};
+      const body = stripAgentPricingOverrides(req.body || {});
       const data: Record<string, unknown> = {};
       if (body.customerName != null) data.customerName = String(body.customerName).trim() || existing.customerName;
       if (body.contactPerson != null) data.contactPerson = body.contactPerson;
@@ -1598,38 +2294,64 @@ export function mountQuotationRoutes(
       if (body.travelStartDate != null) data.travelDates = body.travelStartDate;
       if (body.adults != null) data.adults = Number(body.adults);
       if (body.children != null) data.children = Number(body.children);
+      if (body.infants != null) data.infants = Number(body.infants);
 
-      const baseSelling = existing.baseSellingTotal || Math.max(0, existing.total - (existing.agentMarkup || 0));
       const agentMarkup = body.agentMarkup != null ? Math.max(0, Math.round(Number(body.agentMarkup))) : (existing.agentMarkup || 0);
-      const totals = totalsWithAgentMarkup(
-        baseSelling,
-        agentMarkup,
-        Number(body.adults ?? existing.adults ?? 2),
-        Number(body.children ?? existing.children ?? 0),
-      );
-      data.agentMarkup = totals.agentMarkup;
-      data.baseSellingTotal = totals.baseSellingTotal;
-      data.amount = totals.amount;
-      data.gst = totals.gst;
-      data.total = totals.total;
-      data.perPersonCost = totals.perPersonCost;
-      data.totalSelling = totals.totalSelling;
-
-      await db.quotation.update({ where: { id: existing.id }, data });
       const pkg = existing.packages.find((p) => p.isSelected) || existing.packages[0];
       if (pkg) {
+        const priced = await priceFrozenPackage(pkg as unknown as Record<string, unknown>, {
+          currency: existing.currency,
+          nights: existing.nights,
+          adults: body.adults ?? existing.adults,
+          children: body.children ?? existing.children,
+          infants: body.infants ?? existing.infants,
+          trevioMarkupType: existing.trevioMarkupType,
+          trevioMarkupValue: existing.trevioMarkupValue,
+          agentMarkupType: body.agentMarkupType === "Percentage" ? "Percentage" : existing.agentMarkupType,
+          agentMarkup,
+          discountType: existing.discountType,
+          discountValue: existing.discountValue,
+          travelStartDate: body.travelStartDate ?? existing.travelStartDate,
+          exchangeRate: existing.exchangeRate,
+          exchangeRateExplicit: existing.exchangeRateExplicit,
+          scope: agencyScope(req),
+        });
+        const layers = layersFromPackage(priced.priced);
+        data.agentMarkup = agentMarkup;
+        data.baseSellingTotal = layers.totalSelling;
+        data.amount = layers.amount;
+        data.gst = layers.gst;
+        data.total = layers.total;
+        data.perPersonCost = layers.perPersonCost;
+        data.totalSelling = layers.totalSelling;
+        data.totalNetCost = layers.totalNetCost;
+        data.pricingStatus = priced.priced.unresolved ? "UNRESOLVED" : "OK";
+        data.taxRate = priced.taxRate;
         await db.quotationPackage.update({
           where: { id: pkg.id },
-          data: { total: totals.total, totalSelling: totals.totalSelling, perPersonCost: totals.perPersonCost },
+          data: { ...packageWriteData(priced.frozen, layers), totalNetCost: layers.totalNetCost, grossProfit: layers.grossProfit, gst: layers.gst },
         });
       }
+
+      await db.quotation.update({ where: { id: existing.id }, data });
+
+      const after = await db.quotation.findUnique({ where: { id: existing.id }, include: QUOTE_INCLUDE });
+      await recordQuotationRevisionIfNeeded({
+        quotationId: existing.id,
+        before: existing as unknown as Record<string, unknown>,
+        after: (after || existing) as unknown as Record<string, unknown>,
+        createdByName: req.auth?.email || "Agent",
+        createdById: req.auth?.userId,
+        changeSummary: "Agent update",
+        reason: "agent_update",
+      });
 
       await writeQuoteAudit({
         req,
         agencyId: existing.agencyId,
         quotationId: existing.id,
         action: "Agent Quote Updated",
-        updatedValue: { agentMarkup: totals.agentMarkup, total: totals.total },
+        updatedValue: { agentMarkup, total: data.total ?? existing.total },
       });
 
       const full = await db.quotation.findUnique({ where: { id: existing.id }, include: QUOTE_INCLUDE });
@@ -1700,21 +2422,4 @@ function buildLineItemsFromPackages(packages: Array<{ name: string; total: numbe
     items.push({ description: `Package: ${pkg.name}`, qty: 1, price: pkg.total, type: "package" });
   }
   return items;
-}
-
-function buildMailto(q: { quoteNo: string; customerName: string; destination: string | null; travelStartDate: string | null; travelDates: string | null; contactEmail: string | null }, link: string) {
-  const subject = encodeURIComponent(`Quotation ${q.quoteNo} — ${q.destination || "Travel"}`);
-  const body = encodeURIComponent(
-    `Dear ${q.customerName},\n\nPlease find your travel quotation ${q.quoteNo} for ${q.destination || "your trip"} (${q.travelStartDate || q.travelDates || ""}).\n\nView: ${link}\n\nRegards,\nTrevio Global`,
-  );
-  const to = q.contactEmail || "";
-  return `mailto:${to}?subject=${subject}&body=${body}`;
-}
-
-function buildWhatsApp(q: { quoteNo: string; customerName: string; destination: string | null; travelStartDate: string | null; travelDates: string | null }, link: string, phone?: string) {
-  const text = encodeURIComponent(
-    `Hi ${q.customerName}, your quotation ${q.quoteNo} for ${q.destination || "your trip"} (${q.travelStartDate || q.travelDates || ""}) is ready. ${link}`,
-  );
-  const digits = (phone || "").replace(/\D/g, "");
-  return digits ? `https://wa.me/${digits}?text=${text}` : `https://wa.me/?text=${text}`;
 }

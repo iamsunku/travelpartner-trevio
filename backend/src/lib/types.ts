@@ -12,6 +12,7 @@ export type Role =
   | "product_executive"
   | "operations"
   | "travel_agent"
+  | "team_lead"
   | "management";
 
 export interface User {
@@ -73,6 +74,8 @@ export interface Flight {
   seatsLeft: number;
   refundable: boolean;
   aircraft: string;
+  /** Provider baggage allowance when supplied (e.g. "1 × 23kg"). */
+  baggage?: string;
   rating: number;
 }
 

@@ -8,10 +8,10 @@ import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore } from "@/store/app-store";
 import type { ProductRecord, Quotation, QuotationPackage } from "@/types";
 import { formatFullINR } from "@/components/shared/ui-helpers";
-import { calcPackageCosting, resolveQuotationCosting } from "@/lib/quote-costing";
+import { previewPackageLayers, resolveQuotationCosting } from "@/lib/quote-costing";
 import { QuotePriceBreakdown } from "@/components/shared/quote-price-breakdown";
 import { DESTINATION_QUOTE_PLANS, getDestinationQuotePlan } from "@/lib/destination-quote-plans";
-import { downloadClientQuotationBrochure } from "@/lib/client-quotation-brochure";
+import { downloadQuotationPdf } from "@/lib/quotation-actions";
 import { DestinationSelect } from "@/components/shared/destination-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -131,11 +131,19 @@ export function QuotationWizardDialog({
     isInternational: false,
     discountType: "" as "" | "Fixed" | "Percentage",
     discountValue: 0,
-    taxRate: 18,
+    taxRate: 0,
+    trevioMarkupType: "Percentage" as "Percentage" | "Fixed",
+    trevioMarkupValue: 0,
     termsAndConditions: "Rates subject to availability. Passport must be valid 6 months.",
     paymentTerms: "50% advance to confirm. Balance 15 days before travel.",
     cancellationPolicy: "Cancellation charges as per supplier policy.",
     refundPolicy: "Refunds processed within 15 working days after supplier confirmation.",
+    hotelTerms: "",
+    flightTerms: "",
+    visaTerms: "",
+    insuranceTerms: "",
+    forceMajeure: "",
+    travelDisclaimer: "This quotation is subject to availability and supplier confirmation. Catalogue visa notes are not immigration advice.",
     coverImage: "",
     budget: 0,
     service: "Holiday",
@@ -145,6 +153,13 @@ export function QuotationWizardDialog({
   const [packages, setPackages] = useState<QuotationPackage[]>([emptyPackage("Standard", true)]);
   const [destinationId, setDestinationId] = useState("");
   const [visaHint, setVisaHint] = useState("");
+  const [visaRecommendation, setVisaRecommendation] = useState<{
+    catalogueDetails: string;
+    visaTypicallyRequired: boolean;
+    suggestedVisaType: string;
+    suggestedEntryType: string;
+    disclaimer: string;
+  } | null>(null);
   const [planId, setPlanId] = useState("");
   const [suggestedNights, setSuggestedNights] = useState<number | null>(null);
 
@@ -182,10 +197,19 @@ export function QuotationWizardDialog({
             isInternational: Boolean(q.isInternational),
             discountType: (q.discountType as "" | "Fixed" | "Percentage") || "",
             discountValue: Number(q.discountValue || 0),
-            taxRate: Number(q.taxRate ?? 18),
+            taxRate: Number(q.taxRate ?? 0),
+            trevioMarkupType: (q.trevioMarkupType === "Fixed" ? "Fixed" : "Percentage"),
+            trevioMarkupValue: Number(q.trevioMarkupValue ?? 0),
             termsAndConditions: q.termsAndConditions || f.termsAndConditions,
             paymentTerms: q.paymentTerms || f.paymentTerms,
             cancellationPolicy: q.cancellationPolicy || f.cancellationPolicy,
+            refundPolicy: (q.refundPolicy as string) || f.refundPolicy,
+            hotelTerms: String(q.hotelTerms || ""),
+            flightTerms: String(q.flightTerms || ""),
+            visaTerms: String(q.visaTerms || ""),
+            insuranceTerms: String(q.insuranceTerms || ""),
+            forceMajeure: String(q.forceMajeure || ""),
+            travelDisclaimer: String(q.travelDisclaimer || f.travelDisclaimer),
             coverImage: q.coverImage || "",
             budget: Number(q.budget || 0),
             service: (q.service as string) || "Holiday",
@@ -201,6 +225,7 @@ export function QuotationWizardDialog({
       setPackages([emptyPackage("Standard", true)]);
       setDestinationId("");
       setVisaHint("");
+      setVisaRecommendation(null);
       setLeadId(prefill?.leadId || null);
       setForm((f) => ({
         ...f,
@@ -241,51 +266,50 @@ export function QuotationWizardDialog({
 
   const liveCosting = useMemo(
     () =>
-      calcPackageCosting({
+      previewPackageLayers({
         hotels: selected?.hotels,
         flights: selected?.flights,
         transfers: selected?.transfers,
         activities: selected?.activities,
         meals: selected?.meals,
-        addOns: selected?.addOns,
-        visa: selected?.visa as { enabled?: boolean; costPrice?: number; sellingPrice?: number } | null,
-        insurance: selected?.insurance as { enabled?: boolean; costPrice?: number; sellingPrice?: number } | null,
-        taxRate: form.taxRate,
+        nights,
+        trevioMarkupValue: form.trevioMarkupValue,
         discountType: form.discountType || null,
         discountValue: form.discountValue,
         adults: form.adults,
         children: form.children,
         infants: form.infants,
       }),
-    [selected, form.taxRate, form.discountType, form.discountValue, form.adults, form.children, form.infants],
+    [selected, nights, form.trevioMarkupValue, form.discountType, form.discountValue, form.adults, form.children, form.infants],
   );
 
   useEffect(() => {
     if (!form.destination.trim()) {
       setVisaHint("");
+      setVisaRecommendation(null);
       return;
     }
     const t = setTimeout(() => {
-      apiFetch<{ items: Array<{ name: string; country?: string; visaRequired?: boolean; visaDetails?: string | null }> }>(
-        `/api/destinations?q=${encodeURIComponent(form.destination)}&pageSize=5&status=Active`,
+      apiFetch<{
+        recommendation: {
+          catalogueDetails: string;
+          visaTypicallyRequired: boolean;
+          suggestedVisaType: string;
+          suggestedEntryType: string;
+          disclaimer: string;
+        };
+        matched: boolean;
+      }>(
+        `/api/destinations/visa-recommendation?q=${encodeURIComponent(form.destination)}&country=${encodeURIComponent(form.country || "")}`,
       )
         .then((r) => {
-          const hit =
-            r.items.find((i) => i.name.toLowerCase() === form.destination.toLowerCase()) ||
-            r.items.find((i) => (i.country || "").toLowerCase() === form.country.toLowerCase()) ||
-            r.items[0];
-          if (!hit) {
-            setVisaHint("");
-            return;
-          }
-          setVisaHint(
-            hit.visaDetails ||
-              (hit.visaRequired
-                ? `Visa is typically required for ${hit.name}.`
-                : `Visa is often not required for ${hit.name}. Confirm before travel.`),
-          );
+          setVisaRecommendation(r.recommendation);
+          setVisaHint(r.recommendation.catalogueDetails);
         })
-        .catch(() => setVisaHint(""));
+        .catch(() => {
+          setVisaHint("");
+          setVisaRecommendation(null);
+        });
     }, 250);
     return () => clearTimeout(t);
   }, [form.destination, form.country]);
@@ -557,6 +581,30 @@ export function QuotationWizardDialog({
               </div>
             </FormSection>
 
+            <FormSection
+              title="Apply quote template (optional)"
+              description="Uses Active Quote Templates. Default mode fills empty fields only — existing hotels, itinerary, and terms are preserved. Save the draft first."
+            >
+              <div className="sm:col-span-2">
+                <QuoteTemplateApplyButton
+                  quotationId={id}
+                  disabled={busy}
+                  onApplied={(q) => {
+                    setPackages(q.packages?.length ? q.packages : packages);
+                    setForm((f) => ({
+                      ...f,
+                      termsAndConditions: q.termsAndConditions || f.termsAndConditions,
+                      paymentTerms: q.paymentTerms || f.paymentTerms,
+                      cancellationPolicy: q.cancellationPolicy || f.cancellationPolicy,
+                      refundPolicy: q.refundPolicy || f.refundPolicy,
+                      specialRequests: q.specialRequests || f.specialRequests,
+                    }));
+                    upsertQuotation(q);
+                  }}
+                />
+              </div>
+            </FormSection>
+
             <FormSection title="Customer & agent codes" description="Agency and agent codes are system-generated.">
               <Field label="Customer *" value={form.customerName} onChange={(v) => setForm({ ...form, customerName: v })} />
               <Field label="Contact person" value={form.contactPerson} onChange={(v) => setForm({ ...form, contactPerson: v })} />
@@ -671,8 +719,10 @@ export function QuotationWizardDialog({
             rows={(selected?.hotels || []) as Record<string, unknown>[]}
             fields={["hotelName", "starCategory", "roomType", "mealPlan", "checkIn", "checkOut", "rooms", "city", "imageUrl", "costPrice", "sellingPrice", "supplier", "remarks"]}
             onChange={(rows) => patchSelected({ hotels: rows })}
-            template={{ hotelName: "", starCategory: "4", roomType: "Deluxe", mealPlan: "Breakfast", rooms: 1, city: "", imageUrl: "", costPrice: 8000, sellingPrice: 10000 }}
+            template={{ hotelName: "", starCategory: "4", roomType: "Deluxe", mealPlan: "Breakfast", rooms: 1, city: "", imageUrl: "", costPrice: 8000, sellingPrice: 10000, source: "MANUAL" }}
             catalogKind="hotels"
+            travelDate={form.travelStartDate}
+            travelEndDate={form.travelEndDate}
             catalogToRow={(item) => hotelFromCatalog(item)}
           />
         )}
@@ -681,9 +731,28 @@ export function QuotationWizardDialog({
           <ServiceEditor
             title="Flights"
             rows={(selected?.flights || []) as Record<string, unknown>[]}
-            fields={["airline", "flightNumber", "from", "to", "date", "depTime", "arrTime", "cabinClass", "pnr", "costPrice", "sellingPrice", "fare"]}
+            fields={["airline", "flightNumber", "from", "to", "date", "depTime", "arrTime", "duration", "baggage", "cabinClass", "currency", "pnr", "remarks", "costPrice", "sellingPrice", "fare"]}
             onChange={(rows) => patchSelected({ flights: rows })}
-            template={{ airline: "", flightNumber: "", from: "", to: "", cabinClass: "Economy", costPrice: 12000, sellingPrice: 15000, fare: 15000 }}
+            template={{ airline: "", flightNumber: "", from: "", to: "", cabinClass: "Economy", currency: form.currency || "INR", duration: "", baggage: "", remarks: "", pnr: "", costPrice: 12000, sellingPrice: 15000, fare: 15000, source: "MANUAL" }}
+            catalogKind="flights"
+            travelDate={form.travelStartDate}
+            quotationId={id}
+            catalogToRow={(item) => ({
+              productId: item.id,
+              productType: "FLIGHT",
+              source: "CONTRACTED_PRODUCT",
+              airline: String(item.airline || item.name || ""),
+              flightNumber: String(item.flightNumber || ""),
+              from: String(item.origin || ""),
+              to: String(item.destinationAirport || ""),
+              cabinClass: String(item.cabinClass || "Economy"),
+              depTime: String(item.departureTime || ""),
+              arrTime: String(item.arrivalTime || ""),
+              duration: String(item.duration || ""),
+              baggage: String(item.baggage || ""),
+              currency: String(item.currency || form.currency || "INR"),
+              date: form.travelStartDate,
+            })}
           />
         )}
 
@@ -776,17 +845,42 @@ export function QuotationWizardDialog({
                 />
                 <Textarea
                   className="text-xs"
-                  placeholder="Activities (one per line)"
+                  placeholder="Activities (one per line — advanced fields below preserve pickup/duration/vehicle/guide/voucher)"
                   value={Array.isArray(day.items) ? (day.items as Array<{ activityName?: string }>).map((i) => i.activityName || "").join("\n") : ""}
                   onChange={(e) => {
                     const days = [...(selected?.itinerary || [])] as Array<Record<string, unknown>>;
+                    const prevItems = Array.isArray(days[di].items) ? (days[di].items as Array<Record<string, unknown>>) : [];
+                    const lines = e.target.value.split("\n").filter(Boolean);
                     days[di] = {
                       ...days[di],
-                      items: e.target.value.split("\n").filter(Boolean).map((line) => ({ activityName: line, description: line })),
+                      items: lines.map((line, li) => ({
+                        ...(prevItems[li] || {}),
+                        activityName: line,
+                        description: String((prevItems[li] as { description?: string } | undefined)?.description || line),
+                      })),
                     };
                     patchSelected({ itinerary: days });
                   }}
                 />
+                {Array.isArray(day.items) && (day.items as Array<Record<string, unknown>>).slice(0, 4).map((item, ii) => (
+                  <div key={ii} className="grid grid-cols-2 md:grid-cols-3 gap-2 rounded-md border bg-muted/20 p-2">
+                    <p className="col-span-2 md:col-span-3 text-[10px] font-medium text-muted-foreground">{String(item.activityName || `Item ${ii + 1}`)}</p>
+                    {(["pickupTime", "duration", "vehicle", "guide", "voucher", "remarks"] as const).map((f) => (
+                      <Field
+                        key={f}
+                        label={f.replace(/([A-Z])/g, " $1")}
+                        value={String(item[f] || "")}
+                        onChange={(v) => {
+                          const days = [...(selected?.itinerary || [])] as Array<Record<string, unknown>>;
+                          const items = [...((days[di].items as Array<Record<string, unknown>>) || [])];
+                          items[ii] = { ...items[ii], [f]: v };
+                          days[di] = { ...days[di], items };
+                          patchSelected({ itinerary: days });
+                        }}
+                      />
+                    ))}
+                  </div>
+                ))}
               </div>
             ))}
           </div>
@@ -799,15 +893,17 @@ export function QuotationWizardDialog({
               rows={(selected?.transfers || []) as Record<string, unknown>[]}
               fields={["transferType", "date", "pickup", "drop", "vehicleType", "costPrice", "sellingPrice", "supplier"]}
               onChange={(rows) => patchSelected({ transfers: rows })}
-              template={{ transferType: "Airport Pickup", vehicleType: "Sedan", costPrice: 1500, sellingPrice: 2200 }}
+              template={{ transferType: "Airport Pickup", vehicleType: "Sedan", costPrice: 1500, sellingPrice: 2200, source: "MANUAL" }}
               catalogKind="transfers"
+              travelDate={form.travelStartDate}
               catalogToRow={(item) => ({
                 productId: item.id,
+                productType: "TRANSFER",
+                source: "CONTRACTED_PRODUCT",
                 transferType: String(item.transferType || item.name || "Transfer"),
                 vehicleType: String(item.vehicleType || "Sedan"),
                 pickup: String(item.pickupLocation || ""),
                 drop: String(item.dropLocation || ""),
-                costPrice: Math.round(Number(item.privatePrice ?? item.sharedPrice ?? 0) * 0.75),
                 sellingPrice: Number(item.privatePrice ?? item.sharedPrice ?? 0),
                 supplier: item.supplier?.name,
               })}
@@ -817,19 +913,22 @@ export function QuotationWizardDialog({
               rows={(selected?.activities || []) as Record<string, unknown>[]}
               fields={["activityName", "description", "date", "ticketType", "adultRate", "childRate", "adults", "children", "imageUrl", "costPrice", "sellingPrice"]}
               onChange={(rows) => patchSelected({ activities: rows })}
-              template={{ activityName: "", description: "", ticketType: "Standard", adultRate: 2500, childRate: 1500, adults: form.adults, children: form.children, imageUrl: "", costPrice: 2000, sellingPrice: 2500 }}
+              template={{ activityName: "", description: "", ticketType: "Standard", adultRate: 2500, childRate: 1500, adults: form.adults, children: form.children, imageUrl: "", costPrice: 2000, sellingPrice: 2500, source: "MANUAL" }}
               catalogKind="activities"
+              travelDate={form.travelStartDate}
               catalogToRow={(item) => ({
                 productId: item.id,
+                productType: "ACTIVITY",
+                source: "CONTRACTED_PRODUCT",
                 activityName: item.name,
                 description: String(item.shortDescription || item.description || ""),
-                ticketType: "Standard",
-                adultRate: Number(item.adultPrice || 0),
-                childRate: Number(item.childPrice || 0),
+                ticketType: String(item.ticketType || "Standard"),
+                startTime: String(item.startTime || ""),
+                closingTime: String(item.closingTime || ""),
+                duration: String(item.duration || ""),
                 adults: form.adults,
                 children: form.children,
                 imageUrl: firstProductImage(item),
-                costPrice: Math.round(Number(item.adultPrice || 0) * 0.75),
                 sellingPrice: Number(item.adultPrice || 0),
                 supplier: item.supplier?.name,
               })}
@@ -841,9 +940,25 @@ export function QuotationWizardDialog({
           <ServiceEditor
             title="Meals"
             rows={(selected?.meals || []) as Record<string, unknown>[]}
-            fields={["restaurant", "cuisine", "mealType", "date", "adults", "children", "adultRate", "childRate", "costPrice", "sellingPrice"]}
+            fields={["restaurant", "cuisine", "mealType", "dietary", "date", "adults", "children", "adultRate", "childRate", "costPrice", "sellingPrice"]}
             onChange={(rows) => patchSelected({ meals: rows })}
-            template={{ mealType: "Dinner", cuisine: "Local", adults: form.adults, children: form.children, adultRate: 1200, childRate: 800, costPrice: 900, sellingPrice: 1200 }}
+            template={{ mealType: "Dinner", cuisine: "Local", dietary: "", adults: form.adults, children: form.children, adultRate: 1200, childRate: 800, costPrice: 900, sellingPrice: 1200, source: "MANUAL" }}
+            catalogKind="meals"
+            travelDate={form.travelStartDate}
+            catalogToRow={(item) => ({
+              productId: item.id,
+              productType: "MEAL",
+              source: "CONTRACTED_PRODUCT",
+              restaurant: String(item.restaurant || item.name || ""),
+              mealType: String(item.mealType || "Other"),
+              cuisine: String(item.city || ""),
+              dietary: "",
+              description: String(item.description || ""),
+              transferBadge: item.transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer",
+              adults: form.adults,
+              children: form.children,
+              sellingPrice: Number(item.adultPrice || 0),
+            })}
           />
         )}
 
@@ -882,6 +997,10 @@ export function QuotationWizardDialog({
                 <>
                   <Field label="Visa Type" value={String((selected?.visa as { visaType?: string })?.visaType || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, visaType: v } })} />
                   <Field label="Entry" value={String((selected?.visa as { entryType?: string })?.entryType || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, entryType: v } })} />
+                  <Field label="Processing time" value={String((selected?.visa as { processingTime?: string })?.processingTime || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, processingTime: v } })} />
+                  <Field label="Fee notes" value={String((selected?.visa as { feeNotes?: string })?.feeNotes || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, feeNotes: v } })} />
+                  <Field label="Documents required" value={String((selected?.visa as { documentsRequired?: string })?.documentsRequired || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, documentsRequired: v } })} />
+                  <Field label="Appointment note" value={String((selected?.visa as { appointmentNote?: string })?.appointmentNote || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, appointmentNote: v } })} />
                   <Field label="Selling" type="number" value={String((selected?.visa as { sellingPrice?: number })?.sellingPrice || 0)} onChange={(v) => patchSelected({ visa: { ...selected?.visa, sellingPrice: Number(v) || 0 } })} />
                 </>
               )}
@@ -889,8 +1008,33 @@ export function QuotationWizardDialog({
                 {form.isInternational ? "International trip — visa often required." : "Domestic — visa typically not required."}
               </p>
               {visaHint && (
-                <div className="rounded-md bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-2 text-[11px] text-amber-900 dark:text-amber-200">
-                  {visaHint}
+                <div className="rounded-md bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-2 text-[11px] text-amber-900 dark:text-amber-200 space-y-2">
+                  <p>{visaHint}</p>
+                  {visaRecommendation && (
+                    <>
+                      <p className="opacity-80">{visaRecommendation.disclaimer}</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        type="button"
+                        className="h-7 text-[11px]"
+                        onClick={() => patchSelected({
+                          visa: {
+                            ...(selected?.visa || {}),
+                            enabled: true,
+                            visaType: visaRecommendation.suggestedVisaType,
+                            entryType: visaRecommendation.suggestedEntryType,
+                            required: visaRecommendation.visaTypicallyRequired,
+                            catalogueRecommendation: visaRecommendation.catalogueDetails,
+                            disclaimer: visaRecommendation.disclaimer,
+                            remarks: visaRecommendation.disclaimer,
+                          },
+                        })}
+                      >
+                        Apply catalogue recommendation
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -942,10 +1086,10 @@ export function QuotationWizardDialog({
                 </Select>
               </div>
               <Field label="Discount Value" type="number" value={String(form.discountValue)} onChange={(v) => setForm({ ...form, discountValue: Number(v) || 0 })} />
-              <Field label="Tax Rate %" type="number" value={String(form.taxRate)} onChange={(v) => setForm({ ...form, taxRate: Number(v) || 0 })} />
+              <Field label="Trevio markup %" type="number" value={String(form.trevioMarkupValue ?? 0)} onChange={(v) => setForm({ ...form, trevioMarkupValue: Number(v) || 0, trevioMarkupType: "Percentage" })} />
             </div>
             <p className="text-xs text-muted-foreground">
-              Final Quote Price — stay, rates and summary update live. Totals are recalculated on the server when you save.
+              Contracted cost comes from the saved rate snapshot. Trevio markup is internal. Tax is applied only from an active tax rule — if none exists, saving is allowed but the quote cannot be finalized until tax configuration exists.
             </p>
             <QuotePriceBreakdown
               costing={resolveQuotationCosting({
@@ -1012,7 +1156,7 @@ export function QuotationWizardDialog({
         )}
 
         {step === 9 && (
-          <FormSection title="Terms & policies" description="These appear on the customer quotation PDF.">
+          <FormSection title="Terms & policies" description="These appear on the customer quotation PDF. Extra terms are snapshotted on the quotation — later catalogue edits do not rewrite saved quotes.">
             <div className="sm:col-span-2 space-y-1.5">
               <Label className="text-sm font-medium">Terms & conditions</Label>
               <Textarea className="min-h-[88px]" value={form.termsAndConditions} onChange={(e) => setForm({ ...form, termsAndConditions: e.target.value })} rows={3} />
@@ -1029,6 +1173,53 @@ export function QuotationWizardDialog({
               <Label className="text-sm font-medium">Refund policy</Label>
               <Textarea value={form.refundPolicy} onChange={(e) => setForm({ ...form, refundPolicy: e.target.value })} rows={2} />
             </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Hotel terms</Label>
+              <Textarea value={form.hotelTerms} onChange={(e) => setForm({ ...form, hotelTerms: e.target.value })} rows={2} />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Flight terms</Label>
+              <Textarea value={form.flightTerms} onChange={(e) => setForm({ ...form, flightTerms: e.target.value })} rows={2} />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Visa terms</Label>
+              <Textarea value={form.visaTerms} onChange={(e) => setForm({ ...form, visaTerms: e.target.value })} rows={2} />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Insurance terms</Label>
+              <Textarea value={form.insuranceTerms} onChange={(e) => setForm({ ...form, insuranceTerms: e.target.value })} rows={2} />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Force majeure</Label>
+              <Textarea value={form.forceMajeure} onChange={(e) => setForm({ ...form, forceMajeure: e.target.value })} rows={2} />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-sm font-medium">Disclaimer</Label>
+              <Textarea value={form.travelDisclaimer} onChange={(e) => setForm({ ...form, travelDisclaimer: e.target.value })} rows={2} />
+            </div>
+            {planId && (
+              <div className="sm:col-span-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => {
+                    const plan = getDestinationQuotePlan(planId);
+                    if (!plan) return;
+                    setForm((f) => ({
+                      ...f,
+                      termsAndConditions: plan.form.termsAndConditions || f.termsAndConditions,
+                      paymentTerms: plan.form.paymentTerms || f.paymentTerms,
+                      cancellationPolicy: plan.form.cancellationPolicy || f.cancellationPolicy,
+                      refundPolicy: plan.form.refundPolicy || f.refundPolicy,
+                    }));
+                    toast({ title: "Destination plan terms copied into this draft" });
+                  }}
+                >
+                  Apply terms from selected destination plan
+                </Button>
+              </div>
+            )}
           </FormSection>
         )}
 
@@ -1062,7 +1253,7 @@ export function QuotationWizardDialog({
                     return;
                   }
                   const preview: Quotation = {
-                    id: id || "preview",
+                    id: id || "",
                     quoteNo: quoteNo || "DRAFT",
                     customerName: form.customerName,
                     service: form.isInternational ? "International" : "Holiday",
@@ -1101,14 +1292,24 @@ export function QuotationWizardDialog({
                     perPersonCost: liveCosting.perPersonCost,
                     packages,
                   };
-                  const ok = await downloadClientQuotationBrochure(preview);
-                  toast({
-                    title: ok ? "Client brochure opened" : "Popup blocked",
-                    description: ok
-                      ? "This is what the customer sees. Print → Save as PDF, then Email / WhatsApp from the quote list."
-                      : "Allow popups.",
-                    variant: ok ? "default" : "destructive",
-                  });
+                  try {
+                    const ok = await downloadQuotationPdf(preview, undefined, { mode: id ? "preview" : "customer" });
+                    toast({
+                      title: ok ? "Client PDF ready" : "PDF failed",
+                      description: ok
+                        ? id
+                          ? "Internal preview PDF generated and downloaded (customer-facing content)."
+                          : "Brochure opened. Save the quote to generate a stored server PDF."
+                        : "Could not open the PDF.",
+                      variant: ok ? "default" : "destructive",
+                    });
+                  } catch (e) {
+                    toast({
+                      title: "PDF blocked",
+                      description: e instanceof Error ? e.message : "Could not generate PDF",
+                      variant: "destructive",
+                    });
+                  }
                 }}
               >
                 Preview client PDF (what customer receives)
@@ -1308,6 +1509,65 @@ function GalleryUrlsField({
   );
 }
 
+function QuoteTemplateApplyButton({
+  quotationId,
+  disabled,
+  onApplied,
+}: {
+  quotationId: string | null;
+  disabled?: boolean;
+  onApplied: (q: Quotation) => void;
+}) {
+  const { toast } = useToast();
+  const [templates, setTemplates] = useState<Array<{ id: string; templateName: string }>>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ items: Array<{ id: string; templateName: string }> }>("/api/quote-templates?status=Active&pageSize=50")
+      .then((r) => setTemplates(r.items || []))
+      .catch(() => setTemplates([]));
+  }, []);
+
+  if (!quotationId) {
+    return <p className="text-xs text-muted-foreground">Save the draft once to enable Quote Template merge.</p>;
+  }
+
+  return (
+    <div className="flex flex-col sm:flex-row gap-2">
+      <Select value={templateId || undefined} onValueChange={setTemplateId}>
+        <SelectTrigger className="h-10 flex-1"><SelectValue placeholder="Choose an Active quote template…" /></SelectTrigger>
+        <SelectContent>
+          {templates.map((t) => (
+            <SelectItem key={t.id} value={t.id}>{t.templateName}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-10 shrink-0"
+        disabled={disabled || busy || !templateId}
+        onClick={() => {
+          setBusy(true);
+          api.applyQuotationTemplate(quotationId, { templateId, mode: "fill-empty", packageIndex: 0 })
+            .then((res) => {
+              onApplied(mapApiQuotation(res.quotation));
+              toast({
+                title: res.appliedFields?.length ? "Template applied" : "Nothing to fill",
+                description: res.message || (res.appliedFields?.length ? `Updated: ${res.appliedFields.slice(0, 6).join(", ")}` : undefined),
+              });
+            })
+            .catch((e) => toast({ title: e instanceof Error ? e.message : "Template apply failed", variant: "destructive" }))
+            .finally(() => setBusy(false));
+        }}
+      >
+        Apply (fill empty only)
+      </Button>
+    </div>
+  );
+}
+
 function hotelFromCatalog(item: ProductRecord): Record<string, unknown> {
   const rooms = Array.isArray(item.roomCategories) ? (item.roomCategories as Array<Record<string, unknown>>) : [];
   const first = rooms[0];
@@ -1321,22 +1581,35 @@ function hotelFromCatalog(item: ProductRecord): Record<string, unknown> {
     mealPlan: String(first?.mealPlan || "Breakfast"),
     city: String(item.city || item.destination?.name || ""),
     imageUrl: firstProductImage(item),
-    costPrice: Math.round(selling * 0.75),
     sellingPrice: selling,
     supplier: item.supplier?.name,
+    source: "CONTRACTED_PRODUCT",
+    productType: "HOTEL",
   };
 }
 
+const NO_VALID_RATE = "No valid contracted rate available for selected travel date.";
+const CATALOG_TYPE = {
+  hotels: "HOTEL",
+  transfers: "TRANSFER",
+  activities: "ACTIVITY",
+  meals: "MEAL",
+  flights: "FLIGHT",
+} as const;
+
 function ServiceEditor({
-  title, rows, fields, onChange, template, catalogKind, catalogToRow,
+  title, rows, fields, onChange, template, catalogKind, catalogToRow, travelDate, travelEndDate, quotationId,
 }: {
   title: string;
   rows: Record<string, unknown>[];
   fields: string[];
   onChange: (rows: Record<string, unknown>[]) => void;
   template: Record<string, unknown>;
-  catalogKind?: "hotels" | "activities" | "transfers";
+  catalogKind?: keyof typeof CATALOG_TYPE;
   catalogToRow?: (item: ProductRecord) => Record<string, unknown>;
+  travelDate?: string;
+  travelEndDate?: string;
+  quotationId?: string | null;
 }) {
   return (
     <div className="space-y-3">
@@ -1347,7 +1620,39 @@ function ServiceEditor({
         </div>
         <div className="flex gap-2">
           {catalogKind && catalogToRow && (
-            <CatalogPicker kind={catalogKind} onPick={(item) => onChange([...rows, catalogToRow(item)])} />
+            <CatalogPicker
+              kind={catalogKind}
+              travelDate={travelDate}
+              travelEndDate={travelEndDate}
+              onPick={(item, rate) => {
+                const base = catalogToRow(item);
+                const selling = Number(base.sellingPrice || rate.displayPrice || 0);
+                onChange([...rows, {
+                  ...base,
+                  ...(catalogKind === "hotels" ? {
+                    checkIn: travelDate || base.checkIn || "",
+                    checkOut: travelEndDate || base.checkOut || "",
+                    rooms: Number(base.rooms || 1),
+                  } : {}),
+                  source: "CONTRACTED_PRODUCT",
+                  productType: CATALOG_TYPE[catalogKind],
+                  rateId: rate.rateId,
+                  rateValidFrom: rate.validFrom,
+                  rateValidTo: rate.validTo,
+                  rateSelectedAt: new Date().toISOString(),
+                  rateTravelDate: travelDate,
+                  rateUnresolved: false,
+                  costPrice: rate.contractedCost,
+                  sellingPrice: selling || rate.contractedCost,
+                }]);
+              }}
+            />
+          )}
+          {catalogKind === "flights" && (
+            <FlightApiSearch
+              travelDate={travelDate}
+              onPick={(row) => onChange([...rows, row])}
+            />
           )}
           <Button size="sm" variant="outline" onClick={() => onChange([...rows, { ...template }])}>
             <Plus className="w-3.5 h-3.5 mr-1" /> Add self-booked
@@ -1369,6 +1674,15 @@ function ServiceEditor({
           >
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
+          {row.rateUnresolved === true && (
+            <p className="sm:col-span-2 md:col-span-3 text-xs text-destructive">{NO_VALID_RATE}</p>
+          )}
+          {Boolean(row.transferBadge) && (
+            <p className="sm:col-span-2 md:col-span-3 text-[11px] uppercase tracking-wide text-muted-foreground">{String(row.transferBadge)}</p>
+          )}
+          {Boolean(row.source) && (
+            <p className="sm:col-span-2 md:col-span-3 text-[10px] text-muted-foreground">Source: {String(row.source)}</p>
+          )}
           {fields.map((f) => (
             <div key={f} className={cn("space-y-1.5", isImageField(f) ? "sm:col-span-2 md:col-span-3 pr-8" : "")}>
               <Label className="text-xs font-medium capitalize text-muted-foreground">
@@ -1398,19 +1712,173 @@ function ServiceEditor({
               )}
             </div>
           ))}
+          {catalogKind === "flights" && (
+            <FlightDocAttach
+              quotationId={quotationId}
+              documentId={String(row.ticketDocumentId || "")}
+              fileName={String(row.ticketFileName || "")}
+              onLinked={(doc) => {
+                const next = [...rows];
+                next[i] = {
+                  ...next[i],
+                  ticketDocumentId: doc.id,
+                  ticketFileName: doc.fileName,
+                  // Private download path only — never a public static URL
+                  ticketDownloadPath: doc.downloadPath,
+                };
+                onChange(next);
+              }}
+            />
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-function CatalogPicker({
-  kind,
+function FlightDocAttach({
+  quotationId,
+  documentId,
+  fileName,
+  onLinked,
+}: {
+  quotationId?: string | null;
+  documentId?: string;
+  fileName?: string;
+  onLinked: (doc: { id: string; fileName: string; downloadPath: string }) => void;
+}) {
+  const { toast } = useToast();
+  if (!quotationId) {
+    return (
+      <p className="sm:col-span-2 md:col-span-3 text-[11px] text-muted-foreground">
+        Save the draft to attach ticket / invoice via private document storage.
+      </p>
+    );
+  }
+  return (
+    <div className="sm:col-span-2 md:col-span-3 space-y-1">
+      <Label className="text-xs text-muted-foreground">Ticket / invoice (private)</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          type="file"
+          accept=".pdf,image/jpeg,image/png"
+          className="h-9 text-xs"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            void api.uploadQuotationDocument(quotationId, file, {
+              docType: "FLIGHT_TICKET",
+              visibility: "AGENT",
+              relatedEntity: "flight",
+              description: "Flight ticket / invoice",
+            })
+              .then((res) => {
+                onLinked(res.document);
+                toast({ title: "Flight document stored privately" });
+              })
+              .catch((err) => {
+                toast({ title: err instanceof Error ? err.message : "Upload failed", variant: "destructive" });
+              });
+          }}
+        />
+        {(documentId || fileName) && (
+          <span className="text-[11px] text-muted-foreground truncate max-w-[160px]">
+            {fileName || documentId}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FlightApiSearch({
+  travelDate,
   onPick,
 }: {
-  kind: "hotels" | "activities" | "transfers";
-  onPick: (item: ProductRecord) => void;
+  travelDate?: string;
+  onPick: (row: Record<string, unknown>) => void;
 }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [from, setFrom] = useState("BOM");
+  const [to, setTo] = useState("DEL");
+  const [items, setItems] = useState<Array<Record<string, unknown>>>([]);
+
+  async function search() {
+    try {
+      const data = await apiFetch<{ flights: Array<Record<string, unknown>> }>(
+        `/api/flights/search?origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&departureDate=${encodeURIComponent(travelDate || "")}&count=6`,
+      );
+      setItems(data.flights || []);
+      if (!data.flights?.length) toast({ title: "No API flights returned" });
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Flight search failed", variant: "destructive" });
+    }
+  }
+
+  return (
+    <div className="relative">
+      <Button size="sm" variant="outline" type="button" onClick={() => setOpen((v) => !v)}>API search</Button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-80 rounded-md border bg-popover p-2 shadow-md space-y-2">
+          <div className="flex gap-1">
+            <Input className="h-8 text-xs" value={from} onChange={(e) => setFrom(e.target.value.toUpperCase())} placeholder="From" />
+            <Input className="h-8 text-xs" value={to} onChange={(e) => setTo(e.target.value.toUpperCase())} placeholder="To" />
+            <Button size="sm" type="button" onClick={() => void search()}>Search</Button>
+          </div>
+          {items.map((item) => (
+            <button
+              key={String(item.id)}
+              type="button"
+              className="w-full text-left text-xs rounded px-2 py-1.5 hover:bg-muted"
+              onClick={() => {
+                onPick({
+                  source: "AMADEUS_API",
+                  airline: item.airline,
+                  flightNumber: item.flightNumber,
+                  from: item.origin,
+                  to: item.destination,
+                  depTime: item.departTime,
+                  arrTime: item.arriveTime,
+                  duration: item.duration || "",
+                  baggage: item.baggage || "",
+                  cabinClass: item.cabin,
+                  currency: item.currency || "INR",
+                  date: travelDate || "",
+                  seatsLeft: item.seatsLeft,
+                  sellingPrice: Number(item.price || 0),
+                  fare: Number(item.price || 0),
+                  costPrice: 0,
+                  remarks: "",
+                  pnr: "",
+                });
+                setOpen(false);
+              }}
+            >
+              {String(item.airline)} {String(item.flightNumber)} · {String(item.origin)} → {String(item.destination)}
+              {item.duration ? ` · ${String(item.duration)}` : ""}
+              {item.baggage ? ` · ${String(item.baggage)}` : ""}
+              {item.price != null ? ` · ${formatFullINR(Number(item.price))}` : ""}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CatalogPicker({
+  kind,
+  travelDate,
+  travelEndDate,
+  onPick,
+}: {
+  kind: keyof typeof CATALOG_TYPE;
+  travelDate?: string;
+  travelEndDate?: string;
+  onPick: (item: ProductRecord, rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null }) => void;
+}) {
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [items, setItems] = useState<ProductRecord[]>([]);
@@ -1453,11 +1921,85 @@ function CatalogPicker({
                 type="button"
                 className="w-full text-left text-xs rounded px-2 py-1.5 hover:bg-muted"
                 onClick={() => {
-                  onPick(item);
-                  setOpen(false);
+                  void (async () => {
+                    if (!travelDate) {
+                      toast({ title: "Select a travel start date before choosing a contracted product.", variant: "destructive" });
+                      return;
+                    }
+                    try {
+                      const rooms = Array.isArray(item.roomCategories) ? (item.roomCategories as Array<Record<string, unknown>>) : [];
+                      const firstRoom = rooms[0];
+                      if (kind === "hotels") {
+                        if (!travelEndDate) {
+                          toast({ title: "Select a travel end date before choosing a hotel.", variant: "destructive" });
+                          return;
+                        }
+                        const availParams = new URLSearchParams({
+                          checkIn: travelDate,
+                          checkOut: travelEndDate,
+                          rooms: "1",
+                        });
+                        if (firstRoom?.name) availParams.set("roomType", String(firstRoom.name));
+                        const avail = await apiFetch<{ ok: boolean; message?: string | null; liveSupplier?: boolean }>(
+                          `/api/products/hotels/${item.id}/catalogue-availability?${availParams.toString()}`,
+                        );
+                        if (!avail.ok) {
+                          toast({
+                            title: avail.message || "Hotel catalogue inventory unavailable for these dates",
+                            description: "Catalogue availability only — not a live supplier confirmation.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                      }
+                      const params = new URLSearchParams({
+                        productType: CATALOG_TYPE[kind],
+                        productId: item.id,
+                        travelDate,
+                      });
+                      if (firstRoom?.name) params.set("roomType", String(firstRoom.name));
+                      if (firstRoom?.mealPlan) params.set("mealPlan", String(firstRoom.mealPlan));
+                      if (item.vehicleType) params.set("vehicleType", String(item.vehicleType));
+                      if (item.transferType) params.set("transferType", String(item.transferType));
+                      if (item.ticketType) params.set("ticketType", String(item.ticketType));
+                      if (item.cabinClass) params.set("cabinClass", String(item.cabinClass));
+                      const rate = await apiFetch<{
+                        applicable: boolean;
+                        message?: string;
+                        rateId?: string;
+                        validFrom?: string;
+                        validTo?: string;
+                        contractedCost?: number;
+                        displayPrice?: number | null;
+                      }>(`/api/contracted-rates/applicable?${params.toString()}`);
+                      if (!rate.applicable || !rate.rateId || rate.contractedCost == null) {
+                        toast({ title: rate.message || NO_VALID_RATE, variant: "destructive" });
+                        return;
+                      }
+                      onPick(item, { rateId: rate.rateId, validFrom: rate.validFrom || "", validTo: rate.validTo || "", contractedCost: rate.contractedCost, displayPrice: rate.displayPrice });
+                      setOpen(false);
+                    } catch {
+                      toast({ title: NO_VALID_RATE, variant: "destructive" });
+                    }
+                  })();
                 }}
               >
                 <span className="font-medium">{item.name}</span>
+                {kind === "activities" && (
+                  <span className="block text-[10px] text-muted-foreground">
+                    {String(item.startTime || item.operatingHours || "Timing on request")}
+                    {item.closingTime ? `–${String(item.closingTime)}` : ""}
+                    {item.duration ? ` · ${String(item.duration)}` : ""}
+                    {item.adultPrice != null ? ` · ${formatFullINR(Number(item.adultPrice))}` : ""}
+                    {item.description ? ` · ${String(item.description).slice(0, 80)}` : ""}
+                    {" · View details · Select"}
+                  </span>
+                )}
+                {kind === "meals" && (
+                  <span className="block text-[10px] text-muted-foreground">
+                    {item.transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer"}
+                  </span>
+                )}
                 {item.destination?.name && (
                   <span className="text-muted-foreground"> · {item.destination.name}</span>
                 )}

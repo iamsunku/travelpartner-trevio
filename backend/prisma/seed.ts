@@ -1,15 +1,27 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 import { ROLE_USERS } from "../src/lib/mock-data";
 
 const prisma = new PrismaClient();
 
-const DEFAULT_SEED_PASSWORD = "Passw0rd@123";
+function requireSeedPassword(envName: string): string {
+  const value = process.env[envName];
+  if (value && value.length >= 12) return value;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(`${envName} must be set to a password of at least 12 characters. Do not use a shared default.`);
+  }
+  const generated = randomBytes(18).toString("base64url");
+  console.log(`\n${envName} is not set. One-time development password (shown once, not stored in source):\n${generated}\n`);
+  return generated;
+}
+
+const DEFAULT_SEED_PASSWORD = requireSeedPassword("SEED_DEMO_PASSWORD");
 const SUPER_ADMIN_EMAIL = "admin@travelpartner.pro";
-const SUPER_ADMIN_PASSWORD = "TravioAdmin@2024!";
+const SUPER_ADMIN_PASSWORD = requireSeedPassword("SEED_SUPER_ADMIN_PASSWORD");
 /** Dedicated developer login — full platform (super_admin) access for local/console work. */
 const DEV_SUPER_ADMIN_EMAIL = "dev@trevioglobal.com";
-const DEV_SUPER_ADMIN_PASSWORD = "Dev@Trevio2026!";
+const DEV_SUPER_ADMIN_PASSWORD = requireSeedPassword("SEED_DEV_PASSWORD");
 
 async function main() {
   if (process.env.NODE_ENV === "production" && process.env.ALLOW_PROD_SEED !== "true") {

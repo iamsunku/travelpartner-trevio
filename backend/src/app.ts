@@ -19,8 +19,11 @@ import {
 import { requireAuth, requireRole, requirePermission, requireAnyPermission, type AuthRequest } from "./middleware/auth.js";
 import { generateFlights, generateHotels } from "./lib/mock-data.js";
 import { searchAmadeusFlights, searchAmadeusHotels } from "./lib/amadeus.js";
+import { assertNoProviderSecrets, publicFlightSearchResult } from "./lib/flight-quote.js";
 import { effectivePermissions } from "./lib/permissions.js";
 import { mountProductRoutes } from "./routes/products.js";
+import { mountContractedRateRoutes } from "./routes/contracted-rates.js";
+import { mountTaxRuleRoutes } from "./routes/tax-rules.js";
 import { mountSupplierRoutes } from "./routes/suppliers.js";
 import { mountDestinationRoutes } from "./routes/destinations.js";
 import { mountPackageRoutes } from "./routes/packages.js";
@@ -30,8 +33,19 @@ import { mountTravelProposalRoutes } from "./routes/travel-proposals.js";
 import { mountProposalPdfRoutes } from "./routes/proposal-pdf.js";
 import { mountBmsRoutes } from "./routes/bms.js";
 import { mountQuotationRoutes } from "./routes/quotations.js";
+import { mountCustomerQuotationRoutes } from "./routes/customer-quotations.js";
+import { mountDocumentRoutes } from "./routes/documents.js";
+import { mountAgentRegistrationRoutes } from "./routes/agent-registrations.js";
 import { mountFinanceRoutes } from "./routes/finance.js";
-import { sanitizeQuotationForRole } from "./lib/quotations.js";
+import {
+  REGISTRATION_STATUS,
+  isAuthenticatableUserStatus,
+  loginBlockReasonForUserStatus,
+} from "./lib/agent-registration.js";
+import { sanitizeQuotationForRole, isAgentLike } from "./lib/quotations.js";
+import { agentQuoteScope } from "./lib/quote-access.js";
+import { agentBookingScope, rejectImmutableBookingPatch } from "./lib/booking-access.js";
+import { canOverrideBookingStatus, canTransitionBooking } from "./lib/booking-status.js";
 import { analyticsMiddleware } from "./middleware/analytics.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import {
@@ -300,6 +314,15 @@ app.post("/api/auth/login", authLimiter, validate(loginSchema), async (req, res)
       res.status(401).json({ error: "Invalid credentials" });
       return;
     }
+    const loginBlock = loginBlockReasonForUserStatus(user.status);
+    if (loginBlock || !isAuthenticatableUserStatus(user.status)) {
+      res.status(403).json({
+        error: loginBlock || "This account is not eligible to sign in.",
+        registrationStatus: user.agency?.registrationStatus || null,
+        userStatus: user.status,
+      });
+      return;
+    }
     await db.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
     await db.auditLog.create({
       data: { userId: user.id, agencyId: user.agencyId, userName: user.name, action: "Login", module: "Auth", ip: req.ip || "0.0.0.0" },
@@ -507,7 +530,7 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
       panNumber?: string;
       password: string;
       gstNumber?: string;
-      gstProofUrl?: string;
+      gstProofId?: string;
       termsVersion?: string;
     };
     const email = String(body.email).trim().toLowerCase();
@@ -523,7 +546,9 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
       where: {
         OR: [
           { phone },
-          { phone: { endsWith: phoneDigits } },
+          { phone: phoneDigits },
+          { phone: `${body.countryCode}${phoneDigits}` },
+          { phone: `${body.countryCode}-${phoneDigits}` },
         ],
       },
       select: { id: true },
@@ -535,6 +560,15 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
 
     const passwordHash = await bcrypt.hash(body.password, 10);
     const termsVersion = body.termsVersion || "2026-09-1";
+    const proof = body.gstProofId
+      ? await db.registrationDocument.findFirst({
+          where: { claimToken: body.gstProofId, agencyId: null, expiresAt: { gt: new Date() } },
+        })
+      : null;
+    if (body.gstProofId && !proof) {
+      res.status(400).json({ error: "GST / VAT proof was not found. Upload the file again." });
+      return;
+    }
 
     const result = await db.$transaction(async (tx) => {
       const agency = await tx.agency.create({
@@ -545,6 +579,7 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
           phone,
           plan: "Starter",
           status: "Trial",
+          registrationStatus: REGISTRATION_STATUS.SUBMITTED,
           address: body.address,
           country: body.country,
           state: body.state || resolveGstState(null, body.gstNumber) || undefined,
@@ -552,11 +587,15 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
           panNumber: body.panNumber || null,
           gstNumber: body.gstNumber || null,
           vatNumber: body.gstNumber || null,
-          gstProofUrl: body.gstProofUrl || null,
+          gstProofUrl: null,
+          gstProofDocumentId: proof?.id || null,
           termsAcceptedAt: new Date(),
           apiAllocation: { flights: 5000, hotels: 3000 },
         },
       });
+      if (proof) {
+        await tx.registrationDocument.update({ where: { id: proof.id }, data: { agencyId: agency.id } });
+      }
 
       const branch = await tx.branch.create({
         data: {
@@ -577,6 +616,7 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
           designation: "Agency Owner",
           agencyId: agency.id,
           branchId: branch.id,
+          status: "Submitted",
         },
         include: { agency: true, branch: true },
       });
@@ -586,45 +626,51 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
           userId: user.id,
           agencyId: agency.id,
           userName: user.name,
-          action: "Agent Registration",
+          action: "Agent Registration Submitted",
           module: "Auth",
           ip: req.ip || "0.0.0.0",
-          details: `New agency registered: ${agency.name}; country=${body.countryCodeIso || body.country}; terms=${termsVersion}`,
+          details: `New agency registration submitted: ${agency.name}; country=${body.countryCodeIso || body.country}; terms=${termsVersion}; status=Submitted`,
         },
       });
 
       return user;
-    });
+    }, { maxWait: 15_000, timeout: 30_000 });
 
-    try {
-      const { sendHtmlEmail } = await import("./lib/email.js");
-      await sendHtmlEmail(
-        email,
-        "Your Trevio Global agent registration has been received",
-        `<p>Hi ${escapeHtmlSafe(body.fullName)},</p>
-         <p>Your Trevio Global agent registration for <strong>${escapeHtmlSafe(body.companyName)}</strong> has been received.</p>
-         <p>You can sign in to the agent portal with the email and password you created.</p>
+    void import("./lib/email.js")
+      .then(({ sendHtmlEmail }) =>
+        sendHtmlEmail(
+          email,
+          "Your Trevio Global agent registration was submitted",
+          `<p>Hi ${escapeHtmlSafe(body.fullName)},</p>
+         <p>Your Trevio Global agent registration for <strong>${escapeHtmlSafe(body.companyName)}</strong> has been submitted for admin review.</p>
+         <p>You will be able to sign in only after an administrator approves your account.</p>
          <p>Regards,<br/>Trevio Global</p>`,
-        { agencyId: result.agencyId },
-      );
-    } catch {
-      /* non-blocking */
-    }
-
-    const token = signToken({
-      userId: result.id,
-      email: result.email,
-      role: result.role,
-      agencyId: result.agencyId,
-      branchId: result.branchId,
-      permissions: null,
-    });
+          { agencyId: result.agencyId },
+        ),
+      )
+      .catch(() => undefined);
 
     const { password: _password, ...safeUser } = result;
-    res.status(201).json({ user: safeUser, token });
+    res.status(201).json({
+      ok: true,
+      status: REGISTRATION_STATUS.SUBMITTED,
+      message: "Registration submitted for admin approval. You cannot sign in until an administrator approves your account.",
+      registrationId: result.agencyId,
+      user: {
+        id: safeUser.id,
+        name: safeUser.name,
+        email: safeUser.email,
+        status: safeUser.status,
+        agencyId: safeUser.agencyId,
+      },
+    });
   } catch (e) {
     logger.error(e);
-    res.status(500).json({ error: "Server error" });
+    const detail = e instanceof Error ? e.message : "Server error";
+    res.status(500).json({
+      error: "Server error",
+      ...(process.env.NODE_ENV !== "production" ? { detail } : {}),
+    });
   }
 });
 
@@ -640,17 +686,67 @@ app.get("/api/bookings", requireAuth, requireAnyPermission("flights", "hotels", 
   try {
     const status = req.query.status as string | undefined;
     const service = req.query.service as string | undefined;
-    const search = req.query.q as string | undefined;
-    const where: Record<string, unknown> = { ...agencyScope(req), ...branchScope(req, "agentId") };
+    const search = (req.query.q as string | undefined)?.trim();
+    const destination = (req.query.destination as string | undefined)?.trim();
+    const travelFrom = (req.query.travelFrom as string | undefined)?.trim();
+    const travelTo = (req.query.travelTo as string | undefined)?.trim();
+    const quoteNo = (req.query.quoteNo as string | undefined)?.trim();
+    const assigned = (req.query.assigned as string | undefined)?.trim();
+    // Keep agent ownership scope in AND so list filters cannot overwrite OR and leak cross-agent rows.
+    const agentScope = agentBookingScope(req.auth?.role, req.auth?.userId);
+    const andClauses: Record<string, unknown>[] = [];
+    if (Object.keys(agentScope).length > 0) andClauses.push(agentScope);
+    const where: Record<string, unknown> = {
+      ...agencyScope(req),
+      ...branchScope(req, "agentId"),
+    };
     if (status && status !== "All") where.status = status;
     if (service && service !== "All") where.service = service;
-    if (search) where.customerName = { contains: search };
+    if (destination) where.destination = { contains: destination, mode: "insensitive" };
+    if (quoteNo) where.quoteNo = { contains: quoteNo, mode: "insensitive" };
+    if (assigned) {
+      andClauses.push({
+        OR: [
+          { operationsExecutiveName: { contains: assigned, mode: "insensitive" } },
+          { salesExecutiveName: { contains: assigned, mode: "insensitive" } },
+          { agentName: { contains: assigned, mode: "insensitive" } },
+        ],
+      });
+    }
+    if (travelFrom || travelTo) {
+      const travelDate: Record<string, string> = {};
+      if (travelFrom) travelDate.gte = travelFrom;
+      if (travelTo) travelDate.lte = travelTo;
+      where.travelDate = travelDate;
+    }
+    if (search) {
+      andClauses.push({
+        OR: [
+          { customerName: { contains: search, mode: "insensitive" } },
+          { bookingRef: { contains: search, mode: "insensitive" } },
+          { quoteNo: { contains: search, mode: "insensitive" } },
+          { destination: { contains: search, mode: "insensitive" } },
+          { route: { contains: search, mode: "insensitive" } },
+        ],
+      });
+    }
+    if (andClauses.length) where.AND = andClauses;
     const { skip, take, page, pageSize } = parsePagination(req, 100, 200);
     const [bookings, total] = await Promise.all([
       db.booking.findMany({ where, orderBy: { createdAt: "desc" }, skip, take }),
       db.booking.count({ where }),
     ]);
-    res.json({ bookings, total, page, pageSize });
+    const role = req.auth?.role;
+    const sanitized = bookings.map((b) => {
+      if (role !== "travel_agent" && role !== "customer") return b;
+      const clone = { ...b } as Record<string, unknown>;
+      delete clone.costPrice;
+      delete clone.grossProfit;
+      delete clone.netProfit;
+      delete clone.pricingSnapshot;
+      return clone;
+    });
+    res.json({ bookings: sanitized, total, page, pageSize });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -694,18 +790,50 @@ app.patch("/api/bookings/:id", requireAuth, requirePermission("bookings"), async
   try {
     const id = routeParamId(req);
     const existing = await db.booking.findFirst({
-      where: { id, ...agencyScope(req), ...branchScope(req, "agentId") },
+      where: {
+        id,
+        ...agencyScope(req),
+        ...branchScope(req, "agentId"),
+        ...agentBookingScope(req.auth?.role, req.auth?.userId),
+      },
     });
     if (!existing) {
       res.status(404).json({ error: "Not found" });
       return;
     }
-    const { status, paymentStatus } = req.body;
-    const data: Record<string, string> = {};
-    if (status) data.status = status;
-    if (paymentStatus) data.paymentStatus = paymentStatus;
+    const immutable = rejectImmutableBookingPatch(req.body || {});
+    if (immutable) {
+      res.status(400).json({ error: immutable });
+      return;
+    }
+    const { status, paymentStatus, operationsExecutiveName, operationsExecutiveId } = req.body || {};
+    const data: Record<string, unknown> = {};
+    if (status) {
+      const override = canOverrideBookingStatus(req.auth?.role) && Boolean(req.body?.override);
+      if (!canTransitionBooking(existing.status, String(status), override)) {
+        res.status(400).json({ error: `Invalid booking transition ${existing.status} → ${status}` });
+        return;
+      }
+      if (existing.status === "Completed" || existing.status === "Cancelled") {
+        if (!override) {
+          res.status(400).json({ error: `A ${existing.status} booking cannot be changed` });
+          return;
+        }
+      }
+      data.status = String(status);
+    }
+    if (paymentStatus) data.paymentStatus = String(paymentStatus);
+    if (typeof operationsExecutiveName === "string") data.operationsExecutiveName = operationsExecutiveName;
+    if (typeof operationsExecutiveId === "string") data.operationsExecutiveId = operationsExecutiveId;
     const booking = await db.booking.update({ where: { id: existing.id }, data });
-    res.json({ booking });
+    res.json({ booking: isAgentLike(req.auth?.role) ? (() => {
+      const clone = { ...booking } as Record<string, unknown>;
+      delete clone.costPrice;
+      delete clone.grossProfit;
+      delete clone.netProfit;
+      delete clone.pricingSnapshot;
+      return clone;
+    })() : booking });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });
@@ -812,7 +940,12 @@ app.patch("/api/leads/:id", requireAuth, requirePermission("crm"), async (req: A
 app.get("/api/quotations", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res) => {
   try {
     const quotations = await db.quotation.findMany({
-      where: { deletedAt: null, ...agencyScope(req), ...branchScope(req, "createdById") },
+      where: {
+        deletedAt: null,
+        ...agencyScope(req),
+        ...branchScope(req, "createdById"),
+        ...agentQuoteScope(req.auth?.role, req.auth?.userId),
+      },
       orderBy: { createdAt: "desc" },
       take: 200,
     });
@@ -1351,7 +1484,13 @@ app.get("/api/flights/search", requireAuth, requirePermission("flights"), async 
         departureDate,
         max: count,
       });
-      res.json({ flights, provider: "amadeus", source: "live" });
+      const safe = flights.map((f) => publicFlightSearchResult(f as unknown as Record<string, unknown>));
+      const body = { flights: safe, provider: "amadeus", source: "live" as const };
+      if (!assertNoProviderSecrets(body)) {
+        res.status(500).json({ error: "Flight search sanitization failed" });
+        return;
+      }
+      res.json(body);
       return;
     }
 
@@ -1371,7 +1510,15 @@ app.get("/api/flights/search", requireAuth, requirePermission("flights"), async 
       return;
     }
 
-    res.json({ flights: generateFlights(origin, destination, count), provider: "mock", source: "demo" });
+    const safe = generateFlights(origin, destination, count).map((f) =>
+      publicFlightSearchResult(f as unknown as Record<string, unknown>),
+    );
+    const body = { flights: safe, provider: "mock" as const, source: "demo" as const };
+    if (!assertNoProviderSecrets(body)) {
+      res.status(500).json({ error: "Flight search sanitization failed" });
+      return;
+    }
+    res.json(body);
   } catch (e) {
     logger.error(e);
     res.status(502).json({
@@ -1760,10 +1907,19 @@ app.delete("/api/bookings/:id", requireAuth, requirePermission("bookings"), asyn
   try {
     const id = routeParamId(req);
     const existing = await db.booking.findFirst({
-      where: { id, ...agencyScope(req), ...branchScope(req, "agentId") },
+      where: {
+        id,
+        ...agencyScope(req),
+        ...branchScope(req, "agentId"),
+        ...agentBookingScope(req.auth?.role, req.auth?.userId),
+      },
     });
     if (!existing) {
       res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (!canTransitionBooking(existing.status, "Cancelled")) {
+      res.status(400).json({ error: `Cannot cancel booking in status ${existing.status}` });
       return;
     }
     const booking = await db.booking.update({
@@ -1969,6 +2125,7 @@ app.post("/api/agencies", requireAuth, requireRole("super_admin"), validate(agen
         phone: body.phone,
         plan: body.plan || "Starter",
         status: body.status || "Trial",
+        registrationStatus: REGISTRATION_STATUS.APPROVED,
         walletBalance: body.walletBalance || 0,
         apiAllocation: body.apiAllocation || { flights: 5000, hotels: 3000 },
         gstNumber: body.gstNumber,
@@ -1997,6 +2154,7 @@ app.post("/api/agencies", requireAuth, requireRole("super_admin"), validate(agen
           role: "agency_admin",
           designation: "Agency Owner",
           agencyId: agency.id,
+          status: "Active",
         },
       });
       emailedCredentials = await sendEmail({
@@ -3340,6 +3498,8 @@ app.patch("/api/payroll/:id", requireAuth, requireAnyPermission("employees", "fi
 });
 
 mountProductRoutes(app, agencyScope);
+mountContractedRateRoutes(app, agencyScope);
+mountTaxRuleRoutes(app, agencyScope);
 mountSupplierRoutes(app, agencyScope);
 mountDestinationRoutes(app, agencyScope);
 mountPackageRoutes(app, agencyScope);
@@ -3348,6 +3508,9 @@ mountQuoteTemplateRoutes(app, agencyScope);
 mountTravelProposalRoutes(app, agencyScope);
 mountProposalPdfRoutes(app, agencyScope);
 mountQuotationRoutes(app, agencyScope, ownAgencyId, ownBranchId, branchScope);
+mountCustomerQuotationRoutes(app, agencyScope, branchScope);
+mountDocumentRoutes(app, agencyScope);
+mountAgentRegistrationRoutes(app);
 mountBmsRoutes(app, agencyScope, ownAgencyId, ownBranchId, branchScope);
 mountFinanceRoutes(app, agencyScope, ownAgencyId, branchScope);
 

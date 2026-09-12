@@ -73,6 +73,7 @@ export function mapApiBooking(b: ApiBooking): Booking {
     createdAt: b.createdAt.slice(0, 10),
     quotationId: b.quotationId,
     quoteNo: b.quoteNo,
+    quotationVersionNumber: b.quotationVersionNumber,
     destination: b.destination,
     nights: b.nights,
     totalRooms: b.totalRooms,

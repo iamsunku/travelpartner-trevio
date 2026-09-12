@@ -124,8 +124,9 @@ export function buildQuotationPackageFromTravelPackage(pkg: LoadedPackage) {
   const exclusions = ["Personal expenses", "Meals not mentioned", "Travel insurance unless specified"];
 
   const baseCost = pkg.hotelCost + pkg.activityCost + pkg.transferCost;
-  const baseSelling = pkg.finalPrice || baseCost + pkg.markup + pkg.tax - pkg.discount;
-  const gst = pkg.tax || Math.round(baseSelling * 0.18 / 1.18);
+  const baseSelling = pkg.finalPrice || baseCost + pkg.markup + (pkg.tax || 0) - pkg.discount;
+  // Never invent GST @ 18%. Package.tax is catalogue metadata only; Phase 3 TaxRule applies on quote save.
+  const gst = pkg.tax != null ? Math.round(Number(pkg.tax)) : 0;
 
   return {
     packagePayload: {

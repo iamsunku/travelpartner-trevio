@@ -22,6 +22,7 @@ model User {
   branchId     String?
   agentCode    String?  @unique // e.g. WAN-AGT-0001 — auto for travel_agent
   avatar       String?
+  /** Active|Approved = may login; Submitted|Rejected = blocked (Phase 15 self-registration). */
   status       String   @default("Active")
   permissions  Json?    // null = use role default; array of module keys = explicit override
   productAccess Json?   // { flights, hotels, packages } — travel_agent overrides
@@ -60,6 +61,13 @@ model Agency {
   phone           String
   plan            String   @default("Starter") // Starter|Growth|Enterprise
   status          String   @default("Active")  // Active|Suspended|Trial
+  /** Public self-registration review: Submitted|Approved|Rejected. Existing/admin-created agencies default Approved. */
+  registrationStatus String @default("Approved")
+  registrationReviewComment String?
+  registrationRejectionReason String?
+  registrationReviewedAt DateTime?
+  registrationReviewedById String?
+  registrationReviewedByName String?
   walletBalance   Int      @default(0)
   commissionEarned Int     @default(0)
   totalBookings   Int      @default(0)
@@ -73,6 +81,7 @@ model Agency {
   state           String?
   city            String?
   gstProofUrl     String?
+  gstProofDocumentId String?
   termsAcceptedAt DateTime?
   logo            String?
   createdAt       DateTime @default(now())
@@ -81,6 +90,8 @@ model Agency {
   users           User[]
   branches        Branch[]
   bookings        Booking[]
+
+  @@index([registrationStatus])
 }
 
 model Branch {
@@ -143,6 +154,8 @@ model Booking {
   // BMS fields
   quotationId   String?
   quoteNo       String?
+  /** Exact quotation version converted (accepted version at conversion time). */
+  quotationVersionNumber Int?
   destination   String?
   nights        Int?
   totalRooms    Int?
@@ -197,7 +210,7 @@ model Booking {
   @@index([customerId])
   @@index([agentId])
   @@index([branchId])
-  @@index([quotationId])
+  @@unique([quotationId])
   @@index([status])
 }
 
@@ -321,6 +334,9 @@ model Quotation {
   forceMajeure    String?  @db.Text
   travelDisclaimer String? @db.Text
   termsSnapshot   Json?
+  /** Phase 13 — snapshot of applied QuoteTemplate content (immutable vs later template edits). */
+  templateSnapshot Json?
+  appliedTemplateId String?
   baseCurrency    String   @default("INR")
   exchangeRate    Float    @default(1)
   totalNetCost    Int      @default(0)
@@ -330,8 +346,14 @@ model Quotation {
   discountType    String?  // Fixed|Percentage
   discountValue   Float    @default(0)
   discountAmount  Int      @default(0)
-  taxRate         Float    @default(18)
+  taxRate         Float    @default(0)
+  taxRuleId       String?
   taxableAmount   Int      @default(0)
+  trevioMarkupType  String   @default("Percentage")
+  trevioMarkupValue Float    @default(0)
+  agentMarkupType   String   @default("Fixed")
+  exchangeRateExplicit Boolean @default(false)
+  pricingStatus   String   @default("OK")
   perPersonCost   Int      @default(0)
   currentVersion  Int      @default(1)
   wizardStep      Int      @default(1)
@@ -343,12 +365,16 @@ model Quotation {
   acceptedByName  String?
   acceptedByEmail String?
   acceptedAt      DateTime?
+  /** Quotation currentVersion at the time of customer/staff acceptance — required for conversion. */
+  acceptedVersionNumber Int?
   rejectedReason  String?
   convertedBookingId String?
   convertedAt     DateTime?
   convertedBy     String?
   archivedAt      DateTime?
   deletedAt       DateTime?
+  /** Set when server-side expiry job (or admin expire-due) transitions status to Expired. */
+  expiredAt       DateTime?
   travelProposalId String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
@@ -362,6 +388,9 @@ model Quotation {
   revisions     QuotationRevision[]
   shares        QuotationShare[]
   documents     QuotationDocument[]
+  customerAccesses  QuotationCustomerAccess[]
+  customerResponses QuotationCustomerResponse[]
+  expiryReminders   QuotationExpiryReminder[]
 
   @@index([agencyId])
   @@index([couponCode])
@@ -370,6 +399,8 @@ model Quotation {
   @@index([deletedAt])
   @@index([destination])
   @@index([leadId])
+  @@index([status, validTill])
+  @@index([expiredAt])
 }
 
 model QuotationPackage {
@@ -396,6 +427,7 @@ model QuotationPackage {
   gst             Int      @default(0)
   total           Int      @default(0)
   perPersonCost   Int      @default(0)
+  pricing         Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -453,36 +485,130 @@ model QuotationRevision {
 }
 
 model QuotationShare {
-  id            String   @id @default(cuid())
-  quotationId   String
-  channel       String   // Email|WhatsApp|Link
-  recipient     String?
-  senderName    String?
-  message       String?
-  status        String   @default("Attempted") // Attempted|Sent|Failed
-  createdAt     DateTime @default(now())
+  id                String    @id @default(cuid())
+  quotationId       String
+  channel           String    // Email|WhatsApp|Link
+  recipient         String?
+  senderName        String?
+  message           String?
+  status            String    @default("Attempted") // Attempted|Sent|Failed|NotConfigured
+  documentId        String?
+  provider          String?
+  providerMessageId String?
+  failureReason     String?
+  attachmentName    String?
+  initiatedById     String?
+  packageCount      Int?
+  deliveredAt       DateTime?
+  versionNumber     Int?
+  createdAt         DateTime  @default(now())
 
-  quotation     Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  quotation         Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
 
   @@index([quotationId])
+  @@index([documentId])
 }
 
 model QuotationDocument {
   id            String   @id @default(cuid())
   quotationId   String
+  bookingId     String?
   docType       String
   fileName      String
-  fileUrl       String
+  fileUrl       String   @default("")
   mimeType      String?
   sizeBytes     Int      @default(0)
-  visibility    String   @default("Internal") // Internal|Agent|Customer
+  visibility    String   @default("INTERNAL") // INTERNAL|AGENT|CUSTOMER
   relatedEntity String?
+  description   String?
+  storageProvider String @default("local")
+  storageKey    String?
+  storedName    String?
   uploadedBy    String?
+  uploadedById  String?
+  versionNumber Int?
+  quotationVersionId String?
   createdAt     DateTime @default(now())
 
   quotation     Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
 
   @@index([quotationId])
+  @@index([bookingId])
+  @@index([quotationVersionId])
+}
+
+/** Secure hashed customer-access link (no login). Raw token never stored. */
+model QuotationCustomerAccess {
+  id             String    @id @default(cuid())
+  quotationId    String
+  tokenHash      String    @unique
+  versionNumber  Int
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  createdById    String?
+  createdByName  String?
+  lastAccessedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  quotation      Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  responses      QuotationCustomerResponse[]
+
+  @@index([quotationId])
+  @@index([versionNumber])
+  @@index([expiresAt])
+  @@index([revokedAt])
+}
+
+/** Append-only customer Accept / Reject / RevisionRequested records. */
+model QuotationCustomerResponse {
+  id                String   @id @default(cuid())
+  quotationId       String
+  accessId          String?
+  versionNumber     Int
+  responseType      String   // Accept | Reject | RevisionRequested
+  comment           String?  @db.Text
+  customerName      String?
+  customerEmail     String?
+  selectedPackageId String?
+  createdAt         DateTime @default(now())
+
+  quotation         Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  access            QuotationCustomerAccess? @relation(fields: [accessId], references: [id], onDelete: SetNull)
+
+  @@index([quotationId, createdAt])
+  @@index([quotationId, versionNumber])
+  @@index([responseType])
+  @@index([accessId])
+}
+
+/**
+ * Phase 17 EXP-02 — durable pre-expiry reminder claim.
+ * Unique per (quotation, validTill, kind, version) so restarts / multi-instance
+ * schedulers cannot send the same reminder event twice after a successful send.
+ */
+model QuotationExpiryReminder {
+  id                String    @id @default(cuid())
+  quotationId       String
+  validTill         String
+  versionNumber     Int
+  reminderKind      String    @default("PRE_EXPIRY")
+  daysBefore        Int
+  status            String    // Attempted | Sent | Failed | NotConfigured
+  recipientEmail    String?
+  provider          String?
+  providerMessageId String?
+  subject           String?
+  error             String?   @db.Text
+  sentAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  quotation         Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@unique([quotationId, validTill, reminderKind, versionNumber])
+  @@index([quotationId])
+  @@index([status])
+  @@index([validTill])
 }
 
 model Task {
@@ -861,6 +987,7 @@ model Supplier {
   activities  ActivityProduct[]
   transfers   TransferProduct[]
   meals       MealProduct[]
+  flights     FlightProduct[]
 
   @@index([agencyId])
   @@index([type])
@@ -927,6 +1054,10 @@ model ActivityProduct {
   description     String?
   images          Json     @default("[]")
   duration        String?
+  startTime       String?
+  closingTime     String?
+  ticketType      String?
+  passengerInfo   String?
   location        String?
   meetingPoint    String?
   inclusions      Json     @default("[]")
@@ -969,8 +1100,12 @@ model TransferProduct {
   supplierId      String?
   destinationId   String?
   name            String
+  city            String?
+  description     String?
+  images          Json     @default("[]")
   transferType    String   // Private|Shared|Both
   vehicleType     String?
+  capacity        Int?
   pickupLocation  String
   dropLocation    String
   pickupTime      String?
@@ -1139,6 +1274,7 @@ model Destination {
   activityProducts   ActivityProduct[]
   transferProducts   TransferProduct[]
   mealProducts       MealProduct[]
+  flightProducts     FlightProduct[]
   travelPackages     TravelPackage[]
   travelRequirements TravelRequirement[]
 
@@ -1564,6 +1700,8 @@ model MealProduct {
   description     String?
   mealType        String   @default("Other") // Breakfast|Lunch|Dinner|Other
   city            String?
+  restaurant      String?
+  transferInclusion String @default("NONE") // NONE|PRIVATE
   adultPrice      Int      @default(0)
   childPrice      Int      @default(0)
   currency        String   @default("INR")
@@ -1583,6 +1721,79 @@ model MealProduct {
   @@index([status])
   @@index([approvalStatus])
   @@index([mealType])
+}
+
+model FlightProduct {
+  id                  String   @id @default(cuid())
+  agencyId            String?
+  supplierId          String?
+  destinationId       String?
+  name                String
+  airline             String
+  flightNumber        String?
+  origin              String
+  destinationAirport  String
+  departureTime       String?
+  arrivalTime         String?
+  duration            String?
+  cabinClass          String?
+  baggage             String?
+  currency            String   @default("INR")
+  status              String   @default("Active")
+  approvalStatus      String   @default("Approved")
+  createdById         String?
+  updatedById         String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  supplier            Supplier?     @relation(fields: [supplierId], references: [id])
+  destination         Destination?  @relation(fields: [destinationId], references: [id])
+
+  @@index([agencyId])
+  @@index([destinationId])
+  @@index([origin])
+  @@index([status])
+  @@index([approvalStatus])
+}
+
+model ContractedRate {
+  id              String   @id @default(cuid())
+  agencyId        String?
+  productType     String
+  productId       String
+  currency        String   @default("INR")
+  rateUnit        String   @default("UNSPECIFIED")
+  contractedCost  Int
+  validFrom       String
+  validTo         String
+  active          Boolean  @default(true)
+  metadata        Json     @default("{}")
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([agencyId])
+  @@index([productType, productId, active])
+  @@index([validFrom, validTo])
+}
+
+model TaxRule {
+  id            String   @id @default(cuid())
+  agencyId      String?
+  name          String
+  rate          Float
+  method        String   @default("EXCLUSIVE") // EXCLUSIVE|INCLUSIVE
+  active        Boolean  @default(true)
+  scope         String   @default("QUOTATION")
+  effectiveFrom String?
+  effectiveTo   String?
+  createdById   String?
+  updatedById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([agencyId, active])
 }
 
 model ProposalPdf {
@@ -1771,12 +1982,20 @@ model BookingDocument {
   id            String   @id @default(cuid())
   bookingId     String
   passengerId   String?
-  docType       String   // Passport Front|Passport Back|PAN Card|Voucher|Ticket|Insurance|Other
+  quotationDocumentId String? @unique
+  docType       String
   fileName      String
-  fileUrl       String
+  fileUrl       String   @default("")
   mimeType      String?
   sizeBytes     Int      @default(0)
+  visibility    String   @default("INTERNAL")
+  relatedEntity String?
+  description   String?
+  storageProvider String @default("local")
+  storageKey    String?
+  storedName    String?
   uploadedBy    String?
+  uploadedById  String?
   createdAt     DateTime @default(now())
 
   booking       Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
@@ -1784,6 +2003,23 @@ model BookingDocument {
 
   @@index([bookingId])
   @@index([passengerId])
+}
+
+model RegistrationDocument {
+  id              String   @id @default(cuid())
+  purpose         String   @default("GST_VAT_PROOF")
+  originalName    String
+  storedName      String
+  storageKey      String
+  storageProvider String   @default("local")
+  mimeType        String
+  sizeBytes       Int
+  claimToken      String   @unique
+  agencyId        String?
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+
+  @@index([agencyId])
 }
 
 model BookingInvoice {

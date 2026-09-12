@@ -1,4 +1,5 @@
 import type { Quotation } from "@/types";
+import { api, ApiError, apiFetchBlob } from "@/lib/api";
 import { downloadInternationalQuotationPdf } from "@/lib/quotation-pdf";
 import { downloadProductQuotationPdf, type ProductQuoteLine } from "@/lib/product-quotation-pdf";
 import { downloadClientQuotationBrochure } from "@/lib/client-quotation-brochure";
@@ -126,11 +127,38 @@ function downloadClassicQuotationPdf(quote: Quotation): boolean {
   return true;
 }
 
-/** Open print/Save-as-PDF. Wizard quotes use the Trevio client brochure (no cost/profit). */
+/** Generate a real server PDF (Phase 5) and download it. Falls back to brochure print only if the quote has no id. */
 export async function downloadQuotationPdf(
   quote: Quotation,
   brochureOptions?: import("@/lib/client-quotation-brochure").ClientBrochureOptions,
+  options?: { mode?: "customer" | "preview" },
 ): Promise<boolean> {
+  if (quote.id) {
+    try {
+      const mode = options?.mode || "customer";
+      const result = await api.generateQuotationPdf(quote.id, mode);
+      const blob = await apiFetchBlob(result.document.downloadPath);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = result.document.fileName || `${quote.quoteNo}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return true;
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 403 && options?.mode !== "preview") {
+        throw e;
+      }
+      if (e instanceof ApiError && e.status === 403) throw e;
+      // Non-approval failures can still use the brochure for offline preview when explicitly previewing.
+      if (options?.mode === "preview") {
+        return downloadClientQuotationBrochure(quote, brochureOptions);
+      }
+      throw e;
+    }
+  }
   const hasBrochure =
     Boolean(quote.packages?.length) ||
     Boolean(quote.destination && (quote.travelStartDate || quote.travelDates));
@@ -204,26 +232,55 @@ export function buildQuotationShareText(quote: Quotation): string {
   return (
     `Hello ${quote.customerName},\n\n` +
     `Please find our travel quotation ${quote.quoteNo}.${dest}${dates}\n` +
-    `Total: ${formatINR(quote.total)} (incl. GST)\n` +
-    `Valid till: ${new Date(quote.validTill).toLocaleDateString("en-IN")}\n\n` +
     `Prepared by ${quote.createdBy} · Trevio Global\n` +
-    `We will also share the PDF quotation for your review.`
+    `The full quotation PDF will be delivered by the server when email/WhatsApp is sent.`
   );
 }
 
-export function shareQuotationViaEmail(quote: Quotation): void {
-  const subject = encodeURIComponent(`Travel Quotation ${quote.quoteNo} — ${quote.customerName}`);
-  const body = encodeURIComponent(buildQuotationShareText(quote));
-  const to = quote.contactEmail ? encodeURIComponent(quote.contactEmail) : "";
-  window.open(`mailto:${to}?subject=${subject}&body=${body}`, "_blank");
+/** Server-side email with Phase 5 customer PDF attachment. */
+export async function deliverQuotationEmail(
+  quote: Quotation,
+  opts?: { recipient?: string; message?: string },
+): Promise<{ ok: boolean; error?: string; deliveryId?: string }> {
+  if (!quote.id) return { ok: false, error: "Save the quotation before emailing." };
+  try {
+    const res = await api.emailQuotation(quote.id, {
+      recipient: opts?.recipient || quote.contactEmail,
+      message: opts?.message,
+      appOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+    });
+    return { ok: true, deliveryId: res.delivery.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof ApiError ? e.message : "Email delivery failed" };
+  }
 }
 
+/** Server-side WhatsApp with Phase 5 customer PDF. */
+export async function deliverQuotationWhatsApp(
+  quote: Quotation,
+  opts?: { recipient?: string; message?: string },
+): Promise<{ ok: boolean; error?: string; deliveryId?: string }> {
+  if (!quote.id) return { ok: false, error: "Save the quotation before sending WhatsApp." };
+  try {
+    const res = await api.whatsappQuotation(quote.id, {
+      recipient: opts?.recipient || quote.contactPhone,
+      message: opts?.message,
+      appOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+    });
+    return { ok: true, deliveryId: res.delivery.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof ApiError ? e.message : "WhatsApp delivery failed" };
+  }
+}
+
+/** @deprecated Client mailto is not real delivery. Prefer deliverQuotationEmail. */
+export function shareQuotationViaEmail(quote: Quotation): void {
+  void deliverQuotationEmail(quote);
+}
+
+/** @deprecated Client wa.me is not real delivery. Prefer deliverQuotationWhatsApp. */
 export function shareQuotationViaWhatsApp(quote: Quotation, phoneOverride?: string): void {
-  const text = encodeURIComponent(buildQuotationShareText(quote));
-  const raw = (phoneOverride || quote.contactPhone || "").replace(/\D/g, "");
-  const phone = raw.length >= 10 ? raw : "";
-  const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
-  window.open(url, "_blank", "noopener,noreferrer");
+  void deliverQuotationWhatsApp(quote, { recipient: phoneOverride || quote.contactPhone });
 }
 
 export { quoteLines as getQuotationLineItems };
