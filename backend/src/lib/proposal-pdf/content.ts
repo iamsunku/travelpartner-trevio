@@ -65,6 +65,177 @@ function stringList(value: unknown): string[] {
 }
 
 export function buildDocumentContent(input: PdfRenderInput): PdfDocumentContent {
+  if (input.snapshot.builderMode === "day_itinerary") {
+    return buildDayItineraryDocumentContent(input);
+  }
+  return buildPackageDocumentContent(input);
+}
+
+function buildDayItineraryDocumentContent(input: PdfRenderInput): PdfDocumentContent {
+  const snapshot = input.snapshot;
+  const trip = (snapshot.trip ?? {}) as Record<string, unknown>;
+  const daysRaw = asArray(snapshot.days);
+
+  const days: PdfItineraryDay[] = daysRaw.map((raw) => {
+    const d = raw as Record<string, unknown>;
+    const items: PdfItineraryItem[] = [];
+    const hotel = d.hotel as Record<string, unknown> | null | undefined;
+    if (hotel?.name) {
+      items.push({
+        time: "",
+        title: `Hotel: ${str(hotel.name)}`,
+        description: str((hotel.meta as Record<string, unknown> | undefined)?.room ?? ""),
+        period: "Anytime",
+      });
+    }
+    for (const t of asArray(d.transfers)) {
+      const row = t as Record<string, unknown>;
+      items.push({
+        time: "",
+        title: `Transfer: ${str(row.name)}`,
+        description: str((row.meta as Record<string, unknown> | undefined)?.route ?? ""),
+        period: "Anytime",
+      });
+    }
+    for (const a of asArray(d.activities)) {
+      const row = a as Record<string, unknown>;
+      items.push({
+        time: "",
+        title: str(row.name, "Activity"),
+        description: str((row.meta as Record<string, unknown> | undefined)?.description ?? ""),
+        period: "Anytime",
+      });
+    }
+    for (const m of asArray(d.meals)) {
+      const row = m as Record<string, unknown>;
+      const mealType = str((row.meta as Record<string, unknown> | undefined)?.mealType, "Meal");
+      items.push({
+        time: "",
+        title: `${mealType}: ${str(row.name)}`,
+        description: "",
+        period: mealType === "Breakfast" ? "Morning" : mealType === "Dinner" ? "Evening" : "Afternoon",
+      });
+    }
+    for (const x of asArray(d.misc)) {
+      const row = x as Record<string, unknown>;
+      items.push({
+        time: "",
+        title: str(row.name, "Misc"),
+        description: str((row.meta as Record<string, unknown> | undefined)?.note ?? ""),
+        period: "Anytime",
+      });
+    }
+    return {
+      dayNumber: num(d.dayNumber, 1),
+      title: `Day ${num(d.dayNumber, 1)} — ${str(d.city)} (${formatDate(str(d.date))})`,
+      items,
+    };
+  });
+
+  const hotels: PdfHotel[] = [];
+  const activities: PdfActivity[] = [];
+  const transfers: PdfTransfer[] = [];
+  for (const raw of daysRaw) {
+    const d = raw as Record<string, unknown>;
+    const hotel = d.hotel as Record<string, unknown> | null | undefined;
+    if (hotel?.name && !hotels.some((h) => h.name === hotel.name)) {
+      const meta = (hotel.meta as Record<string, unknown> | undefined) ?? {};
+      hotels.push({
+        name: str(hotel.name),
+        category: str(meta.stars ?? meta.category, "Standard"),
+        description: str(meta.description, "As selected in itinerary."),
+        amenities: [],
+        image: null,
+        nights: 1,
+        city: str(d.city),
+      });
+    }
+    for (const a of asArray(d.activities)) {
+      const row = a as Record<string, unknown>;
+      const meta = (row.meta as Record<string, unknown> | undefined) ?? {};
+      activities.push({
+        name: str(row.name),
+        description: str(meta.description, ""),
+        duration: str(meta.duration, "—"),
+        image: null,
+        location: str(d.city),
+      });
+    }
+    for (const t of asArray(d.transfers)) {
+      const row = t as Record<string, unknown>;
+      const meta = (row.meta as Record<string, unknown> | undefined) ?? {};
+      transfers.push({
+        name: str(row.name),
+        vehicle: str(meta.vehicleType, "As assigned"),
+        pickup: str(meta.pickup, "As per itinerary"),
+        drop: str(meta.drop, "As per itinerary"),
+        notes: "",
+        type: str(meta.transferType, "Private"),
+      });
+    }
+  }
+
+  const adults = num(trip.adults, 1);
+  const children = num(trip.children, 0);
+  const paxLabel = `${adults} Adult${adults === 1 ? "" : "s"}${children ? ` + ${children} Child${children === 1 ? "" : "ren"}` : ""}`;
+  const cities = asArray(trip.cities).map((c) => str((c as Record<string, unknown>).city)).filter(Boolean);
+  const currency = str(snapshot.pricing.currency, "INR");
+  const pricing = snapshot.pricing;
+
+  return {
+    proposalNumber: input.proposalNumber,
+    proposalTitle: str(trip.title, "Travel Proposal"),
+    customerName: customerName(snapshot),
+    customerEmail: str(snapshot.customer?.email ?? snapshot.lead?.email),
+    customerPhone: str(snapshot.customer?.phone ?? snapshot.lead?.phone),
+    paxLabel,
+    destination: cities.join(" → ") || str(snapshot.destination?.name, "Destination"),
+    travelDates: trip.startDate
+      ? `${formatDate(str(trip.startDate))} – ${formatDate(str(trip.endDate))}`
+      : "Dates to be confirmed",
+    duration: `${days.length} Days / ${num((snapshot.package as Record<string, unknown>)?.durationNights, Math.max(0, days.length - 1))} Nights`,
+    generatedDate: formatDate(new Date()),
+    validUntil: formatDate(input.validUntil),
+    heroImage: str(snapshot.destination?.heroImage ?? snapshot.destination?.thumbnail) || null,
+    highlights: snapshot.terms.inclusions.length ? snapshot.terms.inclusions : cities.map((c) => `Explore ${c}`),
+    days,
+    hotels: hotels.length
+      ? hotels
+      : [{ name: "As per day itinerary", category: "Standard", description: "", amenities: [], image: null, nights: 0, city: "" }],
+    activities,
+    transfers: transfers.length
+      ? transfers
+      : [{ name: "As per day itinerary", vehicle: "—", pickup: "—", drop: "—", notes: "", type: "Private" }],
+    flights: [],
+    pricing: {
+      currency,
+      rows: [
+        { label: "Hotels", amount: pricing.hotelCost },
+        { label: "Activities", amount: pricing.activityCost },
+        { label: "Transfers", amount: pricing.transferCost },
+        { label: "Meals", amount: pricing.mealCost ?? 0 },
+        { label: "Miscellaneous", amount: pricing.miscCost ?? 0 },
+        { label: "Subtotal", amount: pricing.packageBase },
+        { label: "Markup", amount: pricing.markup },
+        { label: "Discount", amount: -Math.abs(pricing.discount) },
+        { label: "Taxes", amount: pricing.tax },
+        { label: "Grand Total", amount: pricing.total, emphasis: true },
+      ],
+      total: pricing.total,
+    },
+    inclusions: snapshot.terms.inclusions,
+    exclusions: snapshot.terms.exclusions,
+    visaRequired: Boolean(snapshot.terms.visaRequired),
+    visaDetails: snapshot.terms.visaDetails,
+    termsText: snapshot.terms.termsText,
+    cancellationText: snapshot.terms.cancellationText,
+    notes: str(input.notes ?? "", "").trim() || "Please review all details carefully before confirming.",
+    contact: { name: "Travel Consultant", designation: "Sales Executive", phone: "", email: "" },
+    customHtml: "",
+  };
+}
+
+function buildPackageDocumentContent(input: PdfRenderInput): PdfDocumentContent {
   const snapshot = input.snapshot;
   const pkg = (snapshot.package ?? {}) as Record<string, unknown>;
   const req = (snapshot.requirement ?? null) as Record<string, unknown> | null;

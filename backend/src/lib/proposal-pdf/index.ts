@@ -39,8 +39,14 @@ async function loadAgency(agencyId: string | null | undefined) {
 function assertCanGenerate(proposal: {
   proposalStatus: string;
   selectedTemplateId: string | null;
+  builderMode?: string | null;
 }, snapshot: ProposalSnapshotData | null): asserts snapshot is ProposalSnapshotData {
-  if (!isPdfEligibleStatus(proposal.proposalStatus)) {
+  const isDay = (proposal as { builderMode?: string | null }).builderMode === "day_itinerary" || snapshot?.builderMode === "day_itinerary";
+  if (isDay) {
+    if (["Cancelled", "Expired"].includes(proposal.proposalStatus)) {
+      throw new ProposalPdfValidationError(`PDF cannot be generated for status ${proposal.proposalStatus}`);
+    }
+  } else if (!isPdfEligibleStatus(proposal.proposalStatus)) {
     throw new ProposalPdfValidationError(
       `PDF can only be generated when status is Internal Review or later (current: ${proposal.proposalStatus})`
     );
@@ -48,7 +54,7 @@ function assertCanGenerate(proposal: {
   if (!snapshot) {
     throw new ProposalPdfValidationError("Proposal snapshot is required before generating a PDF");
   }
-  if (!snapshot.template && !proposal.selectedTemplateId) {
+  if (!isDay && !snapshot.template && !proposal.selectedTemplateId) {
     throw new ProposalPdfValidationError("Quote template is required before generating a PDF");
   }
 }

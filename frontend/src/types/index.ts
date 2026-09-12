@@ -999,6 +999,7 @@ export interface ProposalHistoryRecord {
 
 export interface ProposalSnapshotData {
   capturedAt: string;
+  builderMode?: "package" | "day_itinerary";
   requirement?: Record<string, unknown> | null;
   customer?: Record<string, unknown> | null;
   lead?: Record<string, unknown> | null;
@@ -1015,6 +1016,8 @@ export interface ProposalSnapshotData {
     hotelCost: number;
     activityCost: number;
     transferCost: number;
+    mealCost?: number;
+    miscCost?: number;
     packageBase: number;
     markup: number;
     discount: number;
@@ -1032,6 +1035,47 @@ export interface ProposalSnapshotData {
     visaRequired: boolean;
     visaDetails: string;
   };
+  trip?: ProposalItineraryTrip;
+  days?: ProposalItineraryDay[];
+}
+
+export type ProposalLineSource = "catalog" | "amadeus" | "manual";
+
+export interface ProposalLineItem {
+  id: string;
+  productId?: string | null;
+  externalId?: string | null;
+  source: ProposalLineSource;
+  name: string;
+  meta?: Record<string, unknown>;
+  unitPrice: number;
+  qty: number;
+  total: number;
+  currency: string;
+}
+
+export interface ProposalItineraryTrip {
+  title: string;
+  startDate: string;
+  endDate: string;
+  adults: number;
+  children: number;
+  currency: string;
+  cities: { city: string; nights: number; destinationId?: string | null }[];
+  notes?: string | null;
+}
+
+export interface ProposalItineraryDay {
+  dayNumber: number;
+  date: string;
+  city: string;
+  destinationId?: string | null;
+  hotel?: ProposalLineItem | null;
+  transfers: ProposalLineItem[];
+  activities: ProposalLineItem[];
+  meals: ProposalLineItem[];
+  misc: ProposalLineItem[];
+  dayTotal: number;
 }
 
 export interface TravelProposalRecord {
@@ -1043,6 +1087,8 @@ export interface TravelProposalRecord {
   leadId?: string | null;
   selectedPackageId?: string | null;
   selectedTemplateId?: string | null;
+  builderMode?: "package" | "day_itinerary";
+  tripMeta?: Record<string, unknown> | null;
   proposalStatus: ProposalStatus;
   currency: string;
   validUntil?: string | null;

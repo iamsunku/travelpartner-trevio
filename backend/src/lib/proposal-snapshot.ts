@@ -11,6 +11,8 @@ export type ProposalPricing = {
   hotelCost: number;
   activityCost: number;
   transferCost: number;
+  mealCost?: number;
+  miscCost?: number;
   packageBase: number;
   markup: number;
   discount: number;
@@ -21,6 +23,7 @@ export type ProposalPricing = {
 
 export type ProposalSnapshotData = {
   capturedAt: string;
+  builderMode?: "package" | "day_itinerary";
   requirement: Record<string, unknown> | null;
   customer: Record<string, unknown> | null;
   lead: Record<string, unknown> | null;
@@ -40,6 +43,8 @@ export type ProposalSnapshotData = {
     visaRequired: boolean;
     visaDetails: string;
   };
+  trip?: Record<string, unknown>;
+  days?: Record<string, unknown>[];
 };
 
 const PACKAGE_INCLUDE = {
@@ -115,6 +120,8 @@ export function recalcPricingFromSnapshot(
     hotelCost,
     activityCost,
     transferCost,
+    mealCost: 0,
+    miscCost: 0,
     packageBase,
     markup,
     discount,
@@ -192,6 +199,7 @@ export async function buildProposalSnapshot(input: {
 
   return {
     capturedAt: new Date().toISOString(),
+    builderMode: "package",
     requirement: input.requirement ? clone(input.requirement) : null,
     customer: input.customer ? clone(input.customer) : null,
     lead: input.lead ? clone(input.lead) : null,

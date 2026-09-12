@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy } from "lucide-react";
+import { Copy, Plus } from "lucide-react";
 import { PageShell, StatusBadge } from "@/components/shared/ui-helpers";
 import {
   CatalogToolbar, EmptyState, EnterprisePageHeader, PageLoadingSkeleton,
@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { apiFetch } from "@/lib/api";
 import type { TravelProposalRecord } from "@/types";
+import { CreateItineraryProposalDialog } from "@/components/shared/create-itinerary-proposal-dialog";
 
 interface TravelProposalCatalogProps {
   onSelect: (id: string) => void;
@@ -32,6 +33,8 @@ export function TravelProposalCatalog({ onSelect }: TravelProposalCatalogProps) 
   const [searchInput, setSearchInput] = useState("");
   const q = useDebouncedValue(searchInput, 350);
   const [status, setStatus] = useState("All");
+  const [builderMode, setBuilderMode] = useState("All");
+  const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,13 +43,14 @@ export function TravelProposalCatalog({ onSelect }: TravelProposalCatalogProps) 
         pageSize: "50",
         ...(q ? { q } : {}),
         ...(status !== "All" ? { status } : {}),
+        ...(builderMode !== "All" ? { builderMode } : {}),
       });
       const data = await apiFetch<{ items: TravelProposalRecord[] }>(`/api/travel-proposals?${params}`);
       setItems(data.items);
     } finally {
       setLoading(false);
     }
-  }, [q, status]);
+  }, [q, status, builderMode]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -60,8 +64,13 @@ export function TravelProposalCatalog({ onSelect }: TravelProposalCatalogProps) 
     <PageShell>
       <EnterprisePageHeader
         title="Travel Proposals"
-        subtitle="Customer proposals with immutable package snapshots"
+        subtitle="Package proposals and day-wise itinerary builders"
         breadcrumbs={[{ label: "Sales & CRM" }, { label: "Travel Proposals" }]}
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="w-4 h-4 mr-1" /> New itinerary proposal
+          </Button>
+        }
       />
 
       <CatalogToolbar
@@ -69,15 +78,25 @@ export function TravelProposalCatalog({ onSelect }: TravelProposalCatalogProps) 
         onSearchChange={setSearchInput}
         searchPlaceholder="Search proposals, customers…"
         filters={
-          <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-[160px] h-9"><SelectValue placeholder="Status" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All statuses</SelectItem>
-              {["Draft", "Internal Review", "Approved", "Sent", "Viewed", "Accepted", "Booked", "Rejected", "Expired", "Cancelled"].map((s) => (
-                <SelectItem key={s} value={s}>{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-[160px] h-9"><SelectValue placeholder="Status" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">All statuses</SelectItem>
+                {["Draft", "Internal Review", "Approved", "Sent", "Viewed", "Accepted", "Booked", "Rejected", "Expired", "Cancelled"].map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={builderMode} onValueChange={setBuilderMode}>
+              <SelectTrigger className="w-[160px] h-9"><SelectValue placeholder="Type" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="All">All types</SelectItem>
+                <SelectItem value="day_itinerary">Day itinerary</SelectItem>
+                <SelectItem value="package">Package</SelectItem>
+              </SelectContent>
+            </Select>
+          </>
         }
       />
 
@@ -86,7 +105,7 @@ export function TravelProposalCatalog({ onSelect }: TravelProposalCatalogProps) 
       ) : items.length === 0 ? (
         <EmptyState
           title="No travel proposals yet"
-          description="Create a proposal from a Trip Requirement with a selected package."
+          description="Create a day itinerary proposal, or start from a Trip Requirement with a selected package."
         />
       ) : (
         <div className="rounded-lg border overflow-x-auto">
@@ -94,6 +113,7 @@ export function TravelProposalCatalog({ onSelect }: TravelProposalCatalogProps) 
             <TableHeader>
               <TableRow>
                 <TableHead>Proposal</TableHead>
+                <TableHead>Type</TableHead>
                 <TableHead>Customer</TableHead>
                 <TableHead>Requirement</TableHead>
                 <TableHead>Status</TableHead>
@@ -106,6 +126,9 @@ export function TravelProposalCatalog({ onSelect }: TravelProposalCatalogProps) 
               {items.map((item) => (
                 <TableRow key={item.id} className="cursor-pointer hover:bg-muted/50" onClick={() => onSelect(item.id)}>
                   <TableCell className="font-medium text-primary">{item.proposalNumber}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {item.builderMode === "day_itinerary" ? "Day itinerary" : "Package"}
+                  </TableCell>
                   <TableCell>{customerLabel(item)}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{item.travelRequirement?.requirementCode ?? "—"}</TableCell>
                   <TableCell><StatusBadge status={item.proposalStatus} /></TableCell>
@@ -122,6 +145,12 @@ export function TravelProposalCatalog({ onSelect }: TravelProposalCatalogProps) 
           </Table>
         </div>
       )}
+
+      <CreateItineraryProposalDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={onSelect}
+      />
     </PageShell>
   );
 }

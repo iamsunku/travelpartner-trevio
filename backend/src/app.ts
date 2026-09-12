@@ -493,16 +493,48 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
     return;
   }
   try {
-    const body = req.body;
+    const body = req.body as {
+      fullName: string;
+      companyName: string;
+      address: string;
+      email: string;
+      countryCode: string;
+      phone: string;
+      country: string;
+      countryCodeIso?: string;
+      state: string;
+      city: string;
+      panNumber?: string;
+      password: string;
+      gstNumber?: string;
+      gstProofUrl?: string;
+      termsVersion?: string;
+    };
     const email = String(body.email).trim().toLowerCase();
     const existing = await db.user.findUnique({ where: { email } });
     if (existing) {
-      res.status(409).json({ error: "An account with this email already exists" });
+      res.status(409).json({ error: "This email address is already registered. Please login instead." });
       return;
     }
 
-    const phone = `${body.countryCode} ${body.phone}`.trim();
+    const phoneDigits = String(body.phone).replace(/\D/g, "");
+    const phone = `${body.countryCode} ${phoneDigits}`.trim();
+    const phoneDup = await db.user.findFirst({
+      where: {
+        OR: [
+          { phone },
+          { phone: { endsWith: phoneDigits } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (phoneDup) {
+      res.status(409).json({ error: "This mobile number is already registered. Please login instead." });
+      return;
+    }
+
     const passwordHash = await bcrypt.hash(body.password, 10);
+    const termsVersion = body.termsVersion || "2026-09-1";
 
     const result = await db.$transaction(async (tx) => {
       const agency = await tx.agency.create({
@@ -557,12 +589,27 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
           action: "Agent Registration",
           module: "Auth",
           ip: req.ip || "0.0.0.0",
-          details: `New agency registered: ${agency.name}`,
+          details: `New agency registered: ${agency.name}; country=${body.countryCodeIso || body.country}; terms=${termsVersion}`,
         },
       });
 
       return user;
     });
+
+    try {
+      const { sendHtmlEmail } = await import("./lib/email.js");
+      await sendHtmlEmail(
+        email,
+        "Your Trevio Global agent registration has been received",
+        `<p>Hi ${escapeHtmlSafe(body.fullName)},</p>
+         <p>Your Trevio Global agent registration for <strong>${escapeHtmlSafe(body.companyName)}</strong> has been received.</p>
+         <p>You can sign in to the agent portal with the email and password you created.</p>
+         <p>Regards,<br/>Trevio Global</p>`,
+        { agencyId: result.agencyId },
+      );
+    } catch {
+      /* non-blocking */
+    }
 
     const token = signToken({
       userId: result.id,
@@ -580,6 +627,14 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
     res.status(500).json({ error: "Server error" });
   }
 });
+
+function escapeHtmlSafe(s: string) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 app.get("/api/bookings", requireAuth, requireAnyPermission("flights", "hotels", "holiday", "bookings"), async (req: AuthRequest, res) => {
   try {

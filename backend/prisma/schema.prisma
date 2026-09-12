@@ -860,6 +860,7 @@ model Supplier {
   hotels      HotelProduct[]
   activities  ActivityProduct[]
   transfers   TransferProduct[]
+  meals       MealProduct[]
 
   @@index([agencyId])
   @@index([type])
@@ -1137,6 +1138,7 @@ model Destination {
   hotelProducts      HotelProduct[]
   activityProducts   ActivityProduct[]
   transferProducts   TransferProduct[]
+  mealProducts       MealProduct[]
   travelPackages     TravelPackage[]
   travelRequirements TravelRequirement[]
 
@@ -1501,6 +1503,8 @@ model TravelProposal {
   leadId               String?
   selectedPackageId    String?
   selectedTemplateId   String?
+  builderMode          String    @default("package") // package|day_itinerary
+  tripMeta             Json?     // list summary: title, cities, dates, pax
   proposalStatus       String    @default("Draft") // Draft|Internal Review|Approved|Sent|Viewed|Accepted|Booked|Rejected|Expired|Cancelled
   currency             String    @default("INR")
   validUntil           DateTime?
@@ -1524,6 +1528,7 @@ model TravelProposal {
   snapshots            ProposalSnapshot[]
   history              ProposalHistory[]
   pdfs                 ProposalPdf[]
+  shares               ProposalShare[]
 
   @@unique([agencyId, proposalNumber])
   @@index([agencyId])
@@ -1531,7 +1536,53 @@ model TravelProposal {
   @@index([customerId])
   @@index([leadId])
   @@index([proposalStatus])
+  @@index([builderMode])
   @@index([deletedAt])
+}
+
+model ProposalShare {
+  id            String   @id @default(uuid())
+  proposalId    String
+  channel       String   // Email|WhatsApp|Link
+  recipient     String?
+  senderName    String?
+  message       String?  @db.Text
+  status        String   @default("Attempted") // Attempted|Sent|Failed
+  createdAt     DateTime @default(now())
+
+  proposal      TravelProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([proposalId])
+}
+
+model MealProduct {
+  id              String   @id @default(cuid())
+  agencyId        String?
+  supplierId      String?
+  destinationId   String?
+  name            String
+  description     String?
+  mealType        String   @default("Other") // Breakfast|Lunch|Dinner|Other
+  city            String?
+  adultPrice      Int      @default(0)
+  childPrice      Int      @default(0)
+  currency        String   @default("INR")
+  status          String   @default("Active") // Active|Draft|Archived
+  approvalStatus  String   @default("Approved") // Draft|Pending|Approved|Rejected
+  createdById     String?
+  updatedById     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  destination     Destination? @relation(fields: [destinationId], references: [id])
+  supplier        Supplier?    @relation(fields: [supplierId], references: [id])
+
+  @@index([agencyId])
+  @@index([destinationId])
+  @@index([city])
+  @@index([status])
+  @@index([approvalStatus])
+  @@index([mealType])
 }
 
 model ProposalPdf {

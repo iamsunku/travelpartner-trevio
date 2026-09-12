@@ -398,6 +398,29 @@ export const api = {
     return apiFetch<{ hotels: ApiHotel[]; provider?: string; source?: string }>(`/api/hotels/search?${qs}`);
   },
 
+  createItineraryProposal: (body: Record<string, unknown>) =>
+    apiFetch<{ item: import("@/types").TravelProposalRecord; snapshot: import("@/types").ProposalSnapshotData }>(
+      "/api/travel-proposals/from-itinerary",
+      { method: "POST", body: JSON.stringify(body) }
+    ),
+
+  patchProposalItinerary: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ item: import("@/types").TravelProposalRecord; snapshot: import("@/types").ProposalSnapshotData }>(
+      `/api/travel-proposals/${id}/itinerary`,
+      { method: "PATCH", body: JSON.stringify(body) }
+    ),
+
+  shareProposal: (id: string, body: Record<string, unknown>) =>
+    apiFetch<{ share: unknown; link: string; emailed?: boolean; mailto?: string; whatsappUrl?: string; note?: string }>(
+      `/api/travel-proposals/${id}/share`,
+      { method: "POST", body: JSON.stringify(body) }
+    ),
+
+  listMealProducts: (params?: Record<string, string>) => {
+    const qs = new URLSearchParams(params || {});
+    return apiFetch<{ items: Record<string, unknown>[]; total: number }>(`/api/products/meals?${qs}`);
+  },
+
   walletTransaction: (body: Record<string, unknown>) =>
     apiFetch<{ balance: number; transaction: ApiWalletTxn }>("/api/wallet", {
       method: "POST",
@@ -792,6 +815,7 @@ export interface AgentRegistrationBody {
   countryCode: string;
   phone: string;
   country: string;
+  countryCodeIso?: string;
   state: string;
   city: string;
   panNumber?: string;
@@ -800,6 +824,7 @@ export interface AgentRegistrationBody {
   gstNumber?: string;
   gstProofUrl?: string;
   termsAccepted: true;
+  termsVersion?: string;
 }
 
 export interface ApiUser {

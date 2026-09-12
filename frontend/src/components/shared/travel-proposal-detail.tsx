@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TravelProposalWorkspace } from "@/components/shared/travel-proposal-workspace";
+import { ProposalItineraryBuilder } from "@/components/shared/proposal-itinerary-builder";
 import { QuoteTemplatePreview } from "@/components/shared/quote-template-preview";
 import {
   ProposalPdfProgressDialog,
@@ -71,7 +72,7 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
     try {
       const [detail, preview, vers, hist, pdfMeta] = await Promise.all([
         apiFetch<{ item: TravelProposalRecord; snapshot: ProposalSnapshotData }>(`/api/travel-proposals/${proposalId}`),
-        apiFetch<{ previewData: QuotePreviewMockData }>(`/api/travel-proposals/${proposalId}/preview`),
+        apiFetch<{ previewData: QuotePreviewMockData }>(`/api/travel-proposals/${proposalId}/preview`).catch(() => ({ previewData: null as unknown as QuotePreviewMockData })),
         apiFetch<{ versions: ProposalSnapshotRecord[] }>(`/api/travel-proposals/${proposalId}/versions`),
         apiFetch<{ history: ProposalHistoryRecord[] }>(`/api/travel-proposals/${proposalId}/history`),
         apiFetch<{ proposal: TravelProposalRecord; versions: ProposalPdfRecord[] }>(
@@ -220,12 +221,15 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
   };
 
   if (loading) return <PageShell><Skeleton className="h-8 w-48 mb-4" /><Skeleton className="h-96 w-full" /></PageShell>;
-  if (!proposal || !draftSnapshot || !previewData) {
+  if (!proposal || !draftSnapshot) {
     return <PageShell><Button variant="ghost" onClick={onBack}>Back</Button><p className="mt-4 text-muted-foreground">Not found</p></PageShell>;
   }
 
+  const isDayItinerary = proposal.builderMode === "day_itinerary" || draftSnapshot.builderMode === "day_itinerary";
   const readOnly = ["Booked", "Cancelled", "Expired"].includes(proposal.proposalStatus);
-  const canGeneratePdf = PDF_ELIGIBLE.has(proposal.proposalStatus);
+  const canGeneratePdf = isDayItinerary
+    ? !["Cancelled", "Expired"].includes(proposal.proposalStatus)
+    : PDF_ELIGIBLE.has(proposal.proposalStatus);
   const hasPdf = Boolean(proposal.pdfUrl && proposal.pdfVersion);
   const actions = STATUS_ACTIONS[proposal.proposalStatus] ?? [];
   const template = draftSnapshot.template as Record<string, unknown> | null;
@@ -252,14 +256,18 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
 
       <EnterprisePageHeader
         title={proposal.proposalNumber}
-        subtitle={`${proposal.customer?.name ?? proposal.lead?.customerName ?? "Customer"} · ${proposal.travelRequirement?.requirementCode ?? "Standalone"}`}
+        subtitle={`${proposal.customer?.name ?? proposal.lead?.customerName ?? "Customer"} · ${
+          isDayItinerary
+            ? String((proposal.tripMeta as { title?: string } | null)?.title ?? "Day itinerary")
+            : proposal.travelRequirement?.requirementCode ?? "Standalone"
+        }`}
         breadcrumbs={[
           { label: "Travel Proposals", onClick: onBack },
           { label: proposal.proposalNumber },
         ]}
         actions={
           <div className="flex flex-wrap gap-2">
-            {!readOnly && (
+            {!readOnly && !isDayItinerary && (
               <Button onClick={save} disabled={submitting}>
                 <Save className="w-4 h-4 mr-1" />{submitting ? "Saving…" : "Save Version"}
               </Button>
@@ -318,9 +326,10 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
         <TabsContent value="overview" className="mt-4">
           <Card>
             <CardContent className="p-4 grid sm:grid-cols-2 gap-3 text-sm">
+              <div><span className="text-muted-foreground">Type</span><p className="font-medium">{isDayItinerary ? "Day itinerary" : "Package"}</p></div>
               <div><span className="text-muted-foreground">Customer</span><p className="font-medium">{proposal.customer?.name ?? proposal.lead?.customerName ?? "—"}</p></div>
               <div><span className="text-muted-foreground">Trip Requirement</span><p>{proposal.travelRequirement?.requirementCode ?? "—"}</p></div>
-              <div><span className="text-muted-foreground">Package (snapshot)</span><p>{String(draftSnapshot.package?.packageName ?? "—")}</p></div>
+              <div><span className="text-muted-foreground">{isDayItinerary ? "Title" : "Package (snapshot)"}</span><p>{String(draftSnapshot.package?.packageName ?? "—")}</p></div>
               <div><span className="text-muted-foreground">Template</span><p>{String((draftSnapshot.template as { templateName?: string } | null)?.templateName ?? "Default")}</p></div>
               <div><span className="text-muted-foreground">Valid Until</span><p>{formatDate(proposal.validUntil)}</p></div>
               <div><span className="text-muted-foreground">Total</span><p className="font-bold text-primary">₹{draftSnapshot.pricing.total.toLocaleString("en-IN")}</p></div>
@@ -332,14 +341,28 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
         </TabsContent>
 
         <TabsContent value="proposal" className="mt-4">
-          <TravelProposalWorkspace
-            proposal={proposal}
-            snapshot={draftSnapshot}
-            previewData={previewData}
-            onSnapshotChange={setDraftSnapshot}
-            onProposalChange={(patch) => setProposal({ ...proposal, ...patch })}
-            readOnly={readOnly}
-          />
+          {isDayItinerary ? (
+            <ProposalItineraryBuilder
+              proposalId={proposalId}
+              proposal={proposal}
+              snapshot={draftSnapshot}
+              readOnly={readOnly}
+              onSaved={(snap, item) => {
+                setSnapshot(snap);
+                setDraftSnapshot(snap);
+                if (item) setProposal(item);
+              }}
+            />
+          ) : (
+            <TravelProposalWorkspace
+              proposal={proposal}
+              snapshot={draftSnapshot}
+              previewData={previewData!}
+              onSnapshotChange={setDraftSnapshot}
+              onProposalChange={(patch) => setProposal({ ...proposal, ...patch })}
+              readOnly={readOnly}
+            />
+          )}
         </TabsContent>
 
         <TabsContent value="pricing" className="mt-4">
@@ -349,6 +372,12 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
                 ["Hotels", draftSnapshot.pricing.hotelCost],
                 ["Activities", draftSnapshot.pricing.activityCost],
                 ["Transfers", draftSnapshot.pricing.transferCost],
+                ...(isDayItinerary
+                  ? [
+                      ["Meals", draftSnapshot.pricing.mealCost ?? 0],
+                      ["Misc", draftSnapshot.pricing.miscCost ?? 0],
+                    ] as [string, number][]
+                  : []),
                 ["Subtotal", draftSnapshot.pricing.packageBase],
                 ["Markup", draftSnapshot.pricing.markup],
                 ["Discount", -draftSnapshot.pricing.discount],
@@ -363,7 +392,11 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
                 <span>Grand Total</span>
                 <span className="text-primary">₹{draftSnapshot.pricing.total.toLocaleString("en-IN")}</span>
               </div>
-              <p className="text-[10px] text-muted-foreground pt-2">Pricing computed from frozen snapshot product prices — master package changes do not affect this proposal.</p>
+              <p className="text-[10px] text-muted-foreground pt-2">
+                {isDayItinerary
+                  ? "Pricing summed from day line items and recalculated on the server when you save."
+                  : "Pricing computed from frozen snapshot product prices — master package changes do not affect this proposal."}
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -450,7 +483,9 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
                     </>
                   ) : (
                     <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
-                      Move the proposal to Internal Review (or later) to generate a PDF.
+                      {isDayItinerary
+                        ? "PDF generation is available for day itinerary proposals from Draft onward."
+                        : "Move the proposal to Internal Review (or later) to generate a PDF."}
                     </p>
                   )}
                 </div>
@@ -546,7 +581,11 @@ export function TravelProposalDetail({ proposalId, onBack }: TravelProposalDetai
         </TabsContent>
 
         <TabsContent value="preview" className="mt-4">
-          <QuoteTemplatePreview template={previewTemplate} sections={sections} mockData={previewData} className="max-w-3xl mx-auto" />
+          {previewData ? (
+            <QuoteTemplatePreview template={previewTemplate} sections={sections} mockData={previewData} className="max-w-3xl mx-auto" />
+          ) : (
+            <p className="text-sm text-muted-foreground">Preview unavailable for this proposal. Use Review in the itinerary builder or generate a PDF.</p>
+          )}
         </TabsContent>
       </Tabs>
 

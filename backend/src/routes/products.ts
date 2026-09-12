@@ -727,10 +727,209 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
   });
 }
 
+function registerMealRoutes(app: Express, agencyScope: ScopeFn) {
+  const base = "/api/products/meals";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mealDelegate = (db as any).mealProduct;
+
+  app.get(base, requireAuth, requireCrudPermission("activities", "view"), async (req: AuthRequest, res: Response) => {
+    try {
+      const query = parseListQuery(req);
+      const mealType = req.query.mealType as string | undefined;
+      const city = (req.query.city as string)?.trim();
+      const scope = agencyScope(req) as { agencyId?: string };
+      if (mealDelegate) {
+        const where: Record<string, unknown> = { ...agencyScope(req) };
+        applyProductListFilters(where, query);
+        if (mealType && mealType !== "All") where.mealType = mealType;
+        if (city) where.city = { contains: city, mode: "insensitive" };
+        if (query.q) {
+          where.OR = [
+            { name: { contains: query.q, mode: "insensitive" } },
+            { city: { contains: query.q, mode: "insensitive" } },
+            { description: { contains: query.q, mode: "insensitive" } },
+          ];
+        }
+        const [items, total] = await Promise.all([
+          mealDelegate.findMany({
+            where,
+            include: PRODUCT_RELATIONS,
+            orderBy: { [query.sort]: query.order },
+            skip: query.skip,
+            take: query.pageSize,
+          }),
+          mealDelegate.count({ where }),
+        ]);
+        res.json({ items, total, page: query.page, pageSize: query.pageSize });
+        return;
+      }
+      const agencyId = scope.agencyId ?? null;
+      const items = await db.$queryRawUnsafe<Record<string, unknown>[]>(
+        `SELECT * FROM "MealProduct"
+         WHERE ($1::text IS NULL OR "agencyId" = $1)
+         AND ($2::text IS NULL OR "mealType" = $2)
+         AND ($3::text IS NULL OR "city" ILIKE '%' || $3 || '%' OR "name" ILIKE '%' || $3 || '%')
+         AND "status" = 'Active'
+         ORDER BY "createdAt" DESC
+         LIMIT $4 OFFSET $5`,
+        agencyId,
+        mealType && mealType !== "All" ? mealType : null,
+        city || query.q || null,
+        query.pageSize,
+        query.skip
+      );
+      res.json({ items, total: items.length, page: query.page, pageSize: query.pageSize });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post(base, requireAuth, requireCrudPermission("activities", "add"), async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.body.destinationId) {
+        const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
+        if (destError) { res.status(400).json({ error: destError }); return; }
+      }
+      const name = String(req.body.name || "").trim();
+      if (!name) { res.status(400).json({ error: "name is required" }); return; }
+      if (mealDelegate) {
+        const item = await mealDelegate.create({
+          data: {
+            agencyId: req.auth?.agencyId,
+            supplierId: req.body.supplierId || null,
+            destinationId: req.body.destinationId || null,
+            name,
+            description: req.body.description || null,
+            mealType: req.body.mealType || "Other",
+            city: req.body.city || null,
+            adultPrice: Number(req.body.adultPrice) || 0,
+            childPrice: Number(req.body.childPrice) || 0,
+            currency: req.body.currency || "INR",
+            status: "Active",
+            approvalStatus: "Approved",
+            createdById: req.auth?.userId,
+            updatedById: req.auth?.userId,
+          },
+          include: PRODUCT_RELATIONS,
+        });
+        await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
+        res.status(201).json({ item });
+        return;
+      }
+      const id = `meal_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      await db.$executeRawUnsafe(
+        `INSERT INTO "MealProduct" ("id","agencyId","supplierId","destinationId","name","description","mealType","city","adultPrice","childPrice","currency","status","approvalStatus","createdById","updatedById","createdAt","updatedAt")
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'Active','Approved',$12,$12,NOW(),NOW())`,
+        id,
+        req.auth?.agencyId ?? null,
+        req.body.supplierId || null,
+        req.body.destinationId || null,
+        name,
+        req.body.description || null,
+        req.body.mealType || "Other",
+        req.body.city || null,
+        Number(req.body.adultPrice) || 0,
+        Number(req.body.childPrice) || 0,
+        req.body.currency || "INR",
+        req.auth?.userId ?? null
+      );
+      const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT * FROM "MealProduct" WHERE id = $1`, id);
+      await trackProductActivity(req.auth!.userId, req.auth?.agencyId);
+      res.status(201).json({ item: rows[0] });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.patch(`${base}/:id`, requireAuth, requireCrudPermission("activities", "edit"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      if (mealDelegate) {
+        const existing = await mealDelegate.findFirst({ where: { id, ...agencyScope(req) } });
+        if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+        if (req.body.destinationId) {
+          const destError = await assertValidDestination(req, req.body.destinationId, agencyScope);
+          if (destError) { res.status(400).json({ error: destError }); return; }
+        }
+        const item = await mealDelegate.update({
+          where: { id },
+          data: {
+            ...(req.body.name !== undefined ? { name: String(req.body.name) } : {}),
+            ...(req.body.description !== undefined ? { description: req.body.description } : {}),
+            ...(req.body.mealType !== undefined ? { mealType: req.body.mealType } : {}),
+            ...(req.body.city !== undefined ? { city: req.body.city } : {}),
+            ...(req.body.destinationId !== undefined ? { destinationId: req.body.destinationId || null } : {}),
+            ...(req.body.supplierId !== undefined ? { supplierId: req.body.supplierId || null } : {}),
+            ...(req.body.adultPrice !== undefined ? { adultPrice: Number(req.body.adultPrice) || 0 } : {}),
+            ...(req.body.childPrice !== undefined ? { childPrice: Number(req.body.childPrice) || 0 } : {}),
+            ...(req.body.currency !== undefined ? { currency: req.body.currency } : {}),
+            ...(req.body.status !== undefined ? { status: req.body.status } : {}),
+            updatedById: req.auth?.userId,
+          },
+          include: PRODUCT_RELATIONS,
+        });
+        res.json({ item });
+        return;
+      }
+      await db.$executeRawUnsafe(
+        `UPDATE "MealProduct" SET
+          "name" = COALESCE($2, "name"),
+          "description" = COALESCE($3, "description"),
+          "mealType" = COALESCE($4, "mealType"),
+          "city" = COALESCE($5, "city"),
+          "adultPrice" = COALESCE($6, "adultPrice"),
+          "childPrice" = COALESCE($7, "childPrice"),
+          "currency" = COALESCE($8, "currency"),
+          "status" = COALESCE($9, "status"),
+          "updatedById" = $10,
+          "updatedAt" = NOW()
+         WHERE id = $1`,
+        id,
+        req.body.name !== undefined ? String(req.body.name) : null,
+        req.body.description !== undefined ? req.body.description : null,
+        req.body.mealType !== undefined ? req.body.mealType : null,
+        req.body.city !== undefined ? req.body.city : null,
+        req.body.adultPrice !== undefined ? Number(req.body.adultPrice) || 0 : null,
+        req.body.childPrice !== undefined ? Number(req.body.childPrice) || 0 : null,
+        req.body.currency !== undefined ? req.body.currency : null,
+        req.body.status !== undefined ? req.body.status : null,
+        req.auth?.userId ?? null
+      );
+      const rows = await db.$queryRawUnsafe<Record<string, unknown>[]>(`SELECT * FROM "MealProduct" WHERE id = $1`, id);
+      if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+      res.json({ item: rows[0] });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.delete(`${base}/:id`, requireAuth, requireCrudPermission("activities", "delete"), async (req: AuthRequest, res: Response) => {
+    try {
+      const id = paramId(req);
+      if (mealDelegate) {
+        const existing = await mealDelegate.findFirst({ where: { id, ...agencyScope(req) } });
+        if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+        await mealDelegate.delete({ where: { id } });
+        res.json({ success: true });
+        return;
+      }
+      await db.$executeRawUnsafe(`DELETE FROM "MealProduct" WHERE id = $1`, id);
+      res.json({ success: true });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+}
+
 export function mountProductRoutes(app: Express, agencyScope: ScopeFn) {
   registerHotelRoutes(app, agencyScope);
   registerActivityRoutes(app, agencyScope);
   registerTransferRoutes(app, agencyScope);
+  registerMealRoutes(app, agencyScope);
 
   app.get("/api/employees/activity", requireAuth, requirePermission("employees"), async (req: AuthRequest, res: Response) => {
     try {

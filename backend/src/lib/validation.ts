@@ -253,25 +253,65 @@ export const agencyUpdateSchema = agencySchema.partial();
 
 export const agentRegistrationSchema = z
   .object({
-    fullName: z.string().min(2, "Full name is required"),
-    companyName: z.string().min(2, "Company name is required"),
-    address: z.string().min(5, "Business address is required"),
-    email: z.string().email(),
+    fullName: z.string().trim().min(2, "Full name is required").max(120),
+    companyName: z.string().trim().min(2, "Company name is required").max(160),
+    address: z.string().trim().min(8, "Business address is required").max(500),
+    email: z.string().trim().email("Valid email is required").transform((v) => v.toLowerCase()),
     countryCode: z.string().min(2).default("+91"),
-    phone: z.string().min(8, "Valid mobile number is required"),
-    country: z.string().min(1, "Country is required"),
-    state: z.string().min(1, "State/Province is required"),
-    city: z.string().min(1, "City is required"),
-    panNumber: z.string().optional(),
+    phone: z.string().trim().regex(/^\d{7,15}$/, "Valid mobile number is required"),
+    country: z.string().trim().min(1, "Country is required"),
+    countryCodeIso: z.string().trim().min(2).max(3).optional(),
+    state: z.string().trim().min(1, "State/Province is required").max(120),
+    city: z.string().trim().min(1, "City is required").max(120),
+    panNumber: z.string().trim().max(40).optional().or(z.literal("")),
     password: passwordSchema,
     confirmPassword: z.string(),
-    gstNumber: z.string().optional(),
+    gstNumber: z.string().trim().max(40).optional().or(z.literal("")),
     gstProofUrl: z.string().optional(),
     termsAccepted: z.literal(true, { message: "You must accept the terms and conditions" }),
+    termsVersion: z.string().optional(),
   })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
+  .superRefine((data, ctx) => {
+    if (data.password !== data.confirmPassword) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Passwords do not match", path: ["confirmPassword"] });
+    }
+    const ranges: Record<string, { min: number; max: number }> = {
+      "+91": { min: 10, max: 10 },
+      "+65": { min: 8, max: 8 },
+      "+971": { min: 8, max: 9 },
+      "+1": { min: 10, max: 10 },
+      "+44": { min: 10, max: 11 },
+      "+61": { min: 9, max: 9 },
+      "+60": { min: 9, max: 10 },
+      "+66": { min: 9, max: 9 },
+      "+94": { min: 9, max: 9 },
+      "+977": { min: 10, max: 10 },
+      "+880": { min: 10, max: 10 },
+    };
+    const range = ranges[data.countryCode] ?? { min: 7, max: 15 };
+    if (data.phone.length < range.min || data.phone.length > range.max) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Enter a valid mobile number for ${data.countryCode}`,
+        path: ["phone"],
+      });
+    }
+    if (data.gstProofUrl) {
+      const url = data.gstProofUrl;
+      const okPrefix =
+        url.startsWith("data:image/jpeg") ||
+        url.startsWith("data:image/png") ||
+        url.startsWith("data:application/pdf") ||
+        url.startsWith("/uploads/") ||
+        url.startsWith("https://");
+      if (!okPrefix) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid GST / VAT proof file", path: ["gstProofUrl"] });
+      }
+      // Base64 expands ~4/3; 5MB binary ≈ ~7MB string
+      if (url.startsWith("data:") && url.length > 7_500_000) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "GST / VAT proof must be under 5MB", path: ["gstProofUrl"] });
+      }
+    }
   });
 
 export const branchSchema = z.object({

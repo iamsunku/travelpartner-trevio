@@ -13,6 +13,91 @@ function customerName(snapshot: ProposalSnapshotData): string {
 }
 
 export function snapshotToPreviewData(snapshot: ProposalSnapshotData, proposalNumber: string, validUntil?: string | Date | null) {
+  if (snapshot.builderMode === "day_itinerary") {
+    const trip = (snapshot.trip ?? {}) as Record<string, unknown>;
+    const branding = snapshot.branding as Record<string, unknown> | null;
+    const itineraryDays = (snapshot.days ?? []) as Record<string, unknown>[];
+    const cities = Array.isArray(trip.cities)
+      ? (trip.cities as { city?: string; nights?: number }[]).map((c) => c.city).filter(Boolean).join(" → ")
+      : String(snapshot.destination?.name ?? "");
+    const days = itineraryDays.map((d) => {
+      const items: { time: string; title: string; description: string }[] = [];
+      const hotel = d.hotel as Record<string, unknown> | null | undefined;
+      if (hotel?.name) items.push({ time: "", title: `Hotel: ${String(hotel.name)}`, description: "" });
+      for (const t of (d.transfers as Record<string, unknown>[] | undefined) ?? []) {
+        items.push({ time: "", title: `Transfer: ${String(t.name)}`, description: "" });
+      }
+      for (const a of (d.activities as Record<string, unknown>[] | undefined) ?? []) {
+        items.push({ time: "", title: String(a.name ?? "Activity"), description: "" });
+      }
+      for (const m of (d.meals as Record<string, unknown>[] | undefined) ?? []) {
+        items.push({ time: "", title: `Meal: ${String(m.name)}`, description: "" });
+      }
+      for (const x of (d.misc as Record<string, unknown>[] | undefined) ?? []) {
+        items.push({ time: "", title: String(x.name ?? "Misc"), description: "" });
+      }
+      return {
+        dayNumber: Number(d.dayNumber ?? 1),
+        title: `Day ${d.dayNumber} — ${String(d.city ?? "")}`,
+        items,
+      };
+    });
+    const agencyName = branding?.footerText ? String(branding.footerText).split("·")[0]?.trim() : "Travel Agency";
+    return {
+      quoteNumber: proposalNumber,
+      quoteDate: formatDate(new Date()),
+      validUntil: formatDate(validUntil),
+      agency: { name: agencyName, tagline: "Your trusted travel partner", phone: "", email: "", website: "" },
+      customer: {
+        name: customerName(snapshot),
+        email: String(snapshot.customer?.email ?? snapshot.lead?.email ?? ""),
+        phone: String(snapshot.customer?.phone ?? snapshot.lead?.phone ?? ""),
+        pax: `${trip.adults ?? 1} Adults${Number(trip.children) ? ` + ${trip.children} Children` : ""}`,
+      },
+      package: {
+        name: String(trip.title ?? snapshot.package?.packageName ?? "Travel Proposal"),
+        destination: cities,
+        duration: `${itineraryDays.length} Days / ${Number(snapshot.package?.durationNights ?? Math.max(0, itineraryDays.length - 1))} Nights`,
+        travelDates: trip.startDate ? `${formatDate(String(trip.startDate))} – ${formatDate(String(trip.endDate))}` : "—",
+        heroImage: String(snapshot.destination?.heroImage ?? snapshot.destination?.thumbnail ?? "https://images.unsplash.com/photo-1552465011-b21e7e7a2598?w=800"),
+      },
+      highlights: snapshot.terms.inclusions,
+      days,
+      hotels: itineraryDays
+        .map((d) => d.hotel as Record<string, unknown> | null | undefined)
+        .filter(Boolean)
+        .map((h) => ({
+          name: String(h!.name),
+          category: "Standard",
+          nights: 1,
+          room: "As selected",
+          mealPlan: "As selected",
+        })),
+      activities: [],
+      flights: [],
+      transfers: [{ name: "As per day itinerary", type: "Private", notes: "" }],
+      pricing: {
+        hotelCost: snapshot.pricing.hotelCost,
+        activityCost: snapshot.pricing.activityCost,
+        transferCost: snapshot.pricing.transferCost,
+        flightCost: 0,
+        markup: snapshot.pricing.markup,
+        discount: snapshot.pricing.discount,
+        tax: snapshot.pricing.tax,
+        total: snapshot.pricing.total,
+        currency: snapshot.pricing.currency,
+      },
+      inclusions: snapshot.terms.inclusions,
+      exclusions: snapshot.terms.exclusions,
+      visa: { required: snapshot.terms.visaRequired, details: snapshot.terms.visaDetails },
+      terms: snapshot.terms.termsText,
+      cancellation: snapshot.terms.cancellationText,
+      notes: "",
+      contact: { executive: "", designation: "Travel Consultant", phone: "", email: "" },
+      customHtml: "",
+    };
+  }
+
   const pkg = snapshot.package as Record<string, unknown>;
   const req = snapshot.requirement as Record<string, unknown> | null;
   const branding = snapshot.branding as Record<string, unknown> | null;
