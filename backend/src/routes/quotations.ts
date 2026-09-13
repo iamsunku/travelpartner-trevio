@@ -129,6 +129,74 @@ async function existingUserId(id?: string | null): Promise<string | null> {
   return row?.id ?? null;
 }
 
+async function resolveQuoteAgentCodes(opts: {
+  req: AuthRequest;
+  body: Record<string, unknown>;
+  agencyId?: string | null;
+}): Promise<{ agencyCode: string | null; agentCode: string | null; agentId: string | null; agentName: string | null }> {
+  const { ensureAgencyCode, ensureUserAgentCode } = await import("../lib/agent-codes.js");
+  let agencyCode = emptyToNull(opts.body.agencyCode);
+  let agentCode = emptyToNull(opts.body.agentCode);
+  let agentId = emptyToNull(opts.body.agentId);
+  let agentName = emptyToNull(opts.body.agentName);
+
+  if (opts.agencyId) {
+    try {
+      agencyCode = (await ensureAgencyCode(opts.agencyId)) || agencyCode;
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  if (!agentId && opts.req.auth?.role === "travel_agent") {
+    agentId = emptyToNull(opts.req.auth.userId);
+  }
+  if (!agentId && agentName && opts.agencyId) {
+    const match = await db.user.findFirst({
+      where: {
+        agencyId: opts.agencyId,
+        OR: [
+          { name: { equals: agentName, mode: "insensitive" } },
+          { email: { equals: agentName, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true, name: true },
+    });
+    if (match) {
+      agentId = match.id;
+      agentName = match.name;
+    }
+  }
+  if (!agentId) agentId = emptyToNull(opts.req.auth?.userId);
+
+  if (agentId) {
+    try {
+      agentCode = (await ensureUserAgentCode(agentId, true)) || agentCode;
+      const agent = await db.user.findUnique({
+        where: { id: agentId },
+        select: { name: true, agentCode: true },
+      });
+      if (agent) {
+        agentName = agent.name || agentName;
+        agentCode = agent.agentCode || agentCode;
+      }
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  if (!agentCode && opts.agencyId) {
+    try {
+      const { allocateAgentCode } = await import("../lib/agent-codes.js");
+      agentCode = await allocateAgentCode(opts.agencyId);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  return { agencyCode, agentCode, agentId, agentName };
+}
+
 function packageWriteData(
   pkg: Record<string, unknown>,
   costing: ReturnType<typeof calcPackageCosting>,
@@ -560,19 +628,15 @@ export function mountQuotationRoutes(
         return;
       }
       const body = req.body || {};
-      let agencyCode = body.agencyCode || null;
-      let agentCode = body.agentCode || null;
       let agencyId = ownAgencyId(req, body.agencyId);
       if (!agencyId && req.auth?.role === "super_admin") {
         agencyId = (await resolveDefaultAgencyId()) || undefined;
       }
-      try {
-        const { ensureAgencyCode, ensureUserAgentCode } = await import("../lib/agent-codes.js");
-        if (agencyId) agencyCode = (await ensureAgencyCode(agencyId)) || agencyCode;
-        if (body.agentId) agentCode = (await ensureUserAgentCode(String(body.agentId))) || agentCode;
-      } catch {
-        /* non-fatal */
-      }
+      const codes = await resolveQuoteAgentCodes({ req, body, agencyId });
+      const agencyCode = codes.agencyCode;
+      const agentCode = codes.agentCode;
+      const agentId = codes.agentId;
+      const agentName = codes.agentName;
       const quoteNo = await nextQuoteNo();
       const computedNights = nightsBetween(body.travelStartDate, body.travelEndDate);
       const nights = computedNights != null
@@ -619,8 +683,8 @@ export function mountQuotationRoutes(
           currency: body.currency || "INR",
           baseCurrency: body.baseCurrency || body.currency || "INR",
           exchangeRate: toFloat(body.exchangeRate, 1) || 1,
-          agentName: emptyToNull(body.agentName),
-          agentId: emptyToNull(body.agentId),
+          agentName,
+          agentId,
           agentCode,
           agencyCode,
           salesExecutiveName: emptyToNull(body.salesExecutiveName) || req.auth?.email,
@@ -846,6 +910,22 @@ export function mountQuotationRoutes(
       if (existing.status === "Draft" && body.advanceStatus !== false) {
         data.status = "In Progress";
       }
+
+      const codes = await resolveQuoteAgentCodes({
+        req,
+        body: {
+          ...body,
+          agentId: body.agentId ?? existing.agentId,
+          agentName: body.agentName ?? existing.agentName,
+          agencyCode: body.agencyCode ?? existing.agencyCode,
+          agentCode: body.agentCode ?? existing.agentCode,
+        },
+        agencyId: existing.agencyId || ownAgencyId(req, body.agencyId),
+      });
+      data.agencyCode = codes.agencyCode;
+      data.agentCode = codes.agentCode;
+      if (codes.agentId) data.agentId = codes.agentId;
+      if (codes.agentName) data.agentName = codes.agentName;
 
       await db.quotation.update({ where: { id: existing.id }, data });
 

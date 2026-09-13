@@ -223,6 +223,7 @@ export function mapApiQuotation(q: ApiQuotation): Quotation {
     travelStartDate: (q as { travelStartDate?: string }).travelStartDate,
     travelEndDate: (q as { travelEndDate?: string }).travelEndDate,
     agentName: (q as { agentName?: string }).agentName,
+    agentId: (q as { agentId?: string }).agentId,
     agentCode: (q as { agentCode?: string }).agentCode,
     agencyCode: (q as { agencyCode?: string }).agencyCode,
     specialRequests: (q as { specialRequests?: string }).specialRequests,

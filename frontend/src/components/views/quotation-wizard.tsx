@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Check, ChevronLeft, ChevronRight, Copy, ImageIcon, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { api, apiFetch, ApiError } from "@/lib/api";
-import { mapApiQuotation } from "@/lib/api-mappers";
+import { mapApiQuotation, mapApiUser } from "@/lib/api-mappers";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore } from "@/store/app-store";
 import type { ProductRecord, Quotation, QuotationPackage } from "@/types";
@@ -116,6 +116,7 @@ export function QuotationWizardDialog({
     contactEmail: "",
     contactPhone: "",
     agentName: "",
+    agentId: "",
     salesExecutiveName: user?.name || user?.email || "",
     destination: "",
     country: "",
@@ -163,6 +164,7 @@ export function QuotationWizardDialog({
   } | null>(null);
   const [planId, setPlanId] = useState("");
   const [suggestedNights, setSuggestedNights] = useState<number | null>(null);
+  const [agents, setAgents] = useState<Array<{ id: string; name: string; agentCode?: string | null }>>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -182,6 +184,7 @@ export function QuotationWizardDialog({
             contactEmail: q.contactEmail || "",
             contactPhone: q.contactPhone || "",
             agentName: q.agentName || "",
+            agentId: (q as { agentId?: string }).agentId || "",
             salesExecutiveName: q.salesExecutiveName || f.salesExecutiveName,
             destination: q.destination || "",
             country: q.country || "",
@@ -248,11 +251,31 @@ export function QuotationWizardDialog({
     setForm((f) => ({
       ...f,
       agentName: f.agentName || user.name || user.email || "",
+      agentId: f.agentId || user.id || "",
       agentCode: user.agentCode || f.agentCode || "",
       agencyCode: user.agencyCode || f.agencyCode || "",
       salesExecutiveName: f.salesExecutiveName || user.name || user.email || "",
     }));
+    api.getMe()
+      .then(({ user: raw }) => {
+        const mapped = mapApiUser(raw);
+        setForm((f) => ({
+          ...f,
+          agentName: f.agentName || mapped.name || "",
+          agentId: f.agentId || mapped.id,
+          agentCode: mapped.agentCode || f.agentCode || "",
+          agencyCode: mapped.agencyCode || f.agencyCode || "",
+        }));
+      })
+      .catch(() => undefined);
   }, [open, user, quotationId]);
+
+  useEffect(() => {
+    if (!open) return;
+    api.getAgents()
+      .then((res) => setAgents(res.agents || []))
+      .catch(() => setAgents([]));
+  }, [open]);
 
   const nights = useMemo(() => {
     if (!form.travelStartDate || !form.travelEndDate) return null;
@@ -426,7 +449,7 @@ export function QuotationWizardDialog({
         budget: form.budget || undefined,
         agentCode: form.agentCode || user?.agentCode || undefined,
         agencyCode: form.agencyCode || user?.agencyCode || undefined,
-        agentId: user?.role === "travel_agent" ? user.id : undefined,
+        agentId: form.agentId || user?.id || undefined,
       };
       let quotation: Quotation;
       if (!id) {
@@ -438,6 +461,13 @@ export function QuotationWizardDialog({
         const saved = await api.saveQuotationWizard(id, payload);
         quotation = mapApiQuotation(saved.quotation);
       }
+      setForm((f) => ({
+        ...f,
+        agentCode: quotation.agentCode || f.agentCode,
+        agencyCode: quotation.agencyCode || f.agencyCode,
+        agentId: quotation.agentId || f.agentId,
+        agentName: quotation.agentName || f.agentName,
+      }));
       if (submitApproval && quotation.id) {
         const approved = await api.submitQuotationApproval(quotation.id);
         quotation = mapApiQuotation(approved.quotation);
@@ -621,7 +651,44 @@ export function QuotationWizardDialog({
               <Field label="Contact person" value={form.contactPerson} onChange={(v) => setForm({ ...form, contactPerson: v })} />
               <Field label="Email" value={form.contactEmail} onChange={(v) => setForm({ ...form, contactEmail: v })} />
               <Field label="Phone" value={form.contactPhone} onChange={(v) => setForm({ ...form, contactPhone: v })} />
-              <Field label="Travel agent" value={form.agentName} onChange={(v) => setForm({ ...form, agentName: v })} />
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">Travel agent</Label>
+                {agents.length ? (
+                  <Select
+                    value={!form.agentId || form.agentId === user?.id ? "self" : form.agentId}
+                    onValueChange={(v) => {
+                      if (v === "self") {
+                        setForm({
+                          ...form,
+                          agentId: user?.id || "",
+                          agentName: user?.name || user?.email || form.agentName,
+                          agentCode: user?.agentCode || form.agentCode,
+                        });
+                        return;
+                      }
+                      const picked = agents.find((a) => a.id === v);
+                      setForm({
+                        ...form,
+                        agentId: v,
+                        agentName: picked?.name || "",
+                        agentCode: picked?.agentCode || "",
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="h-10"><SelectValue placeholder="Select travel agent" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="self">{user?.name || "Current user"}{user?.agentCode ? ` · ${user.agentCode}` : ""}</SelectItem>
+                      {agents.filter((a) => a.id !== user?.id).map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}{a.agentCode ? ` · ${a.agentCode}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input className="h-10" value={form.agentName} onChange={(e) => setForm({ ...form, agentName: e.target.value })} />
+                )}
+              </div>
               <Field label="Sales executive" value={form.salesExecutiveName} onChange={(v) => setForm({ ...form, salesExecutiveName: v })} />
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">Agency code</Label>
@@ -630,6 +697,9 @@ export function QuotationWizardDialog({
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">Agent code</Label>
                 <Input className="h-10 bg-muted/40 font-mono" value={form.agentCode || "—"} readOnly />
+                {!form.agentCode && (
+                  <p className="text-[11px] text-muted-foreground">Issued on save as a code like ADCI-AGT-0001 for this agent.</p>
+                )}
               </div>
             </FormSection>
 

@@ -45,13 +45,17 @@ export async function allocateAgentCode(agencyId: string): Promise<string> {
   return code;
 }
 
-/** Ensure travel agents (and only them) have an agentCode. */
-export async function ensureUserAgentCode(userId: string): Promise<string | null> {
+/**
+ * Ensure the user has an agent code (ADCI-AGT-0001).
+ * Travel agents always get one. Other agency users get one when they create/own a quote
+ * so Agency code and Agent code both populate on the quotation screen.
+ */
+export async function ensureUserAgentCode(userId: string, forQuote = false): Promise<string | null> {
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) return null;
-  if (user.role !== "travel_agent") return user.agentCode;
   if (user.agentCode) return user.agentCode;
   if (!user.agencyId) return null;
+  if (user.role !== "travel_agent" && !forQuote) return null;
   const agentCode = await allocateAgentCode(user.agencyId);
   await db.user.update({ where: { id: userId }, data: { agentCode } });
   return agentCode;

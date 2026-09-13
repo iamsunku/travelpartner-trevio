@@ -362,7 +362,7 @@ app.post("/api/auth/login", authLimiter, validate(loginSchema), async (req, res)
       try {
         const { ensureAgencyCode, ensureUserAgentCode } = await import("./lib/agent-codes.js");
         await ensureAgencyCode(user.agencyId, user.agency?.name);
-        if (user.role === "travel_agent") await ensureUserAgentCode(user.id);
+        await ensureUserAgentCode(user.id, true);
       } catch {
         /* non-fatal */
       }
@@ -393,7 +393,7 @@ app.get("/api/auth/me", requireAuth, async (req: AuthRequest, res) => {
       try {
         const { ensureAgencyCode, ensureUserAgentCode } = await import("./lib/agent-codes.js");
         await ensureAgencyCode(user.agencyId, user.agency?.name);
-        if (user.role === "travel_agent") await ensureUserAgentCode(user.id);
+        await ensureUserAgentCode(user.id, true);
       } catch {
         /* non-fatal */
       }
@@ -1998,17 +1998,16 @@ app.patch("/api/employees/:id", requireAuth, requireRole("super_admin", "agency_
 });
 
 // ── Travel agents & product access ───────────────────────────────────────────
-app.get("/api/agents", requireAuth, requireRole("super_admin", "agency_admin"), async (req: AuthRequest, res) => {
+app.get("/api/agents", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res) => {
   try {
-    if (req.auth?.agencyId) {
-      const { ensureAgencyCode, ensureUserAgentCode } = await import("./lib/agent-codes.js");
-      await ensureAgencyCode(req.auth.agencyId);
-      const missing = await db.user.findMany({
-        where: { role: "travel_agent", agencyId: req.auth.agencyId, agentCode: null },
-        select: { id: true },
-      });
-      for (const m of missing) await ensureUserAgentCode(m.id);
-    }
+    const { ensureAgencyCode, ensureUserAgentCode } = await import("./lib/agent-codes.js");
+    const scopeAgencyId = req.auth?.agencyId || (req.auth?.role === "super_admin" ? await (await import("./lib/api-key-config.js")).resolveDefaultAgencyId() : null);
+    if (scopeAgencyId) await ensureAgencyCode(scopeAgencyId);
+    const missing = await db.user.findMany({
+      where: { role: "travel_agent", agentCode: null, ...agencyScope(req) },
+      select: { id: true },
+    });
+    for (const m of missing) await ensureUserAgentCode(m.id, true);
     const agents = await db.user.findMany({
       where: { role: "travel_agent", ...agencyScope(req) },
       select: {

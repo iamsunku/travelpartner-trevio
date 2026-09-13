@@ -508,6 +508,7 @@ export interface Quotation {
   travelStartDate?: string;
   travelEndDate?: string;
   agentName?: string;
+  agentId?: string;
   agentCode?: string;
   agencyCode?: string;
   specialRequests?: string;
