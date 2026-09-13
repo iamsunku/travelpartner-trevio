@@ -225,6 +225,7 @@ function scrubDocuments<T extends Record<string, unknown>>(quote: T, role?: stri
 
 /** Strip confidential fields for agents/customers. Customers see selling price only. */
 export function sanitizeQuotationForRole<T extends Record<string, unknown>>(quote: T, role?: string): T {
+  if (!quote || typeof quote !== "object") return quote;
   if (!isAgentLike(role)) return scrubDocuments(quote, role);
   const hideAgentMarkup = role === "customer";
   const clone = stripSensitive(JSON.parse(JSON.stringify(quote)), hideAgentMarkup) as Record<string, unknown>;

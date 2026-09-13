@@ -305,7 +305,14 @@ async function renderItinerary(
     const startY = doc.y;
     doc.roundedRect(MARGIN, startY, contentWidth(doc), 28, 4).fill([pr, pg, pb]);
     doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(11);
-    doc.text(day.title?.startsWith("Day ") ? day.title : `Day ${day.dayNumber}  ·  ${day.title}`, MARGIN + 12, startY + 8, {
+    const rest = (day.title || "")
+      .trim()
+      .replace(/^day\s*\d+\s*[·•.\-—–:]?\s*/i, "")
+      .trim();
+    const heading = rest && !/^day\s*\d+$/i.test(rest)
+      ? `Day ${day.dayNumber}  ·  ${rest}`
+      : `Day ${day.dayNumber}`;
+    doc.text(heading, MARGIN + 12, startY + 8, {
       width: contentWidth(doc) - 24,
     });
     doc.y = startY + 36;
@@ -365,14 +372,19 @@ async function renderHotels(
     await drawImage(doc, hotel.image, MARGIN, y, imgW, imgH);
     const textX = MARGIN + imgW + 14;
     const textW = contentWidth(doc) - imgW - 14;
-    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(12).text(hotel.name, textX, y, { width: textW });
+    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(12).text(pdfSafeText(hotel.name), textX, y, { width: textW });
     doc
       .fillColor(branding.secondaryColor)
       .font("Helvetica")
       .fontSize(9)
-      .text(`${hotel.category}${hotel.city ? ` · ${hotel.city}` : ""}${hotel.nights ? ` · ${nightLabel(hotel.nights)}` : ""}`, {
-        width: textW,
-      });
+      .text(
+        pdfSafeText(
+          [hotel.category, hotel.city, hotel.nights ? nightLabel(hotel.nights) : ""]
+            .filter(Boolean)
+            .join(" · ")
+        ),
+        { width: textW },
+      );
     doc
       .fillColor("#4b5563")
       .font("Helvetica")
@@ -540,6 +552,7 @@ async function renderListSection(
   title: string,
   items: string[]
 ): Promise<void> {
+  if (!items.length) return;
   sectionTitle(doc, branding, title);
   bulletList(doc, branding, items);
   doc.moveDown(0.6);
@@ -551,6 +564,7 @@ async function renderVisa(
   content: PdfDocumentContent,
   title: string
 ): Promise<void> {
+  if (!content.visaRequired && !String(content.visaDetails || "").trim()) return;
   sectionTitle(doc, branding, title);
   bodyText(doc, content.visaRequired ? "Visa required for this destination." : "Visa may not be required — please verify.", {
     bold: true,
@@ -590,14 +604,14 @@ async function renderCustomHtml(
   content: PdfDocumentContent,
   title: string
 ): Promise<void> {
-  sectionTitle(doc, branding, title);
-  // Strip tags — PDFKit is not an HTML engine; render plain text gracefully
   const plain = (content.customHtml || "")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>/gi, "\n")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
     .trim();
+  if (!plain) return;
+  sectionTitle(doc, branding, title);
   bodyText(doc, plain || "Additional information.");
   doc.moveDown(0.6);
 }
@@ -643,6 +657,7 @@ async function renderSection(
       await renderHighlights(doc, branding, content, title);
       break;
     case "ITINERARY":
+      if (!content.days.length) break;
       await renderItinerary(doc, branding, content, title);
       break;
     case "HOTELS":

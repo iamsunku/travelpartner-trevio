@@ -15,6 +15,16 @@ export interface DestinationOption {
   region?: string | null;
 }
 
+export function destinationOptionLabel(opt: { name?: string; country?: string; region?: string | null }): string {
+  const name = (opt.name || "").trim();
+  const country = (opt.country || "").trim();
+  const region = (opt.region || "").trim();
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  const city = region && !same(region, country) ? region : name;
+  if (country && city && !same(city, country)) return `${city}, ${country}`;
+  return city || country || "Destination";
+}
+
 interface DestinationSelectProps {
   value: string;
   onChange: (destinationId: string) => void;
@@ -80,7 +90,7 @@ export function DestinationSelect({
         >
           <span className="truncate flex items-center gap-2">
             <MapPin className="w-3.5 h-3.5 shrink-0 opacity-60" />
-            {selected ? `${selected.name}${selected.country && selected.country !== selected.name ? `, ${selected.country}` : ""}` : placeholder}
+            {selected ? destinationOptionLabel(selected) : placeholder}
             {required && !value && <span className="text-destructive">*</span>}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -91,6 +101,12 @@ export function DestinationSelect({
           placeholder="Search destinations..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || loading || !options[0]) return;
+            e.preventDefault();
+            onChange(options[0].id);
+            setOpen(false);
+          }}
           className="h-8 mb-2"
         />
         <div className="max-h-48 overflow-y-auto space-y-0.5">
@@ -115,12 +131,7 @@ export function DestinationSelect({
             >
               <Check className={cn("h-4 w-4 shrink-0", value === opt.id ? "opacity-100" : "opacity-0")} />
               <span className="truncate">
-                {opt.name}
-                {(opt.region || opt.country) && (
-                  <span className="text-muted-foreground text-xs ml-1">
-                    — {[opt.region, opt.country].filter(Boolean).join(", ")}
-                  </span>
-                )}
+                {destinationOptionLabel(opt)}
               </span>
             </button>
           ))}

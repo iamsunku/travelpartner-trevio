@@ -212,20 +212,23 @@ export function TripPlannerWorkspace({ requirementId, onBack, onSaved }: TripPla
 
   return (
     <PageShell>
-      <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="w-4 h-4 mr-1" />Back</Button>
-          <PageHeader title="Trip Requirement Builder" subtitle="Capture requirements and match packages" />
-        </div>
-        <div className="flex gap-2 relative z-20">
-          <Button variant="outline" disabled={!canRecommend(form) || loadingMatches} onClick={fetchMatches}>
-            <Sparkles className="w-4 h-4 mr-1" />{loadingMatches ? "Matching..." : "Find Packages"}
-          </Button>
-          <Button disabled={saving || !canRecommend(form)} onClick={handleSave}>
-            <Save className="w-4 h-4 mr-1" />{saving ? "Saving..." : "Save Requirement"}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Trip Requirement Builder"
+        subtitle="Capture requirements and match packages. Pick a destination from the list, then Find Packages or Save."
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+              <ArrowLeft className="w-4 h-4 mr-1" />Back
+            </Button>
+            <Button type="button" variant="outline" disabled={loadingMatches} onClick={() => void fetchMatches()}>
+              <Sparkles className="w-4 h-4 mr-1" />{loadingMatches ? "Matching..." : "Find Packages"}
+            </Button>
+            <Button type="button" disabled={saving} onClick={() => void handleSave()}>
+              <Save className="w-4 h-4 mr-1" />{saving ? "Saving..." : "Save Requirement"}
+            </Button>
+          </div>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left: Requirement Form */}

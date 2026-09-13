@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { hasPermission } from "@/lib/permissions";
 import { supplierTypesForService } from "@/lib/supplier-taxonomy";
 import { downloadBookingInvoice, downloadBookingItinerary } from "@/lib/booking-documents";
+import { payWithRazorpay } from "@/lib/razorpay";
 import type { SupplierRecord } from "@/types";
 
 const SERVICE_ICON: Record<string, React.ElementType> = {
@@ -689,8 +690,29 @@ function BookingDetailDialog({
                                 variant="outline"
                                 disabled={busy}
                                 onClick={() => run("Payment recorded", async () => {
+                                  const amount = pr.amount - pr.amountPaid;
+                                  const online = payMethod === "Card";
+                                  if (online) {
+                                    const result = await payWithRazorpay({
+                                      amount,
+                                      name: "Trevio Global",
+                                      description: `${booking.bookingRef} · ${pr.label}`,
+                                    });
+                                    if (!result.success) {
+                                      throw new Error(result.error || "Online payment failed");
+                                    }
+                                    await api.payPaymentRequest(pr.id, {
+                                      amount,
+                                      method: payMethod,
+                                      gateway: "Razorpay",
+                                      orderId: result.orderId,
+                                      paymentId: result.paymentId,
+                                      signature: result.signature,
+                                    });
+                                    return;
+                                  }
                                   await api.payPaymentRequest(pr.id, {
-                                    amount: pr.amount - pr.amountPaid,
+                                    amount,
                                     method: payMethod,
                                   });
                                 })}

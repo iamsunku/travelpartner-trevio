@@ -1,4 +1,5 @@
 import type { ProposalSnapshotData } from "../proposal-snapshot.js";
+import { nightLabel } from "../pdf-text.js";
 import type {
   PdfActivity,
   PdfDocumentContent,
@@ -28,6 +29,13 @@ function formatDate(iso?: string | Date | null): string {
   const d = typeof iso === "string" ? new Date(iso) : iso;
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function starCategory(value: unknown, fallback = "Standard"): string {
+  const raw = str(value, fallback).replace(/[★*]/g, "").trim();
+  if (/^\d+(\.\d+)?$/.test(raw)) return `${raw}-star`;
+  if (/^\d+(\.\d+)?-star$/i.test(raw)) return raw.toLowerCase();
+  return raw || fallback;
 }
 
 function customerName(snapshot: ProposalSnapshotData): string {
@@ -142,11 +150,7 @@ function buildDayItineraryDocumentContent(input: PdfRenderInput): PdfDocumentCon
       const meta = (hotel.meta as Record<string, unknown> | undefined) ?? {};
       hotels.push({
         name: str(hotel.name),
-        category: (() => {
-          const raw = str(meta.stars ?? meta.category, "Standard");
-          if (/^\d+(\.\d+)?$/.test(raw)) return `${raw}*`;
-          return raw;
-        })(),
+        category: starCategory(meta.stars ?? meta.category, "Standard"),
         description: str(meta.description, "As selected in itinerary."),
         amenities: [],
         image: null,
@@ -197,19 +201,15 @@ function buildDayItineraryDocumentContent(input: PdfRenderInput): PdfDocumentCon
     travelDates: trip.startDate
       ? `${formatDate(str(trip.startDate))} – ${formatDate(str(trip.endDate))}`
       : "Dates to be confirmed",
-    duration: `${days.length} Days / ${num((snapshot.package as Record<string, unknown>)?.durationNights, Math.max(0, days.length - 1))} Nights`,
+    duration: `${days.length} Day${days.length === 1 ? "" : "s"} / ${nightLabel(num((snapshot.package as Record<string, unknown>)?.durationNights, Math.max(0, days.length - 1)))}`,
     generatedDate: formatDate(new Date()),
     validUntil: formatDate(input.validUntil),
     heroImage: str(snapshot.destination?.heroImage ?? snapshot.destination?.thumbnail) || null,
     highlights: snapshot.terms.inclusions.length ? snapshot.terms.inclusions : cities.map((c) => `Explore ${c}`),
     days,
-    hotels: hotels.length
-      ? hotels
-      : [{ name: "As per day itinerary", category: "Standard", description: "", amenities: [], image: null, nights: 0, city: "" }],
+    hotels,
     activities,
-    transfers: transfers.length
-      ? transfers
-      : [{ name: "As per day itinerary", vehicle: "—", pickup: "—", drop: "—", notes: "", type: "Private" }],
+    transfers,
     flights: [],
     pricing: {
       currency,
@@ -269,9 +269,9 @@ function buildPackageDocumentContent(input: PdfRenderInput): PdfDocumentContent 
     const hp = (row.hotelProduct ?? {}) as Record<string, unknown>;
     return {
       name: str(hp.name, "Hotel"),
-      category: str(
+      category: starCategory(
         snapshot.productSelections.hotelOptionGroup ??
-          (hp.starCategory != null ? `${hp.starCategory}★` : null),
+          (hp.starCategory != null ? hp.starCategory : null),
         "Standard"
       ),
       description: str(hp.description, "Comfortable stay as per package selection."),
@@ -351,7 +351,7 @@ function buildPackageDocumentContent(input: PdfRenderInput): PdfDocumentContent 
     travelDates: req
       ? `${formatDate(req.travelStartDate as string)} – ${formatDate(req.travelEndDate as string)}`
       : "Dates to be confirmed",
-    duration: `${num(pkg.durationDays, 0)} Days / ${num(pkg.durationNights, 0)} Nights`,
+    duration: `${num(pkg.durationDays, 0)} Day${num(pkg.durationDays, 0) === 1 ? "" : "s"} / ${nightLabel(num(pkg.durationNights, 0))}`,
     generatedDate: formatDate(new Date()),
     validUntil: formatDate(input.validUntil),
     heroImage:
@@ -361,19 +361,7 @@ function buildPackageDocumentContent(input: PdfRenderInput): PdfDocumentContent 
       null,
     highlights: highlights.length ? highlights : snapshot.terms.inclusions,
     days,
-    hotels: hotels.length
-      ? hotels
-      : [
-          {
-            name: "Hotel as per selection",
-            category: str(snapshot.productSelections.hotelOptionGroup, "Standard"),
-            description: "Accommodation details will be confirmed with the final booking.",
-            amenities: [],
-            image: null,
-            nights: num(pkg.durationNights, 0),
-            city: str(destination?.name),
-          },
-        ],
+    hotels,
     activities,
     transfers,
     flights: [],

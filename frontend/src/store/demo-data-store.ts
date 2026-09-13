@@ -76,7 +76,7 @@ interface DemoDataState {
   updateEmployee: (id: string, patch: Partial<Employee> & { branchId?: string | null; permissions?: Module[] | null }) => Promise<void>;
   addTask: (t: Omit<Task, "id" | "createdAt" | "status">) => Task;
   updateTaskStatus: (id: string, status: Task["status"]) => void;
-  addPayment: (p: Omit<Payment, "id" | "txnId" | "date" | "status">) => Promise<Payment>;
+  addPayment: (p: Omit<Payment, "id" | "txnId" | "date" | "status"> & { orderId?: string; paymentId?: string; signature?: string }) => Promise<Payment>;
   walletTopUp: (
     amount: number,
     method: string,
@@ -492,6 +492,9 @@ export const useDemoDataStore = create<DemoDataState>()(
             method: input.method,
             type: input.type,
             gateway: input.gateway,
+            orderId: input.orderId,
+            paymentId: input.paymentId,
+            signature: input.signature,
           });
           const server = mapApiPayment(res.payment);
           set((s) => ({

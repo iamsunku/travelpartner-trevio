@@ -216,7 +216,9 @@ function CreateQuotationDialog({ open, onOpenChange }: { open: boolean; onOpenCh
   const { toast } = useToast();
   const { pdf, email, whatsapp } = useQuoteActions();
   const customers = useDemoDataStore((s) => s.customers);
+  const leads = useDemoDataStore((s) => s.leads);
   const addQuotation = useDemoDataStore((s) => s.addQuotation);
+  const setView = useAppStore((s) => s.setView);
   const user = useAuthStore((s) => s.user);
   const setOpen = onOpenChange;
   const [customer, setCustomer] = useState("");
@@ -359,11 +361,30 @@ function CreateQuotationDialog({ open, onOpenChange }: { open: boolean; onOpenCh
               <Select value={customer} onValueChange={setCustomer}>
                 <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                 <SelectContent>
-                  {customers.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-muted-foreground max-w-[240px]">
-                      No customers yet. Add one under Sales & CRM → Customers, then return here.
+                  {customers.length === 0 && leads.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground max-w-[240px] space-y-2">
+                      <p>No customers yet. Add one, then return here.</p>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setOpen(false);
+                          setView("customers");
+                        }}
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add customer
+                      </Button>
                     </div>
-                  ) : customers.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                  ) : (
+                    <>
+                      {customers.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                      {leads.filter((l) => !customers.some((c) => c.name === l.customerName)).map((l) => (
+                        <SelectItem key={l.id} value={l.customerName}>{l.customerName} (lead)</SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>

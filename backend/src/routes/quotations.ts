@@ -33,6 +33,7 @@ import {
 } from "../lib/quotation-versions.js";
 import { generateQuotationPdf, QuotationPdfError } from "../lib/quotation-pdf/index.js";
 import { publicErrorMessage } from "../lib/http-error.js";
+import { resolveDefaultAgencyId } from "../lib/api-key-config.js";
 import { TAX_CONFIGURATION_REQUIRED, pricePackage, pricingBlockReason, ruleApplies, stripAgentPricingOverrides, type TaxRuleInput } from "../lib/pricing.js";
 import {
   NO_VALID_RATE_MESSAGE,
@@ -87,33 +88,74 @@ function parsePagination(req: AuthRequest) {
   return { page, pageSize, skip: (page - 1) * pageSize, take: pageSize };
 }
 
+function toInt(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n) : fallback;
+}
+
+function toFloat(value: unknown, fallback = 0): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function emptyToNull(value: unknown): string | null {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (!s || s === "undefined" || s === "null") return null;
+  return s;
+}
+
+function jsonValue(value: unknown, fallback: Prisma.InputJsonValue = []): Prisma.InputJsonValue {
+  try {
+    return JSON.parse(JSON.stringify(value ?? fallback)) as Prisma.InputJsonValue;
+  } catch {
+    return fallback;
+  }
+}
+
+function packageHasPricedLines(pkg: Record<string, unknown>): boolean {
+  const keys = ["hotels", "flights", "transfers", "activities", "meals"] as const;
+  return keys.some((k) => Array.isArray(pkg[k]) && (pkg[k] as unknown[]).some((line) => {
+    if (!line || typeof line !== "object") return false;
+    const r = line as Record<string, unknown>;
+    return Boolean(r.productId) || toInt(r.sellingPrice, 0) > 0 || toInt(r.costPrice, 0) > 0;
+  }));
+}
+
+async function existingUserId(id?: string | null): Promise<string | null> {
+  const uid = emptyToNull(id);
+  if (!uid) return null;
+  const row = await db.user.findUnique({ where: { id: uid }, select: { id: true } });
+  return row?.id ?? null;
+}
+
 function packageWriteData(
   pkg: Record<string, unknown>,
   costing: ReturnType<typeof calcPackageCosting>,
 ) {
   return {
     name: String(pkg.name || "Package"),
-    sortOrder: Number(pkg.sortOrder || 0),
+    sortOrder: toInt(pkg.sortOrder, 0),
     isSelected: Boolean(pkg.isSelected),
     description: pkg.description != null ? String(pkg.description) : undefined,
-    hotels: pkg.hotels || [],
-    flights: pkg.flights || [],
-    transfers: pkg.transfers || [],
-    activities: pkg.activities || [],
-    meals: pkg.meals || [],
-    itinerary: pkg.itinerary || [],
-    visa: pkg.visa ?? undefined,
-    insurance: pkg.insurance ?? undefined,
-    addOns: pkg.addOns || [],
-    inclusions: pkg.inclusions || [],
-    exclusions: pkg.exclusions || [],
-    totalNetCost: costing.totalNetCost,
-    totalSelling: costing.totalSelling,
-    grossProfit: costing.grossProfit,
-    gst: costing.gst,
-    total: costing.total,
-    perPersonCost: costing.perPersonCost,
-    pricing: pkg.pricing ?? undefined,
+    hotels: jsonValue(pkg.hotels, []),
+    flights: jsonValue(pkg.flights, []),
+    transfers: jsonValue(pkg.transfers, []),
+    activities: jsonValue(pkg.activities, []),
+    meals: jsonValue(pkg.meals, []),
+    itinerary: jsonValue(pkg.itinerary, []),
+    visa: pkg.visa != null ? jsonValue(pkg.visa, {}) : undefined,
+    insurance: pkg.insurance != null ? jsonValue(pkg.insurance, {}) : undefined,
+    addOns: jsonValue(pkg.addOns, []),
+    inclusions: jsonValue(pkg.inclusions, []),
+    exclusions: jsonValue(pkg.exclusions, []),
+    totalNetCost: toInt(costing.totalNetCost, 0),
+    totalSelling: toInt(costing.totalSelling, 0),
+    grossProfit: toInt(costing.grossProfit, 0),
+    gst: toInt(costing.gst, 0),
+    total: toInt(costing.total, 0),
+    perPersonCost: toInt(costing.perPersonCost, 0),
+    pricing: pkg.pricing != null ? jsonValue(pkg.pricing, {}) : undefined,
   };
 }
 
@@ -520,21 +562,33 @@ export function mountQuotationRoutes(
       const body = req.body || {};
       let agencyCode = body.agencyCode || null;
       let agentCode = body.agentCode || null;
+      let agencyId = ownAgencyId(req, body.agencyId);
+      if (!agencyId && req.auth?.role === "super_admin") {
+        agencyId = (await resolveDefaultAgencyId()) || undefined;
+      }
       try {
         const { ensureAgencyCode, ensureUserAgentCode } = await import("../lib/agent-codes.js");
-        const agencyId = ownAgencyId(req, body.agencyId);
         if (agencyId) agencyCode = (await ensureAgencyCode(agencyId)) || agencyCode;
         if (body.agentId) agentCode = (await ensureUserAgentCode(String(body.agentId))) || agentCode;
       } catch {
         /* non-fatal */
       }
       const quoteNo = await nextQuoteNo();
-      const nights = nightsBetween(body.travelStartDate, body.travelEndDate) ?? body.nights ?? null;
+      const computedNights = nightsBetween(body.travelStartDate, body.travelEndDate);
+      const nights = computedNights != null
+        ? computedNights
+        : (body.nights != null && Number.isFinite(Number(body.nights)) ? toInt(body.nights, 0) : null);
+      const createdById = await existingUserId(req.auth?.userId);
+      let leadId = emptyToNull(body.leadId);
+      if (leadId) {
+        const leadRow = await db.lead.findFirst({ where: { id: leadId, ...agencyScope(req) }, select: { id: true } });
+        if (!leadRow) leadId = null;
+      }
       const quote = await db.quotation.create({
         data: {
           quoteNo,
-          agencyId: ownAgencyId(req, body.agencyId),
-          branchId: ownBranchId(req),
+          agencyId: agencyId || null,
+          branchId: ownBranchId(req) || null,
           customerName: body.customerName || "Customer",
           service: body.service || (body.isInternational ? "International" : "Holiday"),
           items: 1,
@@ -544,59 +598,59 @@ export function mountQuotationRoutes(
           status: "Draft",
           validTill: body.validTill || body.quoteExpiryDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
           quoteDate: body.quoteDate || new Date().toISOString().slice(0, 10),
-          createdById: req.auth?.userId,
+          createdById,
           createdBy: body.createdBy || req.auth?.email || "System",
-          contactPerson: body.contactPerson,
-          contactEmail: body.contactEmail,
-          contactPhone: body.contactPhone,
-          destination: body.destination,
-          country: body.country,
-          coverImage: body.coverImage || null,
-          departureCity: body.departureCity,
-          travelDates: body.travelStartDate || body.travelDates,
-          travelStartDate: body.travelStartDate,
-          travelEndDate: body.travelEndDate,
-          returnDate: body.travelEndDate || body.returnDate,
+          contactPerson: emptyToNull(body.contactPerson),
+          contactEmail: emptyToNull(body.contactEmail),
+          contactPhone: emptyToNull(body.contactPhone),
+          destination: emptyToNull(body.destination),
+          country: emptyToNull(body.country),
+          coverImage: emptyToNull(body.coverImage),
+          departureCity: emptyToNull(body.departureCity),
+          travelDates: emptyToNull(body.travelStartDate || body.travelDates),
+          travelStartDate: emptyToNull(body.travelStartDate),
+          travelEndDate: emptyToNull(body.travelEndDate),
+          returnDate: emptyToNull(body.travelEndDate || body.returnDate),
           nights,
-          days: nights != null ? nights + 1 : (body.days != null ? Number(body.days) || null : null),
-          adults: Number(body.adults ?? 2) || 2,
-          children: Number(body.children ?? 0) || 0,
-          infants: Number(body.infants ?? 0) || 0,
+          days: nights != null ? nights + 1 : (body.days != null && Number.isFinite(Number(body.days)) ? toInt(body.days) : null),
+          adults: Math.max(1, toInt(body.adults, 2) || 2),
+          children: Math.max(0, toInt(body.children, 0)),
+          infants: Math.max(0, toInt(body.infants, 0)),
           currency: body.currency || "INR",
           baseCurrency: body.baseCurrency || body.currency || "INR",
-          exchangeRate: Number(body.exchangeRate || 1),
-          agentName: body.agentName,
-          agentId: body.agentId,
+          exchangeRate: toFloat(body.exchangeRate, 1) || 1,
+          agentName: emptyToNull(body.agentName),
+          agentId: emptyToNull(body.agentId),
           agentCode,
           agencyCode,
-          salesExecutiveName: body.salesExecutiveName || req.auth?.email,
-          salesExecutivePhone: body.salesExecutivePhone,
-          salesExecutiveEmail: body.salesExecutiveEmail,
-          specialRequests: body.specialRequests,
-          internalNotes: body.internalNotes,
-          enquiryRef: body.enquiryRef || (body.leadId ? `LEAD-${String(body.leadId).slice(-6)}` : undefined),
-          leadId: body.leadId || null,
-          budget: body.budget != null ? Number(body.budget) : undefined,
-          packageIncludes: body.packageIncludes || [],
-          packageExcludes: body.packageExcludes || [],
-          termsAndConditions: body.termsAndConditions,
-          paymentTerms: body.paymentTerms,
-          cancellationPolicy: body.cancellationPolicy,
-          refundPolicy: body.refundPolicy,
+          salesExecutiveName: emptyToNull(body.salesExecutiveName) || req.auth?.email,
+          salesExecutivePhone: emptyToNull(body.salesExecutivePhone),
+          salesExecutiveEmail: emptyToNull(body.salesExecutiveEmail),
+          specialRequests: emptyToNull(body.specialRequests),
+          internalNotes: emptyToNull(body.internalNotes),
+          enquiryRef: emptyToNull(body.enquiryRef) || (leadId ? `LEAD-${leadId.slice(-6)}` : undefined),
+          leadId,
+          budget: body.budget != null && Number.isFinite(Number(body.budget)) ? toInt(body.budget) : undefined,
+          packageIncludes: jsonValue(body.packageIncludes, []),
+          packageExcludes: jsonValue(body.packageExcludes, []),
+          termsAndConditions: emptyToNull(body.termsAndConditions),
+          paymentTerms: emptyToNull(body.paymentTerms),
+          cancellationPolicy: emptyToNull(body.cancellationPolicy),
+          refundPolicy: emptyToNull(body.refundPolicy),
           taxRate: 0,
           trevioMarkupType: body.trevioMarkupType === "Fixed" ? "Fixed" : "Percentage",
-          trevioMarkupValue: Number(body.trevioMarkupValue ?? 0),
+          trevioMarkupValue: toFloat(body.trevioMarkupValue, 0),
           agentMarkupType: body.agentMarkupType === "Percentage" ? "Percentage" : "Fixed",
-          agentMarkup: Math.max(0, Math.round(Number(body.agentMarkup ?? 0))),
+          agentMarkup: Math.max(0, toInt(body.agentMarkup, 0)),
           exchangeRateExplicit: body.exchangeRateExplicit === true,
-          wizardStep: Number(body.wizardStep || 1),
+          wizardStep: Math.max(1, toInt(body.wizardStep, 1) || 1),
           isInternational: Boolean(body.isInternational),
         },
       });
 
-      if (body.leadId) {
+      if (leadId) {
         const lead = await db.lead.findFirst({
-          where: { id: String(body.leadId), ...agencyScope(req) },
+          where: { id: leadId, ...agencyScope(req) },
         });
         if (lead && !["Won", "Lost", "Quotation Sent"].includes(lead.stage)) {
           await db.lead.update({
@@ -606,13 +660,14 @@ export function mountQuotationRoutes(
         }
       }
 
-      if (Array.isArray(body.packages) && body.packages.length) {
+      const incomingPackages = Array.isArray(body.packages) ? body.packages as Record<string, unknown>[] : [];
+      if (incomingPackages.some(packageHasPricedLines)) {
         try {
           let selectedLayers: ReturnType<typeof layersFromPackage> | null = null;
           let selectedUnresolved = false;
           let selectedTaxRuleId: string | null = null;
           let selectedTaxRate = 0;
-          for (const pkg of body.packages) {
+          for (const pkg of incomingPackages) {
             const frozen = await freezePackageLines(pkg, {
               travelDate: body.travelStartDate || null,
               travelEndDate: body.travelEndDate || null,
@@ -621,9 +676,9 @@ export function mountQuotationRoutes(
             const priced = await priceFrozenPackage(frozen, {
               currency: body.currency,
               nights,
-              adults: Number(body.adults ?? 2) || 2,
-              children: Number(body.children ?? 0) || 0,
-              infants: Number(body.infants ?? 0) || 0,
+              adults: Math.max(1, toInt(body.adults, 2) || 2),
+              children: Math.max(0, toInt(body.children, 0)),
+              infants: Math.max(0, toInt(body.infants, 0)),
               trevioMarkupType: body.trevioMarkupType,
               trevioMarkupValue: body.trevioMarkupValue,
               agentMarkupType: body.agentMarkupType,
@@ -693,27 +748,39 @@ export function mountQuotationRoutes(
         });
       }
 
-      await writeQuoteAudit({
-        req,
-        agencyId: quote.agencyId,
-        quotationId: quote.id,
-        action: "Quote Created",
-        updatedValue: { quoteNo },
-      });
-      await ensureInitialQuotationVersion({
-        quotationId: quote.id,
-        createdByName: req.auth?.email || "System",
-        createdById: req.auth?.userId,
-        changeSummary: "Version 1",
-      });
-      await notifyQuote({
-        agencyId: quote.agencyId,
-        title: "New quote created",
-        message: `${quoteNo} created for ${quote.customerName}`,
-      });
+      try {
+        await writeQuoteAudit({
+          req,
+          agencyId: quote.agencyId,
+          quotationId: quote.id,
+          action: "Quote Created",
+          updatedValue: { quoteNo },
+        });
+      } catch (auditErr) {
+        logger.error(auditErr);
+      }
+      try {
+        await ensureInitialQuotationVersion({
+          quotationId: quote.id,
+          createdByName: req.auth?.email || "System",
+          createdById: createdById || undefined,
+          changeSummary: "Version 1",
+        });
+      } catch (versionErr) {
+        logger.error(versionErr);
+      }
+      try {
+        await notifyQuote({
+          agencyId: quote.agencyId,
+          title: "New quote created",
+          message: `${quoteNo} created for ${quote.customerName}`,
+        });
+      } catch (notifyErr) {
+        logger.error(notifyErr);
+      }
 
       const full = await db.quotation.findUnique({ where: { id: quote.id }, include: QUOTE_INCLUDE });
-      res.status(201).json({ quotation: sanitizeQuotationForRole(full as unknown as Record<string, unknown>, req.auth?.role) });
+      res.status(201).json({ quotation: sanitizeQuotationForRole((full || quote) as unknown as Record<string, unknown>, req.auth?.role) });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: publicErrorMessage(e, "Could not save quotation") });
@@ -760,12 +827,15 @@ export function mountQuotationRoutes(
         "discountType", "hotelStarPreference", "roomTypePreference", "mealPlanPreference",
       ] as const;
       for (const k of scalarKeys) {
-        if (body[k] !== undefined) data[k] = body[k];
+        if (body[k] !== undefined) data[k] = k === "leadId" ? emptyToNull(body[k]) : body[k];
       }
-      if (body.budget != null) data.budget = Number(body.budget);
-      if (body.exchangeRate != null && body.exchangeRateExplicit === true) data.exchangeRate = Number(body.exchangeRate);
-      if (body.discountValue != null) data.discountValue = Number(body.discountValue);
-      if (body.wizardStep != null) data.wizardStep = Number(body.wizardStep);
+      if (body.budget != null) data.budget = toInt(body.budget, 0);
+      if (body.exchangeRate != null && body.exchangeRateExplicit === true) data.exchangeRate = toFloat(body.exchangeRate, 1) || 1;
+      if (body.discountValue != null) data.discountValue = toFloat(body.discountValue, 0);
+      if (body.wizardStep != null) data.wizardStep = Math.max(1, toInt(body.wizardStep, 1) || 1);
+      if (body.adults != null) data.adults = Math.max(1, toInt(body.adults, 2) || 2);
+      if (body.children != null) data.children = Math.max(0, toInt(body.children, 0));
+      if (body.infants != null) data.infants = Math.max(0, toInt(body.infants, 0));
       if (body.isInternational != null) data.isInternational = Boolean(body.isInternational);
       if (body.packageIncludes) data.packageIncludes = body.packageIncludes;
       if (body.packageExcludes) data.packageExcludes = body.packageExcludes;

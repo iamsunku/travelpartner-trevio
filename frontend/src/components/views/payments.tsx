@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { payWithRazorpay } from "@/lib/razorpay";
 
 const METHOD_ICON: Record<string, React.ElementType> = {
   Razorpay: ShieldCheck, UPI: Smartphone, Card: CreditCard,
@@ -63,14 +64,9 @@ function RazorpayModal({ amount, open, onOpenChange, onSuccess }: {
 }) {
   const { toast } = useToast();
   const [method, setMethod] = useState("Card");
-  const [card, setCard] = useState({ number: "", expiry: "", cvv: "", name: "" });
   const [upi, setUpi] = useState("");
   const [bank, setBank] = useState("");
   const [status, setStatus] = useState<"form" | "processing" | "success" | "pending">("form");
-
-  function formatCardNumber(v: string) {
-    return v.replace(/\s/g, "").replace(/(\d{4})/g, "$1 ").trim().slice(0, 19);
-  }
 
   async function pay() {
     setStatus("processing");
@@ -81,13 +77,12 @@ function RazorpayModal({ amount, open, onOpenChange, onSuccess }: {
       toast({
         title: persisted === "Success" ? "Payment Successful" : "Payment recorded as Pending",
         description: persisted === "Success"
-          ? `${formatFullINR(amount)} collected via ${method}`
-          : `${formatFullINR(amount)} saved. Card checkout is test-mode — status stays Pending until the gateway confirms.`,
+          ? `${formatFullINR(amount)} collected via Razorpay`
+          : `${formatFullINR(amount)} was saved, but the gateway did not confirm Success.`,
       });
       setTimeout(() => {
         setStatus("form");
         onOpenChange(false);
-        setCard({ number: "", expiry: "", cvv: "", name: "" });
         setUpi("");
         setBank("");
       }, 1400);
@@ -102,7 +97,7 @@ function RazorpayModal({ amount, open, onOpenChange, onSuccess }: {
   }
 
   const canPay =
-    method === "Card" ? card.number.replace(/\s/g, "").length >= 12 && card.expiry && card.cvv.length >= 3 :
+    method === "Card" || method === "Wallet" ? true :
     method === "UPI" ? upi.includes("@") :
     method === "Net Banking" ? !!bank :
     true;
@@ -152,62 +147,9 @@ function RazorpayModal({ amount, open, onOpenChange, onSuccess }: {
 
               {/* Card form */}
               {method === "Card" && (
-                <div className="space-y-2">
-                  <div>
-                    <Label className="text-[11px]">Card Number</Label>
-                    <div className="relative">
-                      <Input
-                        placeholder="4111 1111 1111 1111"
-                        value={card.number}
-                        onChange={(e) => setCard({ ...card, number: formatCardNumber(e.target.value) })}
-                        className="text-sm"
-                        inputMode="numeric"
-                        autoComplete="cc-number"
-                        name="cc-number"
-                      />
-                      <CreditCard className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-[11px]">Cardholder Name</Label>
-                    <Input
-                      placeholder="Name on card"
-                      value={card.name}
-                      onChange={(e) => setCard({ ...card, name: e.target.value })}
-                      className="text-sm"
-                      autoComplete="cc-name"
-                      name="cc-name"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-[11px]">Expiry (MM/YY)</Label>
-                      <Input
-                        placeholder="12/26"
-                        value={card.expiry}
-                        onChange={(e) => setCard({ ...card, expiry: e.target.value })}
-                        className="text-sm"
-                        maxLength={5}
-                        inputMode="numeric"
-                        autoComplete="cc-exp"
-                        name="cc-exp"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[11px]">CVV</Label>
-                      <Input
-                        type="password"
-                        placeholder="•••"
-                        value={card.cvv}
-                        onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, "").slice(0, 3) })}
-                        className="text-sm"
-                        maxLength={3}
-                        inputMode="numeric"
-                        autoComplete="cc-csc"
-                        name="cc-csc"
-                      />
-                    </div>
-                  </div>
+                <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
+                  <p className="font-medium text-foreground">Razorpay Checkout</p>
+                  <p>Pay opens the real Razorpay window. Card details are entered there — this screen does not collect card numbers.</p>
                 </div>
               )}
 
@@ -320,6 +262,14 @@ function CollectPaymentDialog() {
   }
 
   async function onSuccess() {
+    const rzp = await payWithRazorpay({
+      amount: Number(amount),
+      name: "Trevio Global",
+      description: bookingRef ? `${bookingRef} · ${customer}` : `Payment from ${customer}`,
+    });
+    if (!rzp.success) {
+      throw new Error(rzp.error || "Payment was not completed");
+    }
     const payment = await addPayment({
       customerName: customer,
       bookingRef: bookingRef || "—",
@@ -327,6 +277,9 @@ function CollectPaymentDialog() {
       method: "Razorpay",
       type: "Payment",
       gateway: "Razorpay",
+      orderId: rzp.orderId,
+      paymentId: rzp.paymentId,
+      signature: rzp.signature,
     });
     setCustomer("");
     setBookingRef("");

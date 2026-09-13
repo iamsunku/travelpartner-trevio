@@ -92,6 +92,29 @@ export function mountTripPlannerRoutes(app: Express, agencyScope: ScopeFn) {
     }
   });
 
+  app.post(`${base}/recommendations`, requireAuth, requireCrudPermission("trip-planner", "view"), validate(travelRequirementMatchSchema), async (req: AuthRequest, res: Response) => {
+    try {
+      const body = req.body as {
+        destinationId: string;
+        days: number;
+        nights?: number;
+        budgetMin?: number;
+        budgetMax?: number;
+        hotelCategory?: string | null;
+        packageType?: string | null;
+        adults?: number;
+      };
+      const matches = await matchPackages(
+        { ...body, nights: body.nights ?? Math.max(0, body.days - 1), budgetMin: body.budgetMin ?? 0, budgetMax: body.budgetMax ?? 0 },
+        agencyScope(req)
+      );
+      res.json({ matches });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
   app.get(`${base}/:id`, requireAuth, requireCrudPermission("trip-planner", "view"), async (req: AuthRequest, res: Response) => {
     try {
       const item = await db.travelRequirement.findFirst({
@@ -219,29 +242,6 @@ export function mountTripPlannerRoutes(app: Express, agencyScope: ScopeFn) {
       });
       await addHistory(id, "cancelled", "Requirement cancelled", req);
       res.json({ ok: true });
-    } catch (e) {
-      logger.error(e);
-      res.status(500).json({ error: "Server error" });
-    }
-  });
-
-  app.post(`${base}/recommendations`, requireAuth, requireCrudPermission("trip-planner", "view"), validate(travelRequirementMatchSchema), async (req: AuthRequest, res: Response) => {
-    try {
-      const body = req.body as {
-        destinationId: string;
-        days: number;
-        nights?: number;
-        budgetMin?: number;
-        budgetMax?: number;
-        hotelCategory?: string | null;
-        packageType?: string | null;
-        adults?: number;
-      };
-      const matches = await matchPackages(
-        { ...body, nights: body.nights ?? Math.max(0, body.days - 1), budgetMin: body.budgetMin ?? 0, budgetMax: body.budgetMax ?? 0 },
-        agencyScope(req)
-      );
-      res.json({ matches });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });

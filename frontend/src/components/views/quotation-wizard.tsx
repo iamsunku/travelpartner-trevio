@@ -416,7 +416,11 @@ export function QuotationWizardDialog({
         days: tripDays ?? undefined,
         travelDates: form.travelStartDate,
         wizardStep: nextStep + 1,
-        packages: packages.map((p, i) => ({ ...p, sortOrder: i })),
+        packages: !id && !packages.some((p) =>
+          [p.hotels, p.flights, p.transfers, p.activities, p.meals].some((rows) => Array.isArray(rows) && rows.length > 0)
+        )
+          ? undefined
+          : packages.map((p, i) => ({ ...p, sortOrder: i })),
         service: form.service || (form.isInternational ? "International" : "Holiday"),
         leadId: leadId || undefined,
         budget: form.budget || undefined,

@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ResolvedQuoteCosting } from "@/lib/quote-costing";
+import { isCalendarDate } from "@/lib/quote-costing";
 
 function formatPrettyDate(iso?: string) {
   if (!iso) return "—";
@@ -114,8 +115,10 @@ export function QuotePriceBreakdown({
   className,
 }: QuotePriceBreakdownProps) {
   const view = audience || (showInternal ? "internal" : "customer");
-  const checkIn = costing.checkIn || "";
-  const checkOut = costing.checkOut || "";
+  const checkInRaw = costing.checkIn || "";
+  const checkOutRaw = costing.checkOut || "";
+  const checkIn = isCalendarDate(checkInRaw) ? checkInRaw.slice(0, 10) : "";
+  const checkOut = isCalendarDate(checkOutRaw) ? checkOutRaw.slice(0, 10) : "";
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -127,8 +130,8 @@ export function QuotePriceBreakdown({
               <Input
                 type="date"
                 className="h-9 border-rose-200 focus-visible:ring-rose-300"
-                value={checkIn.slice(0, 10)}
-                onChange={(e) => onChangeDates(e.target.value, checkOut.slice(0, 10))}
+                value={checkIn}
+                onChange={(e) => onChangeDates(e.target.value, checkOut)}
               />
             ) : (
               <div className="h-9 rounded-md border border-rose-200 px-3 flex items-center justify-between text-sm text-rose-700">
@@ -143,8 +146,8 @@ export function QuotePriceBreakdown({
               <Input
                 type="date"
                 className="h-9 border-rose-200 focus-visible:ring-rose-300"
-                value={checkOut.slice(0, 10)}
-                onChange={(e) => onChangeDates(checkIn.slice(0, 10), e.target.value)}
+                value={checkOut}
+                onChange={(e) => onChangeDates(checkIn, e.target.value)}
               />
             ) : (
               <div className="h-9 rounded-md border border-rose-200 px-3 flex items-center justify-between text-sm text-rose-700">
