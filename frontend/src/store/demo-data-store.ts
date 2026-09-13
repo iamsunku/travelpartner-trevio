@@ -15,7 +15,7 @@ import type {
   Task,
   Module,
 } from "@/types";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { toast } from "@/hooks/use-toast";
 import {
   mapApiBooking,
@@ -67,7 +67,7 @@ interface DemoDataState {
   upsertBooking: (booking: Booking) => void;
   updateBookingStatus: (id: string, status: Booking["status"]) => void;
   addCustomer: (customer: Omit<Customer, "id" | "totalBookings" | "totalSpent" | "loyaltyPoints" | "createdAt">) => Customer;
-  addLead: (lead: Omit<Lead, "id" | "stage" | "createdAt">) => Lead;
+  addLead: (lead: Omit<Lead, "id" | "stage" | "createdAt">) => Promise<Lead>;
   updateLeadStage: (id: string, stage: Lead["stage"]) => void;
   addQuotation: (q: NewQuotationInput) => Quotation;
   upsertQuotation: (q: Quotation) => void;
@@ -76,7 +76,7 @@ interface DemoDataState {
   updateEmployee: (id: string, patch: Partial<Employee> & { branchId?: string | null; permissions?: Module[] | null }) => Promise<void>;
   addTask: (t: Omit<Task, "id" | "createdAt" | "status">) => Task;
   updateTaskStatus: (id: string, status: Task["status"]) => void;
-  addPayment: (p: Omit<Payment, "id" | "txnId" | "date" | "status">) => Payment;
+  addPayment: (p: Omit<Payment, "id" | "txnId" | "date" | "status">) => Promise<Payment>;
   walletTopUp: (
     amount: number,
     method: string,
@@ -277,17 +277,9 @@ export const useDemoDataStore = create<DemoDataState>()(
         return customer;
       },
 
-      addLead: (input) => {
-        const localId = `ld-${Date.now()}`;
-        const lead: Lead = {
-          ...input,
-          id: localId,
-          stage: "New",
-          createdAt: todayISO(),
-        };
-        set((s) => ({ leads: [lead, ...s.leads] }));
-        api
-          .createLead({
+      addLead: async (input) => {
+        try {
+          const res = await api.createLead({
             customerName: input.customerName,
             email: input.email,
             phone: input.phone,
@@ -297,15 +289,20 @@ export const useDemoDataStore = create<DemoDataState>()(
             assignedTo: input.assignedTo,
             expectedClose: input.expectedClose,
             notes: input.notes,
-          })
-          .then((res) => {
-            const server = mapApiLead(res.lead);
-            set((s) => ({
-              leads: s.leads.map((l) => (l.id === localId ? server : l)),
-            }));
-          })
-          .catch(() => reportSyncFailure("Lead"));
-        return lead;
+          });
+          const server = mapApiLead(res.lead);
+          set((s) => ({ leads: [server, ...s.leads] }));
+          return server;
+        } catch (e) {
+          if (!(e instanceof ApiError)) {
+            toast({
+              title: "Could not create lead",
+              description: "The server rejected this lead. Nothing was saved.",
+              variant: "destructive",
+            });
+          }
+          throw e;
+        }
       },
 
       updateLeadStage: (id, stage) => {
@@ -474,36 +471,38 @@ export const useDemoDataStore = create<DemoDataState>()(
         api.updateTask(id, { status }).catch(() => reportSyncFailure("Task update"));
       },
 
-      addPayment: (input) => {
+      addPayment: async (input) => {
         const localId = `py-${Date.now()}`;
-        const payment: Payment = {
+        const optimistic: Payment = {
           ...input,
           id: localId,
           txnId: nextTxnId(get().paymentSeq),
-          status: "Success",
+          status: "Pending",
           date: todayISO(),
         };
         set((s) => ({
-          payments: [payment, ...s.payments],
+          payments: [optimistic, ...s.payments],
           paymentSeq: s.paymentSeq + 1,
         }));
-        api
-          .createPayment({
+        try {
+          const res = await api.createPayment({
             customerName: input.customerName,
             bookingRef: input.bookingRef,
             amount: input.amount,
             method: input.method,
             type: input.type,
             gateway: input.gateway,
-          })
-          .then((res) => {
-            const server = mapApiPayment(res.payment);
-            set((s) => ({
-              payments: s.payments.map((p) => (p.id === localId ? server : p)),
-            }));
-          })
-          .catch(() => reportSyncFailure("Payment"));
-        return payment;
+          });
+          const server = mapApiPayment(res.payment);
+          set((s) => ({
+            payments: s.payments.map((p) => (p.id === localId ? server : p)),
+          }));
+          return server;
+        } catch (err) {
+          set((s) => ({ payments: s.payments.filter((p) => p.id !== localId) }));
+          reportSyncFailure("Payment");
+          throw err;
+        }
       },
 
       walletTopUp: async (amount, method, payment) => {

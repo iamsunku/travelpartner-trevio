@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/app-store";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { ROLE_LABELS } from "@/lib/nav-config";
 import { api } from "@/lib/api";
+import { isValidEmail } from "@/lib/field-validation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,7 @@ export function LoginScreen() {
   const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [resetLoading, setResetLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -56,8 +58,17 @@ export function LoginScreen() {
   }, []);
 
   const handleLogin = async () => {
+    setLoginError(null);
     if (!email.trim() || !password) {
-      toast({ title: "Enter email and password", variant: "destructive" });
+      const msg = "Enter email and password";
+      setLoginError(msg);
+      toast({ title: msg, variant: "destructive" });
+      return;
+    }
+    if (!isValidEmail(email)) {
+      const msg = "Enter a valid email address";
+      setLoginError(msg);
+      toast({ title: msg, variant: "destructive" });
       return;
     }
     setLoading(true);
@@ -66,6 +77,7 @@ export function LoginScreen() {
     if (!result.ok) {
       const err = result.error || "Invalid email or password";
       const rateLimited = /too many/i.test(err);
+      setLoginError(err);
       toast({
         title: rateLimited ? "Too many attempts" : "Sign in failed",
         description: rateLimited
@@ -298,7 +310,7 @@ export function LoginScreen() {
                           autoComplete="email"
                           className="pl-10 h-12 rounded-xl border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-brand-blue/30"
                           value={email}
-                          onChange={(e) => setEmail(e.target.value)}
+                          onChange={(e) => { setEmail(e.target.value); setLoginError(null); }}
                           onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                           placeholder="you@agency.com"
                         />
@@ -323,7 +335,7 @@ export function LoginScreen() {
                           autoComplete="current-password"
                           className="pl-10 pr-10 h-12 rounded-xl border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-brand-blue/30"
                           value={password}
-                          onChange={(e) => setPassword(e.target.value)}
+                          onChange={(e) => { setPassword(e.target.value); setLoginError(null); }}
                           onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                           placeholder="Enter your password"
                         />
@@ -337,6 +349,9 @@ export function LoginScreen() {
                         </button>
                       </div>
                     </div>
+                    {loginError && (
+                      <p className="text-sm text-rose-600" role="alert">{loginError}</p>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between">

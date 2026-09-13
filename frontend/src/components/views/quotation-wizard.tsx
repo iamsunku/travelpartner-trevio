@@ -106,6 +106,7 @@ export function QuotationWizardDialog({
   const upsertQuotation = useDemoDataStore((s) => s.upsertQuotation);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [id, setId] = useState<string | null>(quotationId || null);
   const [leadId, setLeadId] = useState<string | null>(null);
   const [quoteNo, setQuoteNo] = useState("");
@@ -404,9 +405,13 @@ export function QuotationWizardDialog({
       return null;
     }
     setBusy(true);
+    setSaveError(null);
     try {
       const payload = {
         ...form,
+        adults: Number(form.adults) || 2,
+        children: Number(form.children) || 0,
+        infants: Number(form.infants) || 0,
         nights: nights ?? undefined,
         days: tripDays ?? undefined,
         travelDates: form.travelStartDate,
@@ -439,9 +444,11 @@ export function QuotationWizardDialog({
       toast({ title: submitApproval ? "Submitted for approval" : "Draft saved", description: quotation.quoteNo });
       return quotation;
     } catch (e) {
+      const message = e instanceof ApiError ? e.message : "Could not save quotation";
+      setSaveError(message);
       toast({
         title: "Save failed",
-        description: e instanceof ApiError ? e.message : "Error",
+        description: message,
         variant: "destructive",
       });
       return null;
@@ -632,11 +639,14 @@ export function QuotationWizardDialog({
                     apiFetch<{ item: { name: string; country?: string; heroImage?: string | null; bannerImage?: string | null; thumbnail?: string | null; galleryImages?: string[] } }>(`/api/destinations/${id}`)
                       .then((data) => {
                         const hero = data.item.heroImage || data.item.bannerImage || data.item.thumbnail || data.item.galleryImages?.[0] || "";
+                        const country = data.item.country || "";
+                        const intl = Boolean(country && !["india", "in", "bharat"].includes(country.trim().toLowerCase()));
                         setForm((f) => ({
                           ...f,
                           destination: data.item.name || f.destination,
-                          country: data.item.country || f.country,
+                          country: country || f.country,
                           coverImage: f.coverImage || hero,
+                          isInternational: intl,
                         }));
                       })
                       .catch(() => undefined);
@@ -645,7 +655,14 @@ export function QuotationWizardDialog({
                 />
               </div>
               <Field label="Destination city *" value={form.destination} onChange={(v) => setForm({ ...form, destination: v })} />
-              <Field label="Country" value={form.country} onChange={(v) => setForm({ ...form, country: v })} />
+              <Field
+                label="Country"
+                value={form.country}
+                onChange={(v) => {
+                  const intl = Boolean(v && !["india", "in", "bharat"].includes(v.trim().toLowerCase()));
+                  setForm({ ...form, country: v, isInternational: intl });
+                }}
+              />
               <div className="sm:col-span-2 space-y-1.5">
                 <Label className="text-sm font-medium">Cover image URL</Label>
                 <p className="text-xs text-muted-foreground">Paste a photo link for the brochure cover. Destination search can auto-fill this.</p>
@@ -1354,6 +1371,11 @@ export function QuotationWizardDialog({
                 <Info label="Total" value={formatFullINR(liveCosting.total)} />
               </div>
 
+              {saveError && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  Save failed: {saveError}
+                </div>
+              )}
               <div className="flex flex-wrap gap-2 justify-between">
                 <div className="flex gap-2">
                   <Button variant="outline" disabled={busy || step === 0} onClick={back}>

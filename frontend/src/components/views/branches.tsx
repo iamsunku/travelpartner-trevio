@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { api, type ApiEmployee } from "@/lib/api";
+import { api, ApiError, type ApiEmployee } from "@/lib/api";
 import { mapApiAgency, mapApiBranch } from "@/lib/api-mappers";
 import type { Agency, Branch } from "@/types";
 import { formatINR, formatFullINR, StatusBadge, PageShell, PageHeader, SectionHeader, MetricCard, initials, avatarGradient } from "@/components/shared/ui-helpers";
@@ -105,15 +105,12 @@ export function BranchesView() {
         setForm({ name: "", agencyId: "ag-1", city: "", manager: "" });
         toast({ title: "Branch added", description: `${res.branch.name} created.` });
       })
-      .catch(() => {
-        const newBranch: Branch = {
-          id: `br-${Date.now()}`, agencyId: form.agencyId, name: form.name,
-          manager: form.manager, city: form.city, employees: 0, revenue: 0,
-        };
-        setBranches([newBranch, ...branches]);
-        setAddOpen(false);
-        setForm({ name: "", agencyId: "ag-1", city: "", manager: "" });
-        toast({ title: "Branch added (offline)", description: `${newBranch.name} created locally.` });
+      .catch((e) => {
+        toast({
+          title: "Could not create branch",
+          description: e instanceof ApiError ? e.message : "The server rejected this branch. Nothing was saved.",
+          variant: "destructive",
+        });
       });
   }
 

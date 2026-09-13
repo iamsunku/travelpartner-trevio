@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plane, Search, ArrowLeftRight, Calendar, Users, ChevronRight,
@@ -490,9 +490,6 @@ export function FlightsView() {
         setPaying(false);
         toast({ title: "Payment cancelled or failed", description: result.error || "No amount was charged.", variant: "destructive" });
         return;
-      }
-      if (result.demo) {
-        toast({ title: "Checkout not configured", description: "Razorpay live keys are not set — this booking was recorded without a charge." });
       }
     }
 
@@ -1065,48 +1062,21 @@ export function FlightsView() {
                 </TabsList>
 
                 <TabsContent value="card" className="space-y-2 mt-3">
-                  <div>
-                    <Label className="text-xs">Card number</Label>
-                    <Input placeholder="4111 1111 1111 1111" maxLength={19} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-xs">Expiry</Label>
-                      <Input placeholder="MM/YY" maxLength={5} />
-                    </div>
-                    <div>
-                      <Label className="text-xs">CVV</Label>
-                      <Input type="password" placeholder="•••" maxLength={3} />
-                    </div>
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Pay opens Razorpay Checkout. Enter card details there — this screen does not collect card numbers.
+                  </p>
                 </TabsContent>
 
                 <TabsContent value="upi" className="space-y-2 mt-3">
-                  <div>
-                    <Label className="text-xs">UPI ID</Label>
-                    <Input placeholder="yourname@upi" />
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["GPay", "PhonePe", "Paytm", "BHIM"].map((u) => (
-                      <Badge key={u} variant="secondary" className="cursor-pointer hover:bg-primary/10">
-                        {u}
-                      </Badge>
-                    ))}
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    UPI is collected in Razorpay Checkout after you click Pay. No amount is charged if checkout is cancelled.
+                  </p>
                 </TabsContent>
 
                 <TabsContent value="netbanking" className="space-y-2 mt-3">
-                  <Label className="text-xs">Select bank</Label>
-                  <Select defaultValue="hdfc">
-                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="hdfc">HDFC Bank</SelectItem>
-                      <SelectItem value="icici">ICICI Bank</SelectItem>
-                      <SelectItem value="sbi">State Bank of India</SelectItem>
-                      <SelectItem value="axis">Axis Bank</SelectItem>
-                      <SelectItem value="kotak">Kotak Mahindra Bank</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    Choose your bank in Razorpay Checkout after you click Pay.
+                  </p>
                 </TabsContent>
 
                 <TabsContent value="wallet" className="space-y-2 mt-3">
@@ -1355,12 +1325,30 @@ function DateField({
   disabled?: boolean;
   hint?: string;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function openPicker() {
+    const el = inputRef.current;
+    if (!el || disabled) return;
+    try {
+      const picker = el as HTMLInputElement & { showPicker?: () => void };
+      if (typeof picker.showPicker === "function") picker.showPicker();
+      else el.focus();
+    } catch {
+      el.focus();
+    }
+  }
+
   return (
     <label
       className={cn(
         "relative flex flex-col justify-center px-3.5 py-3 min-h-[78px] rounded-xl lg:rounded-none border border-border lg:border-0 lg:border-l cursor-pointer hover:bg-muted/40 transition-opacity",
         disabled && "opacity-50 pointer-events-none"
       )}
+      onClick={(e) => {
+        e.preventDefault();
+        openPicker();
+      }}
     >
       <span className="text-[11px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5 mb-1">
         <Calendar className="w-3.5 h-3.5" /> {label}
@@ -1368,11 +1356,13 @@ function DateField({
       <span className="text-sm font-semibold">{formatPrettyDate(value)}</span>
       {hint && <span className="text-[11px] text-muted-foreground mt-0.5">{hint}</span>}
       <input
+        ref={inputRef}
         type="date"
         value={value}
         min={min}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
         className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-not-allowed"
         aria-label={label}
       />

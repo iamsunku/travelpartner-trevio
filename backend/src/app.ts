@@ -60,12 +60,14 @@ import {
   attendanceCheckSchema, leaveSchema, leaveStatusSchema, forgotPasswordSchema,
   resetPasswordSchema, agentRegistrationSchema,
   couponCreateSchema, couponUpdateSchema, couponValidateSchema,
+  isValidEmail, isValidPhone, isValidGstin,
 } from "./lib/validation.js";
 import { effectiveCouponStatus, validateCouponForOrder } from "./lib/coupons.js";
 import { getAgencyApiKeys, maskSecret, resolveDefaultAgencyId, type DynamicApiKeys } from "./lib/api-key-config.js";
 import {
   assertRazorpayPayment,
   handleRazorpayWebhook,
+  isRazorpayKeyId,
   razorpayAuthHeader,
   razorpayKeysForAgency,
 } from "./lib/razorpay.js";
@@ -3017,6 +3019,18 @@ app.put("/api/settings/company", requireAuth, requireRole("super_admin", "agency
     const body = req.body ?? {};
     const nextGst = typeof body.gstNumber === "string" ? body.gstNumber : undefined;
     const nextState = typeof body.state === "string" ? body.state : undefined;
+    if (typeof body.email === "string" && body.email.trim() && !isValidEmail(body.email)) {
+      res.status(400).json({ error: "Enter a valid email address" });
+      return;
+    }
+    if (typeof body.phone === "string" && body.phone.trim() && !isValidPhone(body.phone)) {
+      res.status(400).json({ error: "Enter a valid phone number" });
+      return;
+    }
+    if (nextGst !== undefined && !isValidGstin(nextGst)) {
+      res.status(400).json({ error: "Enter a valid 15-character GSTIN" });
+      return;
+    }
     const derivedState = resolveGstState(nextState, nextGst);
     const agency = await db.agency.update({
       where: { id: agencyId },
@@ -3073,7 +3087,9 @@ app.get("/api/settings/api-keys", requireAuth, requireRole("super_admin", "agenc
       razorpayKeySecretMasked: maskSecret(stored.razorpayKeySecret || process.env.RAZORPAY_KEY_SECRET),
       hasRazorpaySecret: Boolean(stored.razorpayKeySecret || process.env.RAZORPAY_KEY_SECRET),
       razorpayMode: stored.razorpayMode || "Test",
-      razorpayLive: Boolean(resolved.razorpayKeyId && resolved.razorpayKeySecret),
+      razorpayLive: Boolean(
+        resolved.razorpayKeyId && resolved.razorpayKeySecret && isRazorpayKeyId(resolved.razorpayKeyId),
+      ),
       flightProvider: stored.flightProvider || "mock",
       flightApiKey: stored.flightApiKey || "",
       flightApiSecretMasked: maskSecret(stored.flightApiSecret),
@@ -3133,8 +3149,18 @@ app.put("/api/settings/api-keys", requireAuth, requireRole("super_admin", "agenc
       if (body[f] !== undefined) updatedKeys[f] = String(body[f]).trim();
     }
 
+    if (updatedKeys.razorpayKeyId && !isRazorpayKeyId(updatedKeys.razorpayKeyId)) {
+      res.status(400).json({ error: "Razorpay Key ID must start with rzp_test_ or rzp_live_" });
+      return;
+    }
+
     if (body.razorpayKeySecret && !body.razorpayKeySecret.includes("••••")) {
-      updatedKeys.razorpayKeySecret = String(body.razorpayKeySecret).trim();
+      const secret = String(body.razorpayKeySecret).trim();
+      if (secret.includes("@") || secret.length < 16) {
+        res.status(400).json({ error: "Razorpay Key Secret looks invalid. Paste the secret from the Razorpay dashboard." });
+        return;
+      }
+      updatedKeys.razorpayKeySecret = secret;
     }
     if (body.flightApiSecret && !body.flightApiSecret.includes("••••")) {
       updatedKeys.flightApiSecret = String(body.flightApiSecret).trim();

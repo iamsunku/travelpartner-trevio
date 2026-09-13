@@ -28,6 +28,7 @@ import { PageShell, PageHeader, DemoModuleBanner, DemoDataBadge } from "@/compon
 import { cn } from "@/lib/utils";
 import { api, apiFetch } from "@/lib/api";
 import { stateFromGstin } from "@/lib/gst-state";
+import { isValidEmail, isValidGstin, isValidPhone, isValidRazorpayKeyId, clampInt } from "@/lib/field-validation";
 import { useAuthStore } from "@/store/app-store";
 import {
   MODULE_LABELS, ROLE_CRUD,
@@ -187,6 +188,18 @@ function CompanyTab() {
   };
 
   const handleSave = async () => {
+    if (form.email && !isValidEmail(form.email)) {
+      toast({ title: "Invalid email", description: "Enter a valid contact email.", variant: "destructive" });
+      return;
+    }
+    if (form.phone && !isValidPhone(form.phone)) {
+      toast({ title: "Invalid phone", description: "Enter a valid contact phone number.", variant: "destructive" });
+      return;
+    }
+    if (form.gstNumber && !isValidGstin(form.gstNumber)) {
+      toast({ title: "Invalid GSTIN", description: "GSTIN must be 15 characters, e.g. 27AAAAA0000A1Z5.", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       await api.updateCompanySettings({
@@ -509,7 +522,7 @@ function UsersTab() {
               <Input
                 type="number"
                 value={passwordPolicy.minLength}
-                onChange={(e) => setPasswordPolicy({ ...passwordPolicy, minLength: Number(e.target.value) })}
+                onChange={(e) => setPasswordPolicy({ ...passwordPolicy, minLength: clampInt(e.target.value, 8, 6, 64) })}
               />
             </div>
             <div className="space-y-1.5">
@@ -729,7 +742,7 @@ function SecurityTab() {
               min={6}
               max={64}
               value={minPasswordLength}
-              onChange={(e) => setMinPasswordLength(Number(e.target.value) || 8)}
+              onChange={(e) => setMinPasswordLength(clampInt(e.target.value, 8, 6, 64))}
             />
           </div>
           <div className="space-y-1.5">
@@ -739,7 +752,7 @@ function SecurityTab() {
               min={1}
               max={720}
               value={sessionTimeoutHours}
-              onChange={(e) => setSessionTimeoutHours(Number(e.target.value) || 24)}
+              onChange={(e) => setSessionTimeoutHours(clampInt(e.target.value, 24, 1, 720))}
             />
           </div>
         </div>
@@ -857,35 +870,35 @@ function ApiKeysTab() {
         });
         setKeys({
           razorpayKeyId: res.razorpayKeyId || "",
-          razorpayKeySecret: res.razorpayKeySecretMasked || "",
+          razorpayKeySecret: "",
           razorpayKeySecretMasked: res.razorpayKeySecretMasked || "",
           razorpayMode: res.razorpayMode || "Test",
           flightProvider: res.flightProvider || "mock",
           flightApiKey: res.flightApiKey || "",
-          flightApiSecret: res.flightApiSecretMasked || "",
+          flightApiSecret: "",
           flightApiSecretMasked: res.flightApiSecretMasked || "",
           hotelProvider: res.hotelProvider || "mock",
           hotelApiKey: res.hotelApiKey || "",
-          hotelApiSecret: res.hotelApiSecretMasked || "",
+          hotelApiSecret: "",
           hotelApiSecretMasked: res.hotelApiSecretMasked || "",
-          sendgridApiKey: res.sendgridApiKeyMasked || "",
+          sendgridApiKey: "",
           sendgridApiKeyMasked: res.sendgridApiKeyMasked || "",
           sendgridFromEmail: res.sendgridFromEmail || "",
           smtpHost: res.smtpHost || "",
           smtpPort: res.smtpPort || "587",
           smtpUser: res.smtpUser || "",
-          smtpPassword: res.smtpPasswordMasked || "",
+          smtpPassword: "",
           smtpPasswordMasked: res.smtpPasswordMasked || "",
           smtpSecure: res.smtpSecure || "false",
           smtpFrom: res.smtpFrom || "",
           s3Bucket: res.s3Bucket || "",
           s3Region: res.s3Region || "ap-south-1",
           s3AccessKey: res.s3AccessKey || "",
-          s3SecretKey: res.s3SecretKeyMasked || "",
+          s3SecretKey: "",
           s3SecretKeyMasked: res.s3SecretKeyMasked || "",
           smsProvider: res.smsProvider || "none",
           twilioAccountSid: res.twilioAccountSid || "",
-          twilioAuthToken: res.twilioAuthTokenMasked || "",
+          twilioAuthToken: "",
           twilioAuthTokenMasked: res.twilioAuthTokenMasked || "",
         });
       })
@@ -900,12 +913,21 @@ function ApiKeysTab() {
   }, [agencyId, isSuperAdmin, toast]);
 
   const handleSave = async () => {
+    if (keys.razorpayKeyId.trim() && !isValidRazorpayKeyId(keys.razorpayKeyId)) {
+      toast({
+        title: "Invalid Razorpay Key ID",
+        description: "Key ID must start with rzp_test_ or rzp_live_. Login emails and passwords are not valid keys.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSaving(true);
     try {
       await apiFetch("/api/settings/api-keys", {
         method: "PUT",
         body: JSON.stringify({
           ...keys,
+          razorpayKeySecret: keys.razorpayKeySecret.trim(),
           ...(agencyId ? { agencyId } : {}),
         }),
       });
@@ -1021,18 +1043,26 @@ function ApiKeysTab() {
               <Label>Razorpay Key ID</Label>
               <Input
                 placeholder="rzp_live_... / rzp_test_..."
+                autoComplete="off"
                 value={keys.razorpayKeyId}
                 onChange={(e) => setKeys({ ...keys, razorpayKeyId: e.target.value })}
               />
+              {keys.razorpayKeyId && !isValidRazorpayKeyId(keys.razorpayKeyId) && (
+                <p className="text-xs text-rose-600">Must look like rzp_test_… or rzp_live_…. Emails and passwords are not valid Key IDs.</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Razorpay Key Secret</Label>
               <Input
                 type="password"
-                placeholder="Enter secret key..."
+                autoComplete="new-password"
+                placeholder={keys.razorpayKeySecretMasked ? "Unchanged — paste a new secret to replace" : "Paste secret from Razorpay dashboard"}
                 value={keys.razorpayKeySecret}
                 onChange={(e) => setKeys({ ...keys, razorpayKeySecret: e.target.value })}
               />
+              {keys.razorpayKeySecretMasked && !keys.razorpayKeySecret && (
+                <p className="text-[11px] text-muted-foreground">A secret is already stored ({keys.razorpayKeySecretMasked}). Leave blank to keep it.</p>
+              )}
             </div>
           </div>
         </CardContent>

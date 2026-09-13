@@ -359,7 +359,11 @@ function CreateQuotationDialog({ open, onOpenChange }: { open: boolean; onOpenCh
               <Select value={customer} onValueChange={setCustomer}>
                 <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                 <SelectContent>
-                  {customers.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                  {customers.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground max-w-[240px]">
+                      No customers yet. Add one under Sales & CRM → Customers, then return here.
+                    </div>
+                  ) : customers.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -1170,12 +1174,16 @@ export function QuotationsView() {
                   <TableHead>Status</TableHead>
                   <TableHead>Valid Till</TableHead>
                   <TableHead>Created By</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right sticky right-0 bg-card z-20 shadow-[-8px_0_8px_rgba(0,0,0,0.06)]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((q) => (
-                  <TableRow key={q.id} className="hover:bg-muted/40">
+                  <TableRow
+                    key={q.id}
+                    className="hover:bg-muted/40 cursor-pointer"
+                    onClick={() => openDetail(q)}
+                  >
                     <TableCell className="font-medium text-xs">{q.quoteNo}</TableCell>
                     <TableCell className="text-xs">
                       <div>{q.customerName}</div>
@@ -1189,7 +1197,7 @@ export function QuotationsView() {
                     <TableCell><StatusBadge status={q.status} /></TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(q.validTill).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</TableCell>
                     <TableCell className="text-xs">{q.createdBy}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right sticky right-0 bg-card" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-1 justify-end">
                         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="View" onClick={() => openDetail(q)}>
                           <Eye className="w-3.5 h-3.5" />

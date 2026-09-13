@@ -39,6 +39,8 @@ async function loadAgency(agencyId: string | null | undefined) {
 function assertCanGenerate(proposal: {
   proposalStatus: string;
   selectedTemplateId: string | null;
+  customerId?: string | null;
+  leadId?: string | null;
   builderMode?: string | null;
 }, snapshot: ProposalSnapshotData | null): asserts snapshot is ProposalSnapshotData {
   const isDay = (proposal as { builderMode?: string | null }).builderMode === "day_itinerary" || snapshot?.builderMode === "day_itinerary";
@@ -53,6 +55,15 @@ function assertCanGenerate(proposal: {
   }
   if (!snapshot) {
     throw new ProposalPdfValidationError("Proposal snapshot is required before generating a PDF");
+  }
+  const hasCustomer = Boolean(
+    proposal.customerId ||
+    proposal.leadId ||
+    snapshot.customer?.name ||
+    snapshot.lead?.customerName
+  );
+  if (!hasCustomer) {
+    throw new ProposalPdfValidationError("Link a customer (or lead) before generating a client PDF");
   }
   if (!isDay && !snapshot.template && !proposal.selectedTemplateId) {
     throw new ProposalPdfValidationError("Quote template is required before generating a PDF");

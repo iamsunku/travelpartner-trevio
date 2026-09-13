@@ -73,6 +73,7 @@ export function TripPlannerWorkspace({ requirementId, onBack, onSaved }: TripPla
   const [savedId, setSavedId] = useState<string | null>(requirementId ?? null);
   const [activePackageId, setActivePackageId] = useState<string | null>(null);
   const [customizing, setCustomizing] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const set = <K extends keyof RequirementFormState>(key: K, value: RequirementFormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -123,6 +124,7 @@ export function TripPlannerWorkspace({ requirementId, onBack, onSaved }: TripPla
       return;
     }
     setLoadingMatches(true);
+    setHasSearched(true);
     try {
       const start = new Date(form.travelStartDate);
       const end = new Date(form.travelEndDate);
@@ -215,7 +217,7 @@ export function TripPlannerWorkspace({ requirementId, onBack, onSaved }: TripPla
           <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="w-4 h-4 mr-1" />Back</Button>
           <PageHeader title="Trip Requirement Builder" subtitle="Capture requirements and match packages" />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 relative z-20">
           <Button variant="outline" disabled={!canRecommend(form) || loadingMatches} onClick={fetchMatches}>
             <Sparkles className="w-4 h-4 mr-1" />{loadingMatches ? "Matching..." : "Find Packages"}
           </Button>
@@ -329,7 +331,9 @@ export function TripPlannerWorkspace({ requirementId, onBack, onSaved }: TripPla
           )}
           {canRecommend(form) && matches.length === 0 && !loadingMatches && (
             <p className="text-sm text-muted-foreground border border-dashed rounded-lg p-6 text-center">
-              Click &quot;Find Packages&quot; to run the matching engine.
+              {hasSearched
+                ? "No packages matched this destination and dates. Save the requirement or try another destination from the master list."
+                : "Click \"Find Packages\" to run the matching engine."}
             </p>
           )}
           <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">

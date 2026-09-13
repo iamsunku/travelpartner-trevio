@@ -13,7 +13,9 @@ import type { ResolvedQuoteCosting } from "@/lib/quote-costing";
 
 function formatPrettyDate(iso?: string) {
   if (!iso) return "—";
-  const d = new Date(iso.length === 10 ? `${iso}T12:00:00` : iso);
+  const v = iso.trim();
+  if (/^\d{1,2}:\d{2}/.test(v) || /am|pm/i.test(v)) return "—";
+  const d = new Date(v.length === 10 ? `${v}T12:00:00` : v);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }

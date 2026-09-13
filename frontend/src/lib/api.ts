@@ -89,6 +89,11 @@ export async function apiFetch<T>(
       body = parsed as Record<string, unknown>;
       message = (parsed.error || parsed.message || message) as string;
       code = parsed.code as string | undefined;
+      const details = parsed.details;
+      if ((!parsed.error && !parsed.message) && details && typeof details === "object") {
+        const first = Object.values(details as Record<string, unknown>).flat().find(Boolean);
+        if (first) message = String(first);
+      }
     } catch {
       /* ignore */
     }

@@ -31,7 +31,8 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { api, type AgentRegistrationRow } from "@/lib/api";
+import { api, ApiError, type AgentRegistrationRow } from "@/lib/api";
+import { isValidEmail, isValidPhone } from "@/lib/field-validation";
 import { mapApiAgency } from "@/lib/api-mappers";
 import type { Agency } from "@/types";
 import { Textarea } from "@/components/ui/textarea";
@@ -279,15 +280,23 @@ export function AgenciesView() {
   });
 
   function handleAdd() {
-    if (!form.name || !form.owner || !form.email) {
-      toast({ title: "Missing fields", description: "Please fill agency name, owner, and email.", variant: "destructive" });
+    if (!form.name || !form.owner || !form.email || !form.phone) {
+      toast({ title: "Missing fields", description: "Please fill agency name, owner, email, and phone.", variant: "destructive" });
+      return;
+    }
+    if (!isValidEmail(form.email)) {
+      toast({ title: "Invalid email", description: "Enter a valid email address.", variant: "destructive" });
+      return;
+    }
+    if (!isValidPhone(form.phone)) {
+      toast({ title: "Invalid phone", description: "Enter a valid phone number.", variant: "destructive" });
       return;
     }
     const reqBody = {
       name: form.name,
       owner: form.owner,
       email: form.email,
-      phone: form.phone || "+91 90000 00000",
+      phone: form.phone,
       plan: form.plan,
       apiAllocation: { flights: form.flights, hotels: form.hotels },
     };
@@ -303,20 +312,12 @@ export function AgenciesView() {
             : `${res.agency.name} onboarded successfully.`,
         });
       })
-      .catch(() => {
-        const newAgency: Agency = {
-          id: `ag-${Date.now()}`,
-          name: form.name, owner: form.owner, email: form.email, phone: form.phone || "+91 90000 00000",
-          plan: form.plan, status: "Trial", walletBalance: 0, commissionEarned: 0, totalBookings: 0,
-          monthlyRevenue: 0,
-          apiAllocation: { flights: form.flights, hotels: form.hotels },
-          createdAt: new Date().toISOString().slice(0, 10),
-          branches: 0, employees: 0,
-        };
-        setAgencies([newAgency, ...agencies]);
-        setAddOpen(false);
-        setForm({ name: "", owner: "", email: "", phone: "", plan: "Growth", flights: 20000, hotels: 15000 });
-        toast({ title: "Agency created (offline)", description: `${newAgency.name} created locally.` });
+      .catch((e) => {
+        toast({
+          title: "Could not create agency",
+          description: e instanceof ApiError ? e.message : "The server rejected this agency. Nothing was saved.",
+          variant: "destructive",
+        });
       });
   }
 
@@ -329,9 +330,12 @@ export function AgenciesView() {
         setAgencies((prev) => prev.map((a) => a.id === id ? mapApiAgency(res.agency) : a));
         toast({ title: newStatus === "Active" ? "Agency activated" : "Agency suspended", description: `${res.agency.name} status updated.` });
       })
-      .catch(() => {
-        setAgencies((prev) => prev.map((a) => a.id === id ? { ...a, status: newStatus } : a));
-        toast({ title: newStatus === "Active" ? "Agency activated (offline)" : "Agency suspended (offline)", description: `${ag.name} status updated locally.` });
+      .catch((e) => {
+        toast({
+          title: "Could not update agency",
+          description: e instanceof ApiError ? e.message : "Status was not changed.",
+          variant: "destructive",
+        });
       });
   }
 

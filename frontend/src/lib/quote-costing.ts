@@ -146,12 +146,21 @@ function roomCountFromHotels(hotels: unknown, adults: number, children: number):
   return Math.max(1, Math.ceil((Math.max(0, adults) + Math.max(0, children)) / 3));
 }
 
+function isCalendarDate(value?: string): boolean {
+  if (!value) return false;
+  const v = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(v)) return true;
+  if (/^\d{1,2}:\d{2}/.test(v) || /am|pm/i.test(v)) return false;
+  const d = new Date(v.length === 10 ? `${v}T12:00:00` : v);
+  return !Number.isNaN(d.getTime()) && v.length >= 8;
+}
+
 function hotelDates(hotels: unknown): { checkIn?: string; checkOut?: string } {
   if (!Array.isArray(hotels) || !hotels.length) return {};
   const first = hotels[0] as { checkIn?: string; checkOut?: string };
   return {
-    checkIn: first.checkIn || undefined,
-    checkOut: first.checkOut || undefined,
+    checkIn: isCalendarDate(first.checkIn) ? first.checkIn : undefined,
+    checkOut: isCalendarDate(first.checkOut) ? first.checkOut : undefined,
   };
 }
 

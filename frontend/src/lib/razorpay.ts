@@ -2,7 +2,10 @@ import { api } from "@/lib/api";
 
 declare global {
   interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
+    Razorpay?: new (options: Record<string, unknown>) => {
+      open: () => void;
+      on: (event: string, handler: (resp: { error?: { description?: string } }) => void) => void;
+    };
   }
 }
 
@@ -42,8 +45,7 @@ export interface RazorpayCheckoutOptions {
 
 /**
  * Opens real Razorpay checkout when the backend has live keys configured.
- * Demo mode only when backend returns demoAllowed (non-production by default).
- * Production without keys fails closed — no fake "paid" success.
+ * Never reports success unless Razorpay actually charged (or verified) a payment.
  */
 export async function payWithRazorpay(opts: RazorpayCheckoutOptions): Promise<RazorpayCheckoutResult> {
   let order: Awaited<ReturnType<typeof api.createRazorpayOrder>>;
@@ -58,23 +60,15 @@ export async function payWithRazorpay(opts: RazorpayCheckoutOptions): Promise<Ra
   }
 
   if (!order.configured || !order.orderId || !order.keyId) {
-    if (order.demoAllowed) {
-      await new Promise((r) => setTimeout(r, 800));
-      return { success: true, demo: true, paymentId: `demo_pay_${Date.now()}` };
-    }
     return {
       success: false,
-      demo: false,
-      error: "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET on the server.",
+      demo: Boolean(order.demoAllowed),
+      error: "Razorpay is not configured. Set a valid rzp_test_ or rzp_live_ Key ID and secret. No payment was taken.",
     };
   }
 
   const scriptReady = await loadCheckoutScript();
   if (!scriptReady || !window.Razorpay) {
-    if (order.demoAllowed) {
-      await new Promise((r) => setTimeout(r, 800));
-      return { success: true, demo: true, paymentId: `demo_pay_${Date.now()}` };
-    }
     return {
       success: false,
       demo: false,
@@ -83,37 +77,53 @@ export async function payWithRazorpay(opts: RazorpayCheckoutOptions): Promise<Ra
   }
 
   return new Promise((resolve) => {
-    const rzp = new window.Razorpay!({
-      key: order.keyId,
-      amount: order.amount,
-      currency: order.currency,
-      order_id: order.orderId,
-      name: "Trevio Global",
-      description: opts.description,
-      prefill: { email: opts.prefillEmail, contact: opts.prefillContact },
-      handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-        try {
-          const verify = await api.verifyRazorpayPayment(
-            response.razorpay_order_id,
-            response.razorpay_payment_id,
-            response.razorpay_signature
-          );
-          resolve({
-            success: verify.verified,
-            demo: false,
-            paymentId: response.razorpay_payment_id,
-            orderId: response.razorpay_order_id,
-            signature: response.razorpay_signature,
-          });
-        } catch {
-          resolve({ success: false, demo: false, error: "Payment verification failed" });
-        }
-      },
-      modal: {
-        ondismiss: () => resolve({ success: false, demo: false, error: "Payment cancelled" }),
-      },
-      theme: { color: "#2A7BBD" },
-    });
-    rzp.open();
+    try {
+      const rzp = new window.Razorpay!({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        order_id: order.orderId,
+        name: "Trevio Global",
+        description: opts.description,
+        prefill: { email: opts.prefillEmail, contact: opts.prefillContact },
+        handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          try {
+            const verify = await api.verifyRazorpayPayment(
+              response.razorpay_order_id,
+              response.razorpay_payment_id,
+              response.razorpay_signature
+            );
+            resolve({
+              success: verify.verified,
+              demo: false,
+              paymentId: response.razorpay_payment_id,
+              orderId: response.razorpay_order_id,
+              signature: response.razorpay_signature,
+              error: verify.verified ? undefined : "Payment verification failed",
+            });
+          } catch {
+            resolve({ success: false, demo: false, error: "Payment verification failed" });
+          }
+        },
+        modal: {
+          ondismiss: () => resolve({ success: false, demo: false, error: "Payment cancelled" }),
+        },
+        theme: { color: "#2A7BBD" },
+      });
+      rzp.on("payment.failed", (resp) => {
+        resolve({
+          success: false,
+          demo: false,
+          error: resp?.error?.description || "Payment failed",
+        });
+      });
+      rzp.open();
+    } catch {
+      resolve({
+        success: false,
+        demo: false,
+        error: "Razorpay checkout could not start. Check that Key ID is a real rzp_test_ or rzp_live_ key.",
+      });
+    }
   });
 }

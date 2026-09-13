@@ -226,6 +226,13 @@ const TIER_CONFIG = {
 
 function pick<T>(arr: T[], i: number): T { return arr[i % arr.length]; }
 
+function formatDurationHours(hours: number): string {
+  const totalMinutes = Math.max(0, Math.round(hours * 60));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${m}m`;
+}
+
 export function generateFlights(origin: string, destination: string, count = 8): Flight[] {
   const flights: Flight[] = [];
   const depHours = ["06:00", "07:30", "09:15", "11:00", "13:45", "16:20", "18:30", "20:10", "22:05"];
@@ -239,9 +246,10 @@ export function generateFlights(origin: string, destination: string, count = 8):
     const al = pick(pool.length ? pool : AIRLINES, i);
     const dep = pick(depHours, i);
     const dur = cfg.durMin + (i % 4) * (cfg.durSpread / 4) + (i % 2) * 0.5;
-    const arrH = (parseInt(dep.slice(0, 2)) + Math.floor(dur)) % 24;
-    const arrM = (parseInt(dep.slice(3, 5)) + Math.round((dur % 1) * 60)) % 60;
     const stops = i % 5 === 0 ? 1 : 0;
+    const totalDur = dur + stops * 1.25;
+    const arrH = (parseInt(dep.slice(0, 2)) + Math.floor(totalDur)) % 24;
+    const arrM = (parseInt(dep.slice(3, 5)) + Math.round((totalDur % 1) * 60)) % 60;
     flights.push({
       id: `fl-${i + 1}`, airline: al.name, airlineCode: al.code,
       flightNumber: `${al.code}${100 + i * 37}`,
@@ -249,7 +257,7 @@ export function generateFlights(origin: string, destination: string, count = 8):
       destination, destinationCity,
       departTime: dep,
       arriveTime: `${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`,
-      duration: `${Math.floor(dur)}h ${Math.round((dur % 1) * 60)}m`,
+      duration: formatDurationHours(totalDur),
       stops,
       price: cfg.base + (i % 4) * cfg.step + (stops ? cfg.stopFee : 0),
       currency: "INR",
@@ -272,22 +280,35 @@ const HOTEL_NAMES = [
   "Shangri-La", "JW Marriott", "Grand Hyatt", "Radisson Blu", "Hilton Garden Inn",
 ];
 const AREAS = ["Andheri East", "Bandra West", "Colaba", "Juhu Beach", "Powai", "Worli", "Lower Parel", "Nariman Point"];
+const COUNTRY_CITIES: Record<string, string[]> = {
+  Thailand: ["Phuket", "Bangkok", "Pattaya", "Krabi", "Chiang Mai"],
+  India: ["Mumbai", "Delhi", "Goa", "Jaipur", "Bengaluru"],
+  Indonesia: ["Bali", "Jakarta", "Yogyakarta"],
+  UAE: ["Dubai", "Abu Dhabi"],
+  "United Arab Emirates": ["Dubai", "Abu Dhabi"],
+  Vietnam: ["Da Nang", "Hoi An", "Hanoi", "Ho Chi Minh City"],
+  Malaysia: ["Kuala Lumpur", "Penang", "Langkawi"],
+  Singapore: ["Singapore"],
+};
+
 const AMENITIES_POOL = ["Free WiFi", "Swimming Pool", "Spa", "Gym", "Restaurant", "Bar", "Airport Shuttle", "Business Center", "Valet Parking", "Concierge", "Kids Club", "Beach Access"];
 
 export function generateHotels(city: string, count = 8): Hotel[] {
   const hotels: Hotel[] = [];
+  const cityPool = COUNTRY_CITIES[city];
   for (let i = 0; i < count; i++) {
     const name = pick(HOTEL_NAMES, i);
+    const localCity = cityPool ? cityPool[i % cityPool.length] : city;
     const star = 3 + (i % 3);
     const price = 3200 + (i % 5) * 1500 + star * 800;
     const amenities = AMENITIES_POOL.slice().sort(() => Math.random() - 0.5).slice(0, 6 + (i % 4));
     hotels.push({
-      id: `ht-${i + 1}`, name: `${name} ${city}`, city, area: pick(AREAS, i),
+      id: `ht-${i + 1}`, name: `${name} ${localCity}`, city: localCity, area: pick(AREAS, i),
       starRating: star, rating: 3.8 + (i % 10) / 10, reviews: 120 + (i * 37) % 900,
       pricePerNight: price, currency: "INR", originalPrice: price + 1200,
       amenities,
       images: [],
-      distanceFromCenter: 1 + (i * 0.7) % 8,
+      distanceFromCenter: Math.round((1 + (i * 0.7) % 8) * 10) / 10,
       latitude: 19.0 + (i * 0.03) % 0.3, longitude: 72.8 + (i * 0.04) % 0.4,
       rooms: [
         { id: `r-${i}-1`, name: "Deluxe Room", description: "King size bed, city view, 280 sq.ft", price, maxGuests: 2, beds: "1 King Bed", includesBreakfast: true, freeCancellation: true, refundable: true, roomsLeft: 4 + (i % 5) },

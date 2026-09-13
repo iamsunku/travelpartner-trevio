@@ -59,33 +59,46 @@ const PAYMENT_METHODS = [
 const BANKS = ["HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank", "Kotak Mahindra", "Yes Bank"];
 
 function RazorpayModal({ amount, open, onOpenChange, onSuccess }: {
-  amount: number; open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => void;
+  amount: number; open: boolean; onOpenChange: (v: boolean) => void; onSuccess: () => Promise<{ status?: string } | void>;
 }) {
   const { toast } = useToast();
   const [method, setMethod] = useState("Card");
   const [card, setCard] = useState({ number: "", expiry: "", cvv: "", name: "" });
   const [upi, setUpi] = useState("");
   const [bank, setBank] = useState("");
-  const [status, setStatus] = useState<"form" | "processing" | "success">("form");
+  const [status, setStatus] = useState<"form" | "processing" | "success" | "pending">("form");
 
   function formatCardNumber(v: string) {
     return v.replace(/\s/g, "").replace(/(\d{4})/g, "$1 ").trim().slice(0, 19);
   }
 
-  function pay() {
+  async function pay() {
     setStatus("processing");
-    setTimeout(() => {
-      setStatus("success");
+    try {
+      const result = await onSuccess();
+      const persisted = result?.status || "Pending";
+      setStatus(persisted === "Success" ? "success" : "pending");
+      toast({
+        title: persisted === "Success" ? "Payment Successful" : "Payment recorded as Pending",
+        description: persisted === "Success"
+          ? `${formatFullINR(amount)} collected via ${method}`
+          : `${formatFullINR(amount)} saved. Card checkout is test-mode — status stays Pending until the gateway confirms.`,
+      });
       setTimeout(() => {
-        onSuccess();
         setStatus("form");
         onOpenChange(false);
-        toast({ title: "Payment Successful", description: `${formatFullINR(amount)} collected via ${method}` });
         setCard({ number: "", expiry: "", cvv: "", name: "" });
         setUpi("");
         setBank("");
-      }, 1200);
-    }, 1800);
+      }, 1400);
+    } catch (e) {
+      setStatus("form");
+      toast({
+        title: "Payment not recorded",
+        description: e instanceof Error ? e.message : "The server did not confirm this charge.",
+        variant: "destructive",
+      });
+    }
   }
 
   const canPay =
@@ -148,22 +161,51 @@ function RazorpayModal({ amount, open, onOpenChange, onSuccess }: {
                         value={card.number}
                         onChange={(e) => setCard({ ...card, number: formatCardNumber(e.target.value) })}
                         className="text-sm"
+                        inputMode="numeric"
+                        autoComplete="cc-number"
+                        name="cc-number"
                       />
                       <CreditCard className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     </div>
                   </div>
                   <div>
                     <Label className="text-[11px]">Cardholder Name</Label>
-                    <Input placeholder="Name on card" value={card.name} onChange={(e) => setCard({ ...card, name: e.target.value })} className="text-sm" />
+                    <Input
+                      placeholder="Name on card"
+                      value={card.name}
+                      onChange={(e) => setCard({ ...card, name: e.target.value })}
+                      className="text-sm"
+                      autoComplete="cc-name"
+                      name="cc-name"
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <Label className="text-[11px]">Expiry (MM/YY)</Label>
-                      <Input placeholder="12/26" value={card.expiry} onChange={(e) => setCard({ ...card, expiry: e.target.value })} className="text-sm" maxLength={5} />
+                      <Input
+                        placeholder="12/26"
+                        value={card.expiry}
+                        onChange={(e) => setCard({ ...card, expiry: e.target.value })}
+                        className="text-sm"
+                        maxLength={5}
+                        inputMode="numeric"
+                        autoComplete="cc-exp"
+                        name="cc-exp"
+                      />
                     </div>
                     <div>
                       <Label className="text-[11px]">CVV</Label>
-                      <Input type="password" placeholder="•••" value={card.cvv} onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, "").slice(0, 3) })} className="text-sm" maxLength={3} />
+                      <Input
+                        type="password"
+                        placeholder="•••"
+                        value={card.cvv}
+                        onChange={(e) => setCard({ ...card, cvv: e.target.value.replace(/\D/g, "").slice(0, 3) })}
+                        className="text-sm"
+                        maxLength={3}
+                        inputMode="numeric"
+                        autoComplete="cc-csc"
+                        name="cc-csc"
+                      />
                     </div>
                   </div>
                 </div>
@@ -240,6 +282,17 @@ function RazorpayModal({ amount, open, onOpenChange, onSuccess }: {
               <p className="text-[11px] text-muted-foreground">via {method}</p>
             </motion.div>
           )}
+
+          {status === "pending" && (
+            <motion.div key="pending" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="p-8 flex flex-col items-center gap-3">
+              <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-500/15 flex items-center justify-center">
+                <Clock className="w-10 h-10 text-amber-600" />
+              </div>
+              <p className="text-sm font-semibold">Recorded as Pending</p>
+              <p className="text-xl font-bold text-amber-600">{formatFullINR(amount)}</p>
+              <p className="text-[11px] text-muted-foreground text-center">Test checkout does not confirm a gateway charge. The ledger matches the server status.</p>
+            </motion.div>
+          )}
         </AnimatePresence>
       </DialogContent>
     </Dialog>
@@ -249,10 +302,12 @@ function RazorpayModal({ amount, open, onOpenChange, onSuccess }: {
 function CollectPaymentDialog() {
   const { toast } = useToast();
   const customers = useDemoDataStore((s) => s.customers);
+  const bookings = useDemoDataStore((s) => s.bookings);
   const addPayment = useDemoDataStore((s) => s.addPayment);
   const [open, setOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [customer, setCustomer] = useState("");
+  const [bookingRef, setBookingRef] = useState("");
   const [amount, setAmount] = useState("");
 
   function proceedToPay() {
@@ -264,17 +319,19 @@ function CollectPaymentDialog() {
     setPayOpen(true);
   }
 
-  function onSuccess() {
-    addPayment({
+  async function onSuccess() {
+    const payment = await addPayment({
       customerName: customer,
-      bookingRef: "—",
+      bookingRef: bookingRef || "—",
       amount: Number(amount),
       method: "Razorpay",
       type: "Payment",
       gateway: "Razorpay",
     });
     setCustomer("");
+    setBookingRef("");
     setAmount("");
+    return { status: payment.status };
   }
 
   return (
@@ -296,7 +353,23 @@ function CollectPaymentDialog() {
               <Select value={customer} onValueChange={setCustomer}>
                 <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
                 <SelectContent>
-                  {customers.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                  {customers.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">No customers yet — add one under Sales & CRM → Customers.</div>
+                  ) : customers.map((c) => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Booking (optional)</Label>
+              <Select value={bookingRef || "none"} onValueChange={(v) => setBookingRef(v === "none" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="Link to a booking" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No booking</SelectItem>
+                  {bookings.map((b) => (
+                    <SelectItem key={b.id} value={b.bookingRef}>
+                      {b.bookingRef} · {b.customerName}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -354,7 +427,9 @@ export function PaymentsView() {
   const pending = payments.filter((p) => p.status === "Pending").reduce((s, p) => s + p.amount, 0);
   const refunded = payments.filter((p) => p.type === "Refund").reduce((s, p) => s + p.amount, 0);
   const today = payments.filter((p) => p.date === "2025-01-20" && p.status === "Success").reduce((s, p) => s + p.amount, 0);
-  const razorpayPct = Math.round((payments.filter((p) => p.gateway === "Razorpay").length / payments.length) * 100);
+  const razorpayPct = payments.length
+    ? Math.round((payments.filter((p) => p.gateway === "Razorpay").length / payments.length) * 100)
+    : 0;
 
   const stats = [
     { icon: IndianRupee, label: "Total Collected", value: formatINR(totalCollected), color: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400", change: 12.4, trend: "up" as const },

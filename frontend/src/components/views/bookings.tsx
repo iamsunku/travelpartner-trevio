@@ -621,15 +621,34 @@ function BookingDetailDialog({
                     </div>
                     <div>
                       <Label className="text-xs">Amount</Label>
-                      <Input className="h-8 w-32" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} placeholder="Amount" />
+                      <Input
+                        className="h-8 w-32"
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={payAmount}
+                        onChange={(e) => setPayAmount(e.target.value)}
+                        placeholder="Amount"
+                      />
                     </div>
                     <Button
                       size="sm"
                       disabled={busy}
-                      onClick={() => run("Payment request created", async () => {
-                        await api.createPaymentRequest(booking.id, { label: payLabel, amount: Number(payAmount) });
-                        setPayAmount("");
-                      })}
+                      onClick={() => {
+                        const amount = Number(payAmount);
+                        if (!Number.isFinite(amount) || amount <= 0) {
+                          toast({
+                            title: "Enter a valid amount",
+                            description: "Payment request amount must be greater than 0.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        void run("Payment request created", async () => {
+                          await api.createPaymentRequest(booking.id, { label: payLabel, amount });
+                          setPayAmount("");
+                        });
+                      }}
                     >
                       Create Payment Request
                     </Button>
@@ -660,8 +679,8 @@ function BookingDetailDialog({
                               <Select value={payMethod} onValueChange={setPayMethod}>
                                 <SelectTrigger className="h-7 w-32 text-[10px]"><SelectValue /></SelectTrigger>
                                 <SelectContent>
-                                  {["Bank Transfer", "Cash", "Cheque", "Wallet"].map((m) => (
-                                    <SelectItem key={m} value={m}>{m}</SelectItem>
+                                  {["Bank Transfer", "Cash", "Cheque", "Wallet", "Card"].map((m) => (
+                                    <SelectItem key={m} value={m}>{m === "Card" ? "Card (online)" : m}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -1438,6 +1457,7 @@ export function BookingsView() {
 
       <Card>
         <CardContent className="p-0">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -1448,14 +1468,21 @@ export function BookingsView() {
                 <TableHead>Value</TableHead>
                 <TableHead>Paid / Balance</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead />
+                <TableHead className="text-right sticky right-0 bg-card z-20 shadow-[-8px_0_8px_rgba(0,0,0,0.06)]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((b) => {
                 const Icon = SERVICE_ICON[b.service] || Plane;
                 return (
-                  <TableRow key={b.id}>
+                  <TableRow
+                    key={b.id}
+                    className="hover:bg-muted/40 cursor-pointer"
+                    onClick={() => {
+                      setSelectedId(b.id);
+                      setDetailOpen(true);
+                    }}
+                  >
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center">
@@ -1476,7 +1503,7 @@ export function BookingsView() {
                       <span className="text-muted-foreground"> / {formatINR(b.balanceAmount ?? b.amount)}</span>
                     </TableCell>
                     <TableCell><StatusBadge status={b.status} /></TableCell>
-                    <TableCell>
+                    <TableCell className="text-right sticky right-0 bg-card" onClick={(e) => e.stopPropagation()}>
                       <Button
                         size="sm"
                         variant="ghost"
@@ -1499,7 +1526,8 @@ export function BookingsView() {
                 </TableRow>
               )}
             </TableBody>
-          </Table>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 

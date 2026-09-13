@@ -5,12 +5,31 @@ export function validate(schema: ZodTypeAny) {
   return (req: Request, res: Response, next: NextFunction) => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
-      res.status(400).json({ error: "Validation failed", details: result.error.flatten().fieldErrors });
+      const fieldErrors = result.error.flatten().fieldErrors;
+      const first = Object.values(fieldErrors).flat().find(Boolean);
+      res.status(400).json({ error: first || "Validation failed", details: fieldErrors });
       return;
     }
     req.body = result.data;
     next();
   };
+}
+
+export function isValidEmail(value: string): boolean {
+  return z.string().email().safeParse(String(value || "").trim()).success;
+}
+
+export function isValidPhone(value: string): boolean {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length >= 7 && digits.length <= 15;
+}
+
+export const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+export function isValidGstin(value: string): boolean {
+  const v = String(value || "").trim().toUpperCase();
+  if (!v) return true;
+  return GSTIN_REGEX.test(v);
 }
 
 const passwordSchema = z
@@ -22,8 +41,8 @@ const passwordSchema = z
   .regex(/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/, "Password must contain at least one special character");
 
 export const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
+  email: z.string().email("Enter a valid email address"),
+  password: z.string().min(1, "Password is required"),
 });
 
 export const forgotPasswordSchema = z.object({
@@ -53,8 +72,8 @@ export const bookingSchema = z.object({
 
 export const customerSchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().min(1),
+  email: z.string().email("Enter a valid email address"),
+  phone: z.string().refine(isValidPhone, "Enter a valid phone number"),
   type: z.enum(["Individual", "Corporate"]).optional(),
   tier: z.enum(["Silver", "Gold", "Platinum"]).optional(),
   passportNo: z.string().optional(),
@@ -63,12 +82,12 @@ export const customerSchema = z.object({
 });
 
 export const leadSchema = z.object({
-  customerName: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().min(1),
+  customerName: z.string().min(1, "Customer name is required"),
+  email: z.string().email("Enter a valid email address"),
+  phone: z.string().refine(isValidPhone, "Enter a valid phone number"),
   source: z.string().min(1),
   service: z.string().min(1),
-  value: z.number().min(0),
+  value: z.number().min(0, "Value is required"),
   assignedTo: z.string().min(1),
   expectedClose: z.string().min(1),
   notes: z.string().optional(),
@@ -238,13 +257,13 @@ export const taskSchema = z.object({
 export const agencySchema = z.object({
   name: z.string().min(1),
   owner: z.string().min(1),
-  email: z.string().email(),
-  phone: z.string().min(1),
+  email: z.string().email("Enter a valid email address"),
+  phone: z.string().refine(isValidPhone, "Enter a valid phone number"),
   plan: z.string().optional(),
   status: z.string().optional(),
   walletBalance: z.number().min(0).optional(),
   apiAllocation: z.record(z.string(), z.number()).optional(),
-  gstNumber: z.string().optional(),
+  gstNumber: z.string().optional().refine((v) => v == null || isValidGstin(v), "Enter a valid 15-character GSTIN"),
   panNumber: z.string().optional(),
   address: z.string().optional(),
 });

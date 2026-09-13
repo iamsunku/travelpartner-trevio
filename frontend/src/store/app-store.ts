@@ -36,20 +36,35 @@ export const useAuthStore = create<AuthState>()(
           });
           return { ok: true };
         } catch (e) {
+          set({
+            user: null,
+            token: null,
+            isAuthenticated: false,
+            apiConnected: false,
+          });
           const message = e instanceof ApiError ? e.message : "Unable to reach the server. Please try again.";
           return { ok: false, error: message };
         }
       },
-      logout: () =>
+      logout: () => {
         set({
           user: null,
           token: null,
           isAuthenticated: false,
           apiConnected: false,
-        }),
+        });
+        try {
+          localStorage.removeItem("tpp-auth");
+        } catch {
+          /* ignore */
+        }
+      },
       setApiConnected: (connected) => set({ apiConnected: connected }),
     }),
-    { name: "tpp-auth" }
+    {
+      name: "tpp-auth",
+      partialize: (s) => ({ user: s.user, token: s.token }),
+    }
   )
 );
 

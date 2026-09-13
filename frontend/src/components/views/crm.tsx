@@ -23,6 +23,8 @@ import {
 } from "recharts";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAppStore } from "@/store/app-store";
+import { ApiError } from "@/lib/api";
+import { isValidEmail, isValidPhone } from "@/lib/field-validation";
 import type { Lead } from "@/types";
 import {
   formatINR, formatFullINR, StatusBadge, PageHeader, PageShell, MetricCard, initials, avatarGradient,
@@ -183,33 +185,57 @@ function NewLeadDialog() {
   const { toast } = useToast();
   const addLead = useDemoDataStore((s) => s.addLead);
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     customerName: "", email: "", phone: "", source: "Website",
     service: "Holiday", value: "", assignedTo: "Sneha Reddy", expectedClose: "",
   });
 
-  function handleSubmit() {
-    if (!form.customerName || !form.value) {
-      toast({ title: "Missing fields", description: "Please enter customer name and value", variant: "destructive" });
+  async function handleSubmit() {
+    if (!form.customerName.trim()) {
+      toast({ title: "Customer name is required", variant: "destructive" });
       return;
     }
-    addLead({
-      customerName: form.customerName,
-      email: form.email,
-      phone: form.phone,
-      source: form.source as Lead["source"],
-      service: form.service as Lead["service"],
-      value: Number(form.value),
-      assignedTo: form.assignedTo,
-      expectedClose: form.expectedClose || new Date().toISOString().slice(0, 10),
-      notes: "",
-    });
-    toast({
-      title: "Lead created",
-      description: `${form.customerName} added to New stage (₹${Number(form.value).toLocaleString("en-IN")})`,
-    });
-    setOpen(false);
-    setForm({ customerName: "", email: "", phone: "", source: "Website", service: "Holiday", value: "", assignedTo: "Sneha Reddy", expectedClose: "" });
+    if (!form.value || Number(form.value) <= 0) {
+      toast({ title: "Lead value is required", description: "Enter an estimated value greater than 0.", variant: "destructive" });
+      return;
+    }
+    if (!isValidEmail(form.email)) {
+      toast({ title: "Enter a valid email", variant: "destructive" });
+      return;
+    }
+    if (!isValidPhone(form.phone)) {
+      toast({ title: "Enter a valid phone number", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      await addLead({
+        customerName: form.customerName,
+        email: form.email,
+        phone: form.phone,
+        source: form.source as Lead["source"],
+        service: form.service as Lead["service"],
+        value: Number(form.value),
+        assignedTo: form.assignedTo,
+        expectedClose: form.expectedClose || new Date().toISOString().slice(0, 10),
+        notes: "",
+      });
+      toast({
+        title: "Lead created",
+        description: `${form.customerName} added to New stage (₹${Number(form.value).toLocaleString("en-IN")})`,
+      });
+      setOpen(false);
+      setForm({ customerName: "", email: "", phone: "", source: "Website", service: "Holiday", value: "", assignedTo: "Sneha Reddy", expectedClose: "" });
+    } catch (e) {
+      toast({
+        title: "Could not create lead",
+        description: e instanceof ApiError ? e.message : "The server rejected this lead. Nothing was saved.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -283,7 +309,9 @@ function NewLeadDialog() {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90">Create Lead</Button>
+          <Button onClick={handleSubmit} disabled={saving} className="bg-primary hover:bg-primary/90">
+            {saving ? "Creating…" : "Create Lead"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

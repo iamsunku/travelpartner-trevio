@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import { loadImageBuffer } from "../proposal-pdf/images.js";
+import { pdfMoney, pdfSafeText } from "../pdf-text.js";
 import type { QuotationPdfModel, QuotationPdfPackage } from "./model.js";
 
 const MARGIN = 48;
@@ -11,13 +12,7 @@ const CREAM: [number, number, number] = [244, 241, 234];
 const GOLD: [number, number, number] = [196, 165, 116];
 
 function money(amount: number, currency: string): string {
-  const code = currency || "INR";
-  try {
-    const formatted = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(amount);
-    return `${code} ${formatted}`;
-  } catch {
-    return `${code} ${amount.toLocaleString("en-IN")}`;
-  }
+  return pdfMoney(amount, currency);
 }
 
 function contentWidth(): number {
@@ -60,7 +55,7 @@ function heading(doc: PDFKit.PDFDocument, text: string) {
 
 function body(doc: PDFKit.PDFDocument, text: string, opts: PDFKit.Mixins.TextOptions = {}) {
   doc.x = MARGIN;
-  doc.fillColor("#1a1a1a").font("Helvetica").fontSize(10).text(text, { width: contentWidth(), ...opts });
+  doc.fillColor("#1a1a1a").font("Helvetica").fontSize(10).text(pdfSafeText(text), { width: contentWidth(), ...opts });
 }
 
 function kvTable(doc: PDFKit.PDFDocument, rows: Array<[string, string]>, onNewPage: () => void) {

@@ -8,9 +8,14 @@ export function razorpayEnvConfigured(): boolean {
   return Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
 }
 
+export function isRazorpayKeyId(value: string | null | undefined): boolean {
+  return /^rzp_(live|test)_[A-Za-z0-9]+$/.test(String(value || "").trim());
+}
+
 export async function razorpayKeysForAgency(agencyId?: string | null): Promise<{ keyId: string; keySecret: string } | null> {
   const keys = await getAgencyApiKeys(agencyId);
   if (!keys.razorpayKeyId || !keys.razorpayKeySecret) return null;
+  if (!isRazorpayKeyId(keys.razorpayKeyId)) return null;
   return { keyId: keys.razorpayKeyId, keySecret: keys.razorpayKeySecret };
 }
 

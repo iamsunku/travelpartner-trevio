@@ -80,7 +80,7 @@ export function DestinationSelect({
         >
           <span className="truncate flex items-center gap-2">
             <MapPin className="w-3.5 h-3.5 shrink-0 opacity-60" />
-            {selected ? `${selected.name}${selected.country ? `, ${selected.country}` : ""}` : placeholder}
+            {selected ? `${selected.name}${selected.country && selected.country !== selected.name ? `, ${selected.country}` : ""}` : placeholder}
             {required && !value && <span className="text-destructive">*</span>}
           </span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />

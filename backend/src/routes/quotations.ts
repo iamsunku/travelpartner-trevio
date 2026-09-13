@@ -32,6 +32,7 @@ import {
   summarizeVersionForList,
 } from "../lib/quotation-versions.js";
 import { generateQuotationPdf, QuotationPdfError } from "../lib/quotation-pdf/index.js";
+import { publicErrorMessage } from "../lib/http-error.js";
 import { TAX_CONFIGURATION_REQUIRED, pricePackage, pricingBlockReason, ruleApplies, stripAgentPricingOverrides, type TaxRuleInput } from "../lib/pricing.js";
 import {
   NO_VALID_RATE_MESSAGE,
@@ -557,10 +558,10 @@ export function mountQuotationRoutes(
           travelEndDate: body.travelEndDate,
           returnDate: body.travelEndDate || body.returnDate,
           nights,
-          days: nights != null ? nights + 1 : body.days,
-          adults: body.adults ?? 2,
-          children: body.children ?? 0,
-          infants: body.infants ?? 0,
+          days: nights != null ? nights + 1 : (body.days != null ? Number(body.days) || null : null),
+          adults: Number(body.adults ?? 2) || 2,
+          children: Number(body.children ?? 0) || 0,
+          infants: Number(body.infants ?? 0) || 0,
           currency: body.currency || "INR",
           baseCurrency: body.baseCurrency || body.currency || "INR",
           exchangeRate: Number(body.exchangeRate || 1),
@@ -606,62 +607,76 @@ export function mountQuotationRoutes(
       }
 
       if (Array.isArray(body.packages) && body.packages.length) {
-        let selectedLayers: ReturnType<typeof layersFromPackage> | null = null;
-        let selectedUnresolved = false;
-        let selectedTaxRuleId: string | null = null;
-        let selectedTaxRate = 0;
-        for (const pkg of body.packages) {
-          const frozen = await freezePackageLines(pkg, {
-            travelDate: body.travelStartDate || null,
-            travelEndDate: body.travelEndDate || null,
-            scope: agencyScope(req),
-          });
-          const priced = await priceFrozenPackage(frozen, {
-            currency: body.currency,
-            nights,
-            adults: body.adults,
-            children: body.children,
-            infants: body.infants,
-            trevioMarkupType: body.trevioMarkupType,
-            trevioMarkupValue: body.trevioMarkupValue,
-            agentMarkupType: body.agentMarkupType,
-            agentMarkup: body.agentMarkup,
-            discountType: body.discountType,
-            discountValue: body.discountValue,
-            travelStartDate: body.travelStartDate,
-            exchangeRate: body.exchangeRate,
-            exchangeRateExplicit: body.exchangeRateExplicit,
-            scope: agencyScope(req),
-          });
-          const layers = layersFromPackage(priced.priced);
-          if (pkg.isSelected || !selectedLayers) {
-            selectedLayers = layers;
-            selectedUnresolved = priced.priced.unresolved;
-            selectedTaxRuleId = priced.taxRuleId;
-            selectedTaxRate = priced.taxRate;
+        try {
+          let selectedLayers: ReturnType<typeof layersFromPackage> | null = null;
+          let selectedUnresolved = false;
+          let selectedTaxRuleId: string | null = null;
+          let selectedTaxRate = 0;
+          for (const pkg of body.packages) {
+            const frozen = await freezePackageLines(pkg, {
+              travelDate: body.travelStartDate || null,
+              travelEndDate: body.travelEndDate || null,
+              scope: agencyScope(req),
+            });
+            const priced = await priceFrozenPackage(frozen, {
+              currency: body.currency,
+              nights,
+              adults: Number(body.adults ?? 2) || 2,
+              children: Number(body.children ?? 0) || 0,
+              infants: Number(body.infants ?? 0) || 0,
+              trevioMarkupType: body.trevioMarkupType,
+              trevioMarkupValue: body.trevioMarkupValue,
+              agentMarkupType: body.agentMarkupType,
+              agentMarkup: body.agentMarkup,
+              discountType: body.discountType,
+              discountValue: body.discountValue,
+              travelStartDate: body.travelStartDate,
+              exchangeRate: body.exchangeRate,
+              exchangeRateExplicit: body.exchangeRateExplicit,
+              scope: agencyScope(req),
+            });
+            const layers = layersFromPackage(priced.priced);
+            if (pkg.isSelected || !selectedLayers) {
+              selectedLayers = layers;
+              selectedUnresolved = priced.priced.unresolved;
+              selectedTaxRuleId = priced.taxRuleId;
+              selectedTaxRate = priced.taxRate;
+            }
+            await db.quotationPackage.create({
+              data: { quotationId: quote.id, ...packageWriteData(priced.frozen, layers) },
+            });
           }
+          if (selectedLayers) {
+            await db.quotation.update({
+              where: { id: quote.id },
+              data: {
+                amount: selectedLayers.amount,
+                gst: selectedLayers.gst,
+                total: selectedLayers.total,
+                totalSelling: selectedLayers.totalSelling,
+                totalNetCost: selectedLayers.totalNetCost,
+                grossProfit: selectedLayers.grossProfit,
+                profitMargin: selectedLayers.profitMargin,
+                discountAmount: selectedLayers.discountAmount,
+                taxableAmount: selectedLayers.taxableAmount,
+                perPersonCost: selectedLayers.perPersonCost,
+                items: body.packages.length,
+                taxRate: selectedTaxRate,
+                taxRuleId: selectedTaxRuleId,
+                pricingStatus: selectedUnresolved ? "UNRESOLVED" : "OK",
+              },
+            });
+          }
+        } catch (pkgErr) {
+          logger.error(pkgErr);
           await db.quotationPackage.create({
-            data: { quotationId: quote.id, ...packageWriteData(priced.frozen, layers) },
-          });
-        }
-        if (selectedLayers) {
-          await db.quotation.update({
-            where: { id: quote.id },
             data: {
-              amount: selectedLayers.amount,
-              gst: selectedLayers.gst,
-              total: selectedLayers.total,
-              totalSelling: selectedLayers.totalSelling,
-              totalNetCost: selectedLayers.totalNetCost,
-              grossProfit: selectedLayers.grossProfit,
-              profitMargin: selectedLayers.profitMargin,
-              discountAmount: selectedLayers.discountAmount,
-              taxableAmount: selectedLayers.taxableAmount,
-              perPersonCost: selectedLayers.perPersonCost,
-              items: body.packages.length,
-              taxRate: selectedTaxRate,
-              taxRuleId: selectedTaxRuleId,
-              pricingStatus: selectedUnresolved ? "UNRESOLVED" : "OK",
+              quotationId: quote.id,
+              name: body.packageName || "Standard",
+              sortOrder: 0,
+              isSelected: true,
+              inclusions: body.packageIncludes || ["Accommodation", "Breakfast"],
+              exclusions: body.packageExcludes || ["Flights", "Personal expenses"],
             },
           });
         }
@@ -701,7 +716,7 @@ export function mountQuotationRoutes(
       res.status(201).json({ quotation: sanitizeQuotationForRole(full as unknown as Record<string, unknown>, req.auth?.role) });
     } catch (e) {
       logger.error(e);
-      res.status(500).json({ error: "Server error" });
+      res.status(500).json({ error: publicErrorMessage(e, "Could not save quotation") });
     }
   });
 

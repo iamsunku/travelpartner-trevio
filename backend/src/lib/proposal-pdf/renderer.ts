@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
-import { loadImageBuffer, PLACEHOLDER_PNG } from "./images.js";
+import { loadImageBuffer } from "./images.js";
+import { nightLabel, pdfMoney, pdfSafeText } from "../pdf-text.js";
 import type {
   PdfBranding,
   PdfDocumentContent,
@@ -22,17 +23,14 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 function money(amount: number, currency: string): string {
-  const abs = Math.abs(amount);
-  try {
-    return new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: currency || "INR",
-      maximumFractionDigits: 0,
-    }).format(amount < 0 ? -abs : abs);
-  } catch {
-    return `${currency} ${amount.toLocaleString("en-IN")}`;
-  }
+  return pdfMoney(amount, currency);
 }
+
+const DEFAULT_TERMS =
+  "Rates are subject to availability. Passport must be valid for at least 6 months from the date of travel. Contact your advisor for the full terms of this booking.";
+const DEFAULT_CANCELLATION =
+  "Cancellation charges apply as per supplier policy. Contact your travel advisor for the schedule applicable to this booking.";
+
 
 function pageSize(meta: PdfTemplateMeta): [number, number] {
   const a4: [number, number] = [595.28, 841.89];
@@ -123,7 +121,7 @@ function bodyText(doc: Doc, text: string, opts?: { color?: string; size?: number
     .fillColor(opts?.color ?? "#374151")
     .font(opts?.bold ? "Helvetica-Bold" : "Helvetica")
     .fontSize(opts?.size ?? 10)
-    .text(text || "—", { width: contentWidth(doc), align: "left" });
+    .text(pdfSafeText(text || "—"), { width: contentWidth(doc), align: "left" });
 }
 
 function bulletList(doc: Doc, branding: PdfBranding, items: string[]): void {
@@ -154,17 +152,21 @@ async function drawImage(
   h: number,
   radius = 4
 ): Promise<void> {
-  const buffer = (await loadImageBuffer(src)) ?? PLACEHOLDER_PNG;
+  const buffer = src ? await loadImageBuffer(src) : null;
   doc.save();
-  try {
-    // Clip rounded rect
-    doc.roundedRect(x, y, w, h, radius).clip();
-    doc.image(buffer, x, y, { cover: [w, h], align: "center", valign: "center" });
-  } catch {
-    doc.roundedRect(x, y, w, h, radius).fill("#f3f4f6");
-    doc.fillColor("#9ca3af").font("Helvetica").fontSize(9);
-    doc.text("Image unavailable", x, y + h / 2 - 6, { width: w, align: "center" });
+  if (buffer) {
+    try {
+      doc.roundedRect(x, y, w, h, radius).clip();
+      doc.image(buffer, x, y, { cover: [w, h], align: "center", valign: "center" });
+      doc.restore();
+      return;
+    } catch {
+      /* fall through to placeholder */
+    }
   }
+  doc.roundedRect(x, y, w, h, radius).fill("#e5e7eb");
+  doc.fillColor("#6b7280").font("Helvetica").fontSize(8);
+  doc.text("No photo", x, y + h / 2 - 5, { width: w, align: "center" });
   doc.restore();
 }
 
@@ -303,7 +305,7 @@ async function renderItinerary(
     const startY = doc.y;
     doc.roundedRect(MARGIN, startY, contentWidth(doc), 28, 4).fill([pr, pg, pb]);
     doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(11);
-    doc.text(`Day ${day.dayNumber}  ·  ${day.title}`, MARGIN + 12, startY + 8, {
+    doc.text(day.title?.startsWith("Day ") ? day.title : `Day ${day.dayNumber}  ·  ${day.title}`, MARGIN + 12, startY + 8, {
       width: contentWidth(doc) - 24,
     });
     doc.y = startY + 36;
@@ -368,7 +370,7 @@ async function renderHotels(
       .fillColor(branding.secondaryColor)
       .font("Helvetica")
       .fontSize(9)
-      .text(`${hotel.category}${hotel.city ? ` · ${hotel.city}` : ""}${hotel.nights ? ` · ${hotel.nights} Nights` : ""}`, {
+      .text(`${hotel.category}${hotel.city ? ` · ${hotel.city}` : ""}${hotel.nights ? ` · ${nightLabel(hotel.nights)}` : ""}`, {
         width: textW,
       });
     doc
@@ -441,8 +443,8 @@ async function renderTransfers(
       .font("Helvetica")
       .fontSize(9)
       .text(
-        `Vehicle: ${transfer.vehicle}  ·  Type: ${transfer.type}\nPickup: ${transfer.pickup}  →  Drop: ${transfer.drop}${
-          transfer.notes ? `\nNotes: ${transfer.notes}` : ""
+        `Vehicle: ${pdfSafeText(transfer.vehicle)}  ·  Type: ${pdfSafeText(transfer.type)}\nPickup: ${pdfSafeText(transfer.pickup)}  ->  Drop: ${pdfSafeText(transfer.drop)}${
+          transfer.notes ? `\nNotes: ${pdfSafeText(transfer.notes)}` : ""
         }`,
         MARGIN + 12,
         y + 26,
@@ -522,10 +524,13 @@ async function renderTextBlock(
   doc: Doc,
   branding: PdfBranding,
   title: string,
-  text: string
+  text: string,
+  fallback?: string
 ): Promise<void> {
+  const body = (text || "").trim() || fallback || "";
+  if (!body) return;
   sectionTitle(doc, branding, title);
-  bodyText(doc, text || "—");
+  bodyText(doc, body);
   doc.moveDown(0.6);
 }
 
@@ -555,6 +560,12 @@ async function renderVisa(
   doc.moveDown(0.6);
 }
 
+function isPlausibleEmail(value?: string | null): boolean {
+  const v = String(value || "").trim();
+  if (!v || /^not-an-email$/i.test(v) || v.includes(" ")) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
 async function renderContact(
   doc: Doc,
   branding: PdfBranding,
@@ -566,9 +577,8 @@ async function renderContact(
   if (branding.agencyPhone || content.contact.phone) {
     bodyText(doc, `Phone: ${branding.agencyPhone || content.contact.phone}`);
   }
-  if (branding.agencyEmail || content.contact.email) {
-    bodyText(doc, `Email: ${branding.agencyEmail || content.contact.email}`);
-  }
+  const email = [branding.agencyEmail, content.contact.email].find(isPlausibleEmail);
+  if (email) bodyText(doc, `Email: ${email}`);
   if (branding.agencyAddress) bodyText(doc, branding.agencyAddress);
   bodyText(doc, `${content.contact.name} · ${content.contact.designation}`, { size: 9, color: "#6b7280" });
   doc.moveDown(0.6);
@@ -629,21 +639,26 @@ async function renderSection(
       await renderOverview(doc, branding, content, title);
       break;
     case "DESTINATION_HIGHLIGHTS":
+      if (!content.highlights.length) break;
       await renderHighlights(doc, branding, content, title);
       break;
     case "ITINERARY":
       await renderItinerary(doc, branding, content, title);
       break;
     case "HOTELS":
+      if (!content.hotels.length) break;
       await renderHotels(doc, branding, content, title);
       break;
     case "ACTIVITIES":
+      if (!content.activities.length) break;
       await renderActivities(doc, branding, content, title);
       break;
     case "FLIGHTS":
+      if (!content.flights.length) break;
       await renderFlights(doc, branding, content, title);
       break;
     case "TRANSFERS":
+      if (!content.transfers.length) break;
       await renderTransfers(doc, branding, content, title);
       break;
     case "PRICING":
@@ -659,10 +674,10 @@ async function renderSection(
       await renderVisa(doc, branding, content, title);
       break;
     case "TERMS":
-      await renderTextBlock(doc, branding, title, content.termsText);
+      await renderTextBlock(doc, branding, title, content.termsText, DEFAULT_TERMS);
       break;
     case "CANCELLATION":
-      await renderTextBlock(doc, branding, title, content.cancellationText);
+      await renderTextBlock(doc, branding, title, content.cancellationText, DEFAULT_CANCELLATION);
       break;
     case "NOTES":
       await renderTextBlock(doc, branding, title, content.notes);

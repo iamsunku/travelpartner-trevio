@@ -142,7 +142,11 @@ function buildDayItineraryDocumentContent(input: PdfRenderInput): PdfDocumentCon
       const meta = (hotel.meta as Record<string, unknown> | undefined) ?? {};
       hotels.push({
         name: str(hotel.name),
-        category: str(meta.stars ?? meta.category, "Standard"),
+        category: (() => {
+          const raw = str(meta.stars ?? meta.category, "Standard");
+          if (/^\d+(\.\d+)?$/.test(raw)) return `${raw}*`;
+          return raw;
+        })(),
         description: str(meta.description, "As selected in itinerary."),
         amenities: [],
         image: null,
