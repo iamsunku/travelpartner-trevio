@@ -146,22 +146,43 @@ function roomCountFromHotels(hotels: unknown, adults: number, children: number):
   return Math.max(1, Math.ceil((Math.max(0, adults) + Math.max(0, children)) / 3));
 }
 
+/** Normalize quote/hotel values to YYYY-MM-DD. Rejects check-in times like "14:00" / "11:00am". */
+export function toCalendarDate(value?: string | null): string {
+  if (!value) return "";
+  const v = String(value).trim();
+  if (!v) return "";
+  if (/^\d{1,2}:\d{2}/.test(v) || /am|pm/i.test(v)) return "";
+  const iso = v.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime()) || v.length < 8) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function isCalendarDate(value?: string): boolean {
-  if (!value) return false;
-  const v = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(v)) return true;
-  if (/^\d{1,2}:\d{2}/.test(v) || /am|pm/i.test(v)) return false;
-  const d = new Date(v.length === 10 ? `${v}T12:00:00` : v);
-  return !Number.isNaN(d.getTime()) && v.length >= 8;
+  return Boolean(toCalendarDate(value));
 }
 
 function hotelDates(hotels: unknown): { checkIn?: string; checkOut?: string } {
   if (!Array.isArray(hotels) || !hotels.length) return {};
-  const first = hotels[0] as { checkIn?: string; checkOut?: string };
-  return {
-    checkIn: isCalendarDate(first.checkIn) ? first.checkIn : undefined,
-    checkOut: isCalendarDate(first.checkOut) ? first.checkOut : undefined,
-  };
+  let checkIn: string | undefined;
+  let checkOut: string | undefined;
+  for (const hotel of hotels) {
+    const row = hotel as {
+      checkIn?: string;
+      checkOut?: string;
+      checkInDate?: string;
+      checkOutDate?: string;
+    };
+    const cin = toCalendarDate(row.checkIn) || toCalendarDate(row.checkInDate);
+    const cout = toCalendarDate(row.checkOut) || toCalendarDate(row.checkOutDate);
+    if (!checkIn && cin) checkIn = cin;
+    if (cout) checkOut = cout;
+  }
+  return { checkIn, checkOut };
 }
 
 /**
@@ -233,8 +254,8 @@ export function resolveQuotationCosting(quote: {
       children,
       infants,
       roomCount: roomCountFromHotels(selected?.hotels, adults, children),
-      checkIn: dates.checkIn || quote.travelStartDate || undefined,
-      checkOut: dates.checkOut || quote.travelEndDate || undefined,
+      checkIn: dates.checkIn || toCalendarDate(quote.travelStartDate) || undefined,
+      checkOut: dates.checkOut || toCalendarDate(quote.travelEndDate) || undefined,
       source: "stored",
     };
   }
@@ -275,8 +296,8 @@ export function resolveQuotationCosting(quote: {
         children,
         infants,
         roomCount: roomCountFromHotels(selected.hotels, adults, children),
-        checkIn: dates.checkIn || quote.travelStartDate || undefined,
-        checkOut: dates.checkOut || quote.travelEndDate || undefined,
+        checkIn: dates.checkIn || toCalendarDate(quote.travelStartDate) || undefined,
+        checkOut: dates.checkOut || toCalendarDate(quote.travelEndDate) || undefined,
         source: "packages",
       };
     }
@@ -333,8 +354,8 @@ export function resolveQuotationCosting(quote: {
     children,
     infants,
     roomCount: roomCountFromHotels(selected?.hotels, adults, children),
-    checkIn: quote.travelStartDate || undefined,
-    checkOut: quote.travelEndDate || undefined,
+    checkIn: toCalendarDate(quote.travelStartDate) || undefined,
+    checkOut: toCalendarDate(quote.travelEndDate) || undefined,
     source,
   };
 }

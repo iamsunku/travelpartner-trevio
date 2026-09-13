@@ -50,7 +50,7 @@ import {
   deliverQuotationEmail,
   deliverQuotationWhatsApp,
 } from "@/lib/quotation-actions";
-import { resolveQuotationCosting } from "@/lib/quote-costing";
+import { resolveQuotationCosting, toCalendarDate } from "@/lib/quote-costing";
 import { QuotePriceBreakdown } from "@/components/shared/quote-price-breakdown";
 
 const SERVICE_COLORS: Record<string, string> = {
@@ -603,8 +603,8 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
     if (!open || !quote) return;
     setFull(quote);
     setExtendDate(quote.validTill?.slice(0, 10) || "");
-    setConvertStart((quote.travelStartDate || quote.travelDates || "").slice(0, 10));
-    setConvertEnd((quote.travelEndDate || "").slice(0, 10));
+    setConvertStart(toCalendarDate(quote.travelStartDate) || toCalendarDate(quote.travelDates));
+    setConvertEnd(toCalendarDate(quote.travelEndDate) || toCalendarDate(quote.returnDate));
     api.getQuotationFull(quote.id)
       .then((res) => {
         const mapped = mapApiQuotation(res.quotation);
@@ -612,8 +612,8 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
         upsertQuotation(mapped);
         setVersions(mapped.versions || []);
         setExtendDate(mapped.validTill?.slice(0, 10) || "");
-        setConvertStart((mapped.travelStartDate || mapped.travelDates || "").slice(0, 10));
-        setConvertEnd((mapped.travelEndDate || "").slice(0, 10));
+        setConvertStart(toCalendarDate(mapped.travelStartDate) || toCalendarDate(mapped.travelDates));
+        setConvertEnd(toCalendarDate(mapped.travelEndDate) || toCalendarDate(mapped.returnDate));
       })
       .catch(() => undefined);
     api.getQuotationVersions(quote.id)
@@ -642,11 +642,11 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader className="pr-8">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <DialogTitle className="flex flex-wrap items-center gap-2">
                 {display.quoteNo}
                 <StatusBadge status={display.status} />
               </DialogTitle>
@@ -657,7 +657,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 {display.currentVersion ? ` · v${display.currentVersion}` : ""}
               </DialogDescription>
             </div>
-            <Badge variant="secondary" className={SERVICE_COLORS[display.service]}>{display.service}</Badge>
+            <Badge variant="secondary" className={cn("shrink-0", SERVICE_COLORS[display.service])}>{display.service}</Badge>
           </div>
         </DialogHeader>
 
@@ -712,43 +712,57 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             </Table>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Valid Till</span>
-                <span className={display.status === "Expired" ? "text-destructive font-medium" : ""}>
-                  {new Date(display.validTill).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
-                  {display.status === "Expired" ? " · Expired" : ""}
-                </span>
-              </div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Created By</span><span>{display.createdBy}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">Items</span><span>{display.items}</span></div>
-              {display.contactEmail && <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span>{display.contactEmail}</span></div>}
-              {display.contactPhone && <div className="flex justify-between"><span className="text-muted-foreground">Phone</span><span>{display.contactPhone}</span></div>}
-              {!isAgent && display.internalNotes && (
-                <div className="rounded border border-amber-200 bg-amber-50 dark:bg-amber-500/10 p-2 mt-2">
-                  <p className="text-[10px] uppercase text-amber-800">Internal notes</p>
-                  <p>{display.internalNotes}</p>
-                </div>
-              )}
+          <div className="rounded-xl border bg-muted/20 p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-xs">
+            <div>
+              <p className="text-muted-foreground">Valid Till</p>
+              <p className={display.status === "Expired" ? "font-medium text-destructive" : "font-medium"}>
+                {new Date(display.validTill).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                {display.status === "Expired" ? " · Expired" : ""}
+              </p>
             </div>
-            <QuotePriceBreakdown
-              costing={{
-                ...costing,
-                checkIn: convertStart || costing.checkIn,
-                checkOut: convertEnd || costing.checkOut,
-              }}
-              audience={String(user?.role) === "customer" ? "customer" : isAgent ? "agent" : "internal"}
-              showInternal={!isAgent && String(user?.role) !== "customer"}
-              editable={!isAgent && display.status === "Accepted"}
-              onChangeDates={(start, end) => {
-                setConvertStart(start);
-                setConvertEnd(end);
-              }}
-              onChangeTravellers={undefined}
-              onChangeRooms={undefined}
-            />
+            <div>
+              <p className="text-muted-foreground">Created By</p>
+              <p className="font-medium break-all">{display.createdBy}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Items</p>
+              <p className="font-medium">{display.items}</p>
+            </div>
+            {display.contactEmail && (
+              <div>
+                <p className="text-muted-foreground">Email</p>
+                <p className="font-medium break-all">{display.contactEmail}</p>
+              </div>
+            )}
+            {display.contactPhone && (
+              <div>
+                <p className="text-muted-foreground">Phone</p>
+                <p className="font-medium">{display.contactPhone}</p>
+              </div>
+            )}
+            {!isAgent && display.internalNotes && (
+              <div className="sm:col-span-2 lg:col-span-3 rounded border border-amber-200 bg-amber-50 dark:bg-amber-500/10 p-2">
+                <p className="text-[10px] uppercase text-amber-800">Internal notes</p>
+                <p>{display.internalNotes}</p>
+              </div>
+            )}
           </div>
+          <QuotePriceBreakdown
+            costing={{
+              ...costing,
+              checkIn: toCalendarDate(convertStart) || costing.checkIn,
+              checkOut: toCalendarDate(convertEnd) || costing.checkOut,
+            }}
+            audience={String(user?.role) === "customer" ? "customer" : isAgent ? "agent" : "internal"}
+            showInternal={!isAgent && String(user?.role) !== "customer"}
+            editable={!isAgent && display.status === "Accepted"}
+            onChangeDates={(start, end) => {
+              setConvertStart(start);
+              setConvertEnd(end);
+            }}
+            onChangeTravellers={undefined}
+            onChangeRooms={undefined}
+          />
 
           {!isAgent && (
             <div className="rounded-lg border p-3 space-y-2">

@@ -10,14 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ResolvedQuoteCosting } from "@/lib/quote-costing";
-import { isCalendarDate } from "@/lib/quote-costing";
+import { toCalendarDate } from "@/lib/quote-costing";
 
 function formatPrettyDate(iso?: string) {
-  if (!iso) return "—";
-  const v = iso.trim();
-  if (/^\d{1,2}:\d{2}/.test(v) || /am|pm/i.test(v)) return "—";
-  const d = new Date(v.length === 10 ? `${v}T12:00:00` : v);
-  if (Number.isNaN(d.getTime())) return iso;
+  const v = toCalendarDate(iso);
+  if (!v) return "";
+  const d = new Date(`${v}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return v;
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
@@ -115,49 +114,59 @@ export function QuotePriceBreakdown({
   className,
 }: QuotePriceBreakdownProps) {
   const view = audience || (showInternal ? "internal" : "customer");
-  const checkInRaw = costing.checkIn || "";
-  const checkOutRaw = costing.checkOut || "";
-  const checkIn = isCalendarDate(checkInRaw) ? checkInRaw.slice(0, 10) : "";
-  const checkOut = isCalendarDate(checkOutRaw) ? checkOutRaw.slice(0, 10) : "";
+  const checkIn = toCalendarDate(costing.checkIn);
+  const checkOut = toCalendarDate(costing.checkOut);
+  const canEditDates = Boolean(editable && onChangeDates);
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn("grid grid-cols-1 lg:grid-cols-2 gap-3 items-start", className)}>
       <SectionCard icon={CalendarDays} title="Stay Details">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label className="text-[11px] text-muted-foreground">Check-In</Label>
-            {editable && onChangeDates ? (
+            {canEditDates ? (
               <Input
                 type="date"
-                className="h-9 border-rose-200 focus-visible:ring-rose-300"
+                className="h-9"
                 value={checkIn}
-                onChange={(e) => onChangeDates(e.target.value, checkOut)}
+                onChange={(e) => onChangeDates?.(e.target.value, checkOut)}
               />
             ) : (
-              <div className="h-9 rounded-md border border-rose-200 px-3 flex items-center justify-between text-sm text-rose-700">
-                <span>{formatPrettyDate(checkIn)}</span>
+              <div
+                className={cn(
+                  "h-9 rounded-md border px-3 flex items-center justify-between text-sm",
+                  checkIn ? "border-input text-foreground" : "border-dashed text-muted-foreground",
+                )}
+              >
+                <span>{formatPrettyDate(checkIn) || "Not set"}</span>
                 <CalendarDays className="h-3.5 w-3.5 opacity-60" />
               </div>
             )}
           </div>
           <div className="space-y-1">
             <Label className="text-[11px] text-muted-foreground">Check-Out</Label>
-            {editable && onChangeDates ? (
+            {canEditDates ? (
               <Input
                 type="date"
-                className="h-9 border-rose-200 focus-visible:ring-rose-300"
+                className="h-9"
                 value={checkOut}
-                onChange={(e) => onChangeDates(checkIn, e.target.value)}
+                min={checkIn || undefined}
+                onChange={(e) => onChangeDates?.(checkIn, e.target.value)}
               />
             ) : (
-              <div className="h-9 rounded-md border border-rose-200 px-3 flex items-center justify-between text-sm text-rose-700">
-                <span>{formatPrettyDate(checkOut)}</span>
+              <div
+                className={cn(
+                  "h-9 rounded-md border px-3 flex items-center justify-between text-sm",
+                  checkOut ? "border-input text-foreground" : "border-dashed text-muted-foreground",
+                )}
+              >
+                <span>{formatPrettyDate(checkOut) || "Not set"}</span>
                 <CalendarDays className="h-3.5 w-3.5 opacity-60" />
               </div>
             )}
           </div>
         </div>
-        {editable && (
+        {canEditDates && (
           <p className="text-[11px] text-muted-foreground">Change dates to refresh hotel rates and totals.</p>
         )}
 
@@ -224,40 +233,42 @@ export function QuotePriceBreakdown({
         </div>
       </SectionCard>
 
-      <SectionCard icon={Tag} title="Rate Breakdown">
-        <Row label="Per Adult Price" value={formatFullINR(costing.perAdultPrice)} />
-        <Row label="Per Child Price (2-11 yrs)" value={formatFullINR(costing.perChildPrice)} />
-      </SectionCard>
+      <div className="space-y-3">
+        <SectionCard icon={Tag} title="Rate Breakdown">
+          <Row label="Per Adult Price" value={formatFullINR(costing.perAdultPrice)} />
+          <Row label="Per Child Price (2-11 yrs)" value={formatFullINR(costing.perChildPrice)} />
+        </SectionCard>
 
-      <SectionCard icon={ListOrdered} title="Price Summary">
-        {view === "internal" && (
-          <Row label="Contracted Cost" value={formatFullINR(costing.totalNetCost)} />
-        )}
-        {view === "internal" && (
-          <Row label="Trevio Markup" value={formatFullINR(costing.trevioMarkupAmount || 0)} />
-        )}
-        {view !== "customer" && (
-          <Row label="Trevio Selling Price" value={formatFullINR(costing.trevioSellingPrice || 0)} />
-        )}
-        {view !== "customer" && (
-          <Row label="Agent Markup" value={formatFullINR(costing.agentMarkupAmount || 0)} />
-        )}
-        <Row label="Package Price (Base)" value={formatFullINR(costing.packageBase)} />
-        <Row
-          label={costing.taxConfigured === false || costing.taxRate <= 0 ? "Tax configuration required" : `Applicable tax (${costing.taxRate}%)`}
-          value={costing.taxRate > 0 ? formatFullINR(costing.gst) : "—"}
-        />
-        <div className="border-t border-dashed my-1" />
-        <Row label="Total Price" value={formatFullINR(costing.total)} bold />
-        {view === "internal" && (
-          <>
-            <div className="border-t border-dashed my-1" />
-            <Row label="Per person" value={formatFullINR(costing.perPersonCost)} />
-            <Row label="Profit" value={formatFullINR(costing.grossProfit)} />
-            <Row label="Margin" value={`${costing.profitMargin}%`} />
-          </>
-        )}
-      </SectionCard>
+        <SectionCard icon={ListOrdered} title="Price Summary">
+          {view === "internal" && (
+            <Row label="Contracted Cost" value={formatFullINR(costing.totalNetCost)} />
+          )}
+          {view === "internal" && (
+            <Row label="Trevio Markup" value={formatFullINR(costing.trevioMarkupAmount || 0)} />
+          )}
+          {view !== "customer" && (
+            <Row label="Trevio Selling Price" value={formatFullINR(costing.trevioSellingPrice || 0)} />
+          )}
+          {view !== "customer" && (
+            <Row label="Agent Markup" value={formatFullINR(costing.agentMarkupAmount || 0)} />
+          )}
+          <Row label="Package Price (Base)" value={formatFullINR(costing.packageBase)} />
+          <Row
+            label={costing.taxConfigured === false || costing.taxRate <= 0 ? "Tax configuration required" : `Applicable tax (${costing.taxRate}%)`}
+            value={costing.taxRate > 0 ? formatFullINR(costing.gst) : "—"}
+          />
+          <div className="border-t border-dashed my-1" />
+          <Row label="Total Price" value={formatFullINR(costing.total)} bold />
+          {view === "internal" && (
+            <>
+              <div className="border-t border-dashed my-1" />
+              <Row label="Per person" value={formatFullINR(costing.perPersonCost)} />
+              <Row label="Profit" value={formatFullINR(costing.grossProfit)} />
+              <Row label="Margin" value={`${costing.profitMargin}%`} />
+            </>
+          )}
+        </SectionCard>
+      </div>
     </div>
   );
 }
