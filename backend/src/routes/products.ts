@@ -163,13 +163,28 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
       const where: Record<string, unknown> = { ...agencyScope(req) };
       applyProductListFilters(where, query);
       const city = (req.query.city as string)?.trim();
-      if (city) where.city = { contains: city, mode: "insensitive" };
+      if (city) {
+        where.AND = [
+          ...((where.AND as unknown[]) || []),
+          {
+            OR: [
+              { city: { contains: city, mode: "insensitive" } },
+              { destination: { name: { contains: city, mode: "insensitive" } } },
+            ],
+          },
+        ];
+      }
       if (query.q) {
-        where.OR = [
-          { name: { contains: query.q, mode: "insensitive" } },
-          { city: { contains: query.q, mode: "insensitive" } },
-          { country: { contains: query.q, mode: "insensitive" } },
-          { destination: { name: { contains: query.q, mode: "insensitive" } } },
+        where.AND = [
+          ...((where.AND as unknown[]) || []),
+          {
+            OR: [
+              { name: { contains: query.q, mode: "insensitive" } },
+              { city: { contains: query.q, mode: "insensitive" } },
+              { country: { contains: query.q, mode: "insensitive" } },
+              { destination: { name: { contains: query.q, mode: "insensitive" } } },
+            ],
+          },
         ];
       }
       const [items, total] = await Promise.all([

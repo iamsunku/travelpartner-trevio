@@ -338,6 +338,34 @@ export function QuotationWizardDialog({
     return () => clearTimeout(t);
   }, [form.destination, form.country]);
 
+  useEffect(() => {
+    if (!open) return;
+    const name = form.destination.trim();
+    if (!name) {
+      if (destinationId) setDestinationId("");
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(() => {
+      apiFetch<{ items: Array<{ id: string; name: string }> }>(
+        `/api/destinations?q=${encodeURIComponent(name)}&pageSize=10`,
+      )
+        .then((res) => {
+          if (cancelled) return;
+          const items = res.items || [];
+          const exact = items.find((d) => d.name.trim().toLowerCase() === name.toLowerCase());
+          if (exact?.id) {
+            if (exact.id !== destinationId) setDestinationId(exact.id);
+          }
+        })
+        .catch(() => undefined);
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [open, form.destination, destinationId]);
+
   function patchPkg(idx: number, patch: Partial<QuotationPackage>) {
     setPackages((prev) => prev.map((p, i) => (i === idx ? { ...p, ...patch } : p)));
   }
@@ -814,6 +842,8 @@ export function QuotationWizardDialog({
             catalogKind="hotels"
             travelDate={form.travelStartDate}
             travelEndDate={form.travelEndDate}
+            destinationId={destinationId}
+            destination={form.destination}
             catalogToRow={(item) => hotelFromCatalog(item)}
           />
         )}
@@ -827,6 +857,8 @@ export function QuotationWizardDialog({
             template={{ airline: "", flightNumber: "", from: "", to: "", cabinClass: "Economy", currency: form.currency || "INR", duration: "", baggage: "", remarks: "", pnr: "", costPrice: 12000, sellingPrice: 15000, fare: 15000, source: "MANUAL" }}
             catalogKind="flights"
             travelDate={form.travelStartDate}
+            destinationId={destinationId}
+            destination={form.destination}
             quotationId={id}
             catalogToRow={(item) => ({
               productId: item.id,
@@ -987,6 +1019,8 @@ export function QuotationWizardDialog({
               template={{ transferType: "Airport Pickup", vehicleType: "Sedan", costPrice: 1500, sellingPrice: 2200, source: "MANUAL" }}
               catalogKind="transfers"
               travelDate={form.travelStartDate}
+              destinationId={destinationId}
+              destination={form.destination}
               catalogToRow={(item) => ({
                 productId: item.id,
                 productType: "TRANSFER",
@@ -1007,6 +1041,8 @@ export function QuotationWizardDialog({
               template={{ activityName: "", description: "", ticketType: "Standard", adultRate: 2500, childRate: 1500, adults: form.adults, children: form.children, imageUrl: "", costPrice: 2000, sellingPrice: 2500, source: "MANUAL" }}
               catalogKind="activities"
               travelDate={form.travelStartDate}
+              destinationId={destinationId}
+              destination={form.destination}
               catalogToRow={(item) => ({
                 productId: item.id,
                 productType: "ACTIVITY",
@@ -1036,6 +1072,8 @@ export function QuotationWizardDialog({
             template={{ mealType: "Dinner", cuisine: "Local", dietary: "", adults: form.adults, children: form.children, adultRate: 1200, childRate: 800, costPrice: 900, sellingPrice: 1200, source: "MANUAL" }}
             catalogKind="meals"
             travelDate={form.travelStartDate}
+            destinationId={destinationId}
+            destination={form.destination}
             catalogToRow={(item) => ({
               productId: item.id,
               productType: "MEAL",
@@ -1694,7 +1732,7 @@ const CATALOG_TYPE = {
 } as const;
 
 function ServiceEditor({
-  title, rows, fields, onChange, template, catalogKind, catalogToRow, travelDate, travelEndDate, quotationId,
+  title, rows, fields, onChange, template, catalogKind, catalogToRow, travelDate, travelEndDate, quotationId, destinationId, destination,
 }: {
   title: string;
   rows: Record<string, unknown>[];
@@ -1706,13 +1744,19 @@ function ServiceEditor({
   travelDate?: string;
   travelEndDate?: string;
   quotationId?: string | null;
+  destinationId?: string;
+  destination?: string;
 }) {
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-start gap-3 flex-wrap">
         <div>
           <p className="text-sm font-semibold">{title}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">Add from catalog or enter self-booked details.</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {destination
+              ? `Add from ${destination} catalog or enter self-booked details.`
+              : "Add from catalog or enter self-booked details."}
+          </p>
         </div>
         <div className="flex gap-2">
           {catalogKind && catalogToRow && (
@@ -1720,6 +1764,8 @@ function ServiceEditor({
               kind={catalogKind}
               travelDate={travelDate}
               travelEndDate={travelEndDate}
+              destinationId={destinationId}
+              destination={destination}
               onPick={(item, rate) => {
                 const base = catalogToRow(item);
                 const selling = Number(base.sellingPrice || rate.displayPrice || 0);
@@ -1967,11 +2013,15 @@ function CatalogPicker({
   kind,
   travelDate,
   travelEndDate,
+  destinationId,
+  destination,
   onPick,
 }: {
   kind: keyof typeof CATALOG_TYPE;
   travelDate?: string;
   travelEndDate?: string;
+  destinationId?: string;
+  destination?: string;
   onPick: (item: ProductRecord, rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null }) => void;
 }) {
   const { toast } = useToast();
@@ -1979,20 +2029,23 @@ function CatalogPicker({
   const [q, setQ] = useState("");
   const [items, setItems] = useState<ProductRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const destLabel = (destination || "").trim();
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
     const t = setTimeout(() => {
-      apiFetch<{ items: ProductRecord[] }>(
-        `/api/products/${kind}?liveOnly=true&pageSize=20${q ? `&q=${encodeURIComponent(q)}` : ""}`,
-      )
+      const params = new URLSearchParams({ liveOnly: "true", pageSize: "20" });
+      if (q.trim()) params.set("q", q.trim());
+      if (destinationId) params.set("destinationId", destinationId);
+      else if (destLabel) params.set("city", destLabel);
+      apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${params.toString()}`)
         .then((r) => setItems(r.items || []))
         .catch(() => setItems([]))
         .finally(() => setLoading(false));
     }, 200);
     return () => clearTimeout(t);
-  }, [open, q, kind]);
+  }, [open, q, kind, destinationId, destLabel]);
 
   return (
     <div className="relative">
@@ -2000,17 +2053,26 @@ function CatalogPicker({
         <Search className="w-3.5 h-3.5 mr-1" /> Catalog
       </Button>
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-72 rounded-md border bg-popover p-2 shadow-md">
+        <div className="absolute right-0 z-20 mt-1 w-80 rounded-md border bg-popover p-2 shadow-md">
           <Input
             className="h-8 text-xs mb-2"
-            placeholder={`Search ${kind}…`}
+            placeholder={destLabel ? `Search ${kind} in ${destLabel}…` : `Search ${kind}…`}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             autoFocus
           />
+          {destLabel && (
+            <p className="text-[10px] text-muted-foreground px-1 mb-1.5">
+              Showing live {kind} for {destLabel}
+            </p>
+          )}
           <div className="max-h-48 overflow-y-auto space-y-1">
             {loading && <p className="text-[11px] text-muted-foreground px-1">Loading…</p>}
-            {!loading && items.length === 0 && <p className="text-[11px] text-muted-foreground px-1">No live products.</p>}
+            {!loading && items.length === 0 && (
+              <p className="text-[11px] text-muted-foreground px-1">
+                {destLabel ? `No live ${kind} for ${destLabel}.` : "No live products."}
+              </p>
+            )}
             {items.map((item) => (
               <button
                 key={item.id}
@@ -2096,8 +2158,8 @@ function CatalogPicker({
                     {item.transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer"}
                   </span>
                 )}
-                {item.destination?.name && (
-                  <span className="text-muted-foreground"> · {item.destination.name}</span>
+                {(item.city || item.destination?.name) && (
+                  <span className="text-muted-foreground"> · {String(item.city || item.destination?.name)}</span>
                 )}
               </button>
             ))}
