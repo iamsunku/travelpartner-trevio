@@ -174,6 +174,12 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
           },
         ];
       }
+      const starCategory = parseInt(String(req.query.starCategory || ""), 10);
+      if (Number.isFinite(starCategory) && starCategory > 0) {
+        where.starCategory = starCategory;
+      }
+      const supplierId = String(req.query.supplierId || "").trim();
+      if (supplierId) where.supplierId = supplierId;
       if (query.q) {
         where.AND = [
           ...((where.AND as unknown[]) || []),

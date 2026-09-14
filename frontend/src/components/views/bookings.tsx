@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore } from "@/store/app-store";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, apiFetchBlob } from "@/lib/api";
 import { mapApiBooking } from "@/lib/api-mappers";
 import type { Booking, BookingPassenger, CostDeviationApproval, TravelDetailsRecord } from "@/types";
 import {
@@ -136,7 +136,7 @@ function BookingDetailDialog({
   const canAssign = Boolean(user && !isAgent && (canOps || ["sales_executive", "agency_admin", "branch_manager", "super_admin"].includes(user.role)));
   const canApproveDeviation = user && ["super_admin", "agency_admin"].includes(user.role);
   const canAdjustPrice = user && ["super_admin", "agency_admin"].includes(user.role);
-  const canDownloadVouchers = !isAgent || booking?.paymentStatus === "Paid";
+  const canDownloadVouchers = !isAgent || booking?.paymentStatus !== "Pending" || ["Confirmed", "Partially Confirmed", "Travel Documents Ready", "Completed"].includes(booking?.status || "");
   const pendingDeviations = useMemo(
     () => (booking?.costDeviationApprovals || []).filter((d) => d.status === "Pending"),
     [booking?.costDeviationApprovals],
@@ -569,7 +569,7 @@ function BookingDetailDialog({
                       void run("Document uploaded", async () => {
                         await api.uploadBookingDocument(booking.id, file, {
                           docType: "OTHER",
-                          visibility: "INTERNAL",
+                          visibility: isAgent ? "AGENT" : "INTERNAL",
                           ...(lead?.id ? { passengerId: lead.id } : {}),
                         });
                       });
@@ -591,8 +591,34 @@ function BookingDetailDialog({
                   <div className="text-xs space-y-1">
                     <p className="font-semibold">Documents</p>
                     {booking.documents!.map((d) => (
-                      <div key={d.id} className="flex justify-between border-b py-1">
-                        <span>{d.docType}: {d.fileName}</span>
+                      <div key={d.id} className="flex justify-between items-center gap-2 border-b py-1">
+                        <span className="min-w-0 truncate">{d.docType}: {d.fileName}</span>
+                        {(d.downloadPath || d.fileUrl) && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 shrink-0"
+                            onClick={async () => {
+                              try {
+                                if (d.downloadPath) {
+                                  const blob = await apiFetchBlob(d.downloadPath);
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement("a");
+                                  a.href = url;
+                                  a.download = d.fileName || "document";
+                                  a.click();
+                                  URL.revokeObjectURL(url);
+                                } else if (d.fileUrl) {
+                                  window.open(d.fileUrl, "_blank", "noopener,noreferrer");
+                                }
+                              } catch (e) {
+                                toast({ title: "Download failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                              }
+                            }}
+                          >
+                            Download
+                          </Button>
+                        )}
                       </div>
                     ))}
                   </div>

@@ -302,6 +302,40 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
       }
     }
 
+    if (pkg.visa?.enabled) {
+      ensure(doc, 80, onNewPage);
+      kicker(doc, "Visa");
+      heading(doc, "Visa services");
+      const visaRows: Array<[string, string]> = [];
+      if (pkg.visa.visaType) visaRows.push(["Visa type", pkg.visa.visaType]);
+      if (pkg.visa.entryType) visaRows.push(["Entry", pkg.visa.entryType]);
+      if (pkg.visa.processingTime) visaRows.push(["Processing time", pkg.visa.processingTime]);
+      if (pkg.visa.feeLabel) visaRows.push(["Visa fee", pkg.visa.feeLabel]);
+      if (pkg.visa.appointmentRequired) {
+        visaRows.push(["Appointment", pkg.visa.appointmentNote || "Required"]);
+      }
+      if (pkg.visa.documentsRequired) visaRows.push(["Required documents", pkg.visa.documentsRequired]);
+      if (pkg.visa.remarks) visaRows.push(["Remarks", pkg.visa.remarks]);
+      if (visaRows.length) kvTable(doc, visaRows, onNewPage);
+      else body(doc, "Visa assistance included as discussed.", { width: contentWidth() });
+    }
+
+    if (pkg.insurance?.enabled) {
+      ensure(doc, 80, onNewPage);
+      kicker(doc, "Insurance");
+      heading(doc, "Travel insurance");
+      const insRows: Array<[string, string]> = [];
+      if (pkg.insurance.provider) insRows.push(["Provider", pkg.insurance.provider]);
+      if (pkg.insurance.planName) insRows.push(["Plan", pkg.insurance.planName]);
+      if (pkg.insurance.coverage) insRows.push(["Coverage", pkg.insurance.coverage]);
+      if (pkg.insurance.validity) insRows.push(["Validity", pkg.insurance.validity]);
+      if (pkg.insurance.policyNumber) insRows.push(["Policy number", pkg.insurance.policyNumber]);
+      if (pkg.insurance.premiumLabel) insRows.push(["Premium", pkg.insurance.premiumLabel]);
+      if (pkg.insurance.remarks) insRows.push(["Remarks", pkg.insurance.remarks]);
+      if (insRows.length) kvTable(doc, insRows, onNewPage);
+      else body(doc, "Travel insurance included as discussed.", { width: contentWidth() });
+    }
+
     if (pkg.inclusions.length || pkg.exclusions.length) {
       ensure(doc, 100, onNewPage);
       kicker(doc, "Inclusions & exclusions");

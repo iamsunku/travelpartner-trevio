@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   FileText, Send, FileDown, Plus, Trash2, CheckCircle2, Clock,
   Mail, MessageCircle, Eye, TrendingUp, Wallet, Percent, Ticket, Loader2, Copy, Archive,
-  ChevronDown, Sparkles, Globe, ListOrdered,
+  ChevronDown, Sparkles, Globe, ListOrdered, XCircle,
 } from "lucide-react";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore, useAppStore } from "@/store/app-store";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, apiFetchBlob } from "@/lib/api";
 import type { Quotation } from "@/types";
 import { mapApiQuotation } from "@/lib/api-mappers";
 import { pickActiveTaxRule, taxFromConfiguredRule, type ClientTaxRule } from "@/lib/tax-config";
@@ -30,6 +30,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuTrigger,
@@ -51,7 +52,9 @@ import {
   deliverQuotationWhatsApp,
 } from "@/lib/quotation-actions";
 import { resolveQuotationCosting, toCalendarDate } from "@/lib/quote-costing";
+import { canApproveDiscount, latestDiscountApproval } from "@/lib/quote-discount";
 import { QuotePriceBreakdown } from "@/components/shared/quote-price-breakdown";
+import type { Lead } from "@/types";
 
 const SERVICE_COLORS: Record<string, string> = {
   Flight: "bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-400",
@@ -550,18 +553,39 @@ function CreateQuotationDialog({ open, onOpenChange }: { open: boolean; onOpenCh
 }
 
 const APPROVAL_STEPS = [
-  { key: "Draft", icon: FileText, color: "text-slate-500 bg-slate-100 dark:bg-slate-500/15" },
-  { key: "Pending Approval", icon: Clock, color: "text-amber-500 bg-amber-100 dark:bg-amber-500/15" },
-  { key: "Approved", icon: CheckCircle2, color: "text-emerald-500 bg-emerald-100 dark:bg-emerald-500/15" },
+  { key: "Executive Prep", icon: FileText, color: "text-slate-500 bg-slate-100 dark:bg-slate-500/15" },
+  { key: "Team Lead", icon: Clock, color: "text-amber-500 bg-amber-100 dark:bg-amber-500/15" },
+  { key: "Finance", icon: Wallet, color: "text-violet-500 bg-violet-100 dark:bg-violet-500/15" },
+  { key: "Ready to Send", icon: CheckCircle2, color: "text-emerald-500 bg-emerald-100 dark:bg-emerald-500/15" },
 ];
+
+function latestStage(q: Quotation, stage: string) {
+  const rows = q.approvals || [];
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    if (rows[i]?.stage === stage) return rows[i];
+  }
+  return undefined;
+}
 
 function approvalIndex(q: Quotation) {
   if (
-    ["Sent to Agent", "Sent", "Customer Reviewing", "Accepted", "Converted to Booking"].includes(q.status) ||
-    q.approvalStatus === "Approved"
-  ) return 2;
-  if (q.status === "Pending Approval" || q.approvalStatus === "Pending") return 1;
+    ["Sent to Agent", "Sent", "Customer Reviewing", "Accepted", "Converted to Booking"].includes(q.status)
+    || latestStage(q, "Ready to Send")?.status === "Approved"
+    || q.approvalStatus === "Approved"
+  ) return 3;
+  const finance = latestStage(q, "Finance");
+  if (finance?.status === "Pending" || (latestStage(q, "Team Lead")?.status === "Approved" && finance)) return 2;
+  if (q.status === "Pending Approval" || q.approvalStatus === "Pending" || latestStage(q, "Team Lead")) return 1;
+  if (latestStage(q, "Executive Prep")?.status === "Approved") return 0;
   return 0;
+}
+
+function pendingApprovalStage(q: Quotation): "Team Lead" | "Finance" | null {
+  const team = latestStage(q, "Team Lead");
+  if (team?.status === "Pending") return "Team Lead";
+  const finance = latestStage(q, "Finance");
+  if (finance?.status === "Pending") return "Finance";
+  return null;
 }
 
 function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | null; open: boolean; onOpenChange: (v: boolean) => void }) {
@@ -598,6 +622,10 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
     changeSummary?: string | null;
     snapshot: Record<string, unknown>;
   } | null>(null);
+  const [decisionOpen, setDecisionOpen] = useState<"reject" | "revision" | null>(null);
+  const [decisionComments, setDecisionComments] = useState("");
+  const [decisionBusy, setDecisionBusy] = useState(false);
+  const [requireFinance, setRequireFinance] = useState(false);
 
   useEffect(() => {
     if (!open || !quote) return;
@@ -628,6 +656,16 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
   const display = full || quote;
   const items = getQuotationLineItems(display);
   const step = approvalIndex(display);
+  const discountApproval = latestDiscountApproval(display.approvals);
+  const showDiscountActions = !isAgent && canApproveDiscount(user?.role) && discountApproval?.status === "Pending";
+  const pendingStage = pendingApprovalStage(display);
+  const canApprovePending =
+    !isAgent
+    && pendingStage
+    && (
+      (pendingStage === "Team Lead" && ["team_lead", "branch_manager", "agency_admin", "super_admin"].includes(String(user?.role || "")))
+      || (pendingStage === "Finance" && ["accountant", "management", "agency_admin", "super_admin"].includes(String(user?.role || "")))
+    );
   const costing = resolveQuotationCosting({
     ...display,
     packages: display.packages as unknown as Array<Record<string, unknown>>,
@@ -649,6 +687,15 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
               <DialogTitle className="flex flex-wrap items-center gap-2">
                 {display.quoteNo}
                 <StatusBadge status={display.status} />
+                {discountApproval?.status === "Pending" && (
+                  <Badge variant="outline" className="border-amber-300 text-amber-800 bg-amber-50">Discount pending</Badge>
+                )}
+                {discountApproval?.status === "Rejected" && (
+                  <Badge variant="outline" className="border-rose-300 text-rose-800 bg-rose-50">Discount rejected</Badge>
+                )}
+                {discountApproval?.status === "Approved" && Number(display.discountValue || 0) > 0 && (
+                  <Badge variant="outline" className="border-emerald-300 text-emerald-800 bg-emerald-50">Discount approved</Badge>
+                )}
               </DialogTitle>
               <DialogDescription>
                 {display.customerName} · {display.service}
@@ -662,6 +709,102 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
         </DialogHeader>
 
         <div className="space-y-3">
+          {(discountApproval?.status === "Pending" || discountApproval?.status === "Rejected") && (
+            <div className={cn(
+              "rounded-lg border px-3 py-2 text-xs",
+              discountApproval.status === "Pending"
+                ? "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10"
+                : "border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-500/30 dark:bg-rose-500/10",
+            )}>
+              <p className="font-medium">
+                {discountApproval.status === "Pending"
+                  ? "Discount approval required"
+                  : "Discount was rejected"}
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                {display.discountType || "Discount"} {display.discountValue ?? 0}
+                {discountApproval.comments ? ` — ${discountApproval.comments}` : ""}
+                {". "}Submit for approval and send stay blocked until this is resolved.
+              </p>
+              {showDiscountActions && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Button size="sm" className="h-7" onClick={async () => {
+                    try {
+                      await api.approveQuotation(display.id, { stage: "Discount" });
+                      await refresh();
+                      toast({ title: "Discount approved" });
+                    } catch (e) {
+                      toast({ title: "Approve failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                    }
+                  }}>
+                    Approve discount
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7" onClick={async () => {
+                    try {
+                      await api.rejectQuotationApproval(display.id, { stage: "Discount", comments: "Reduce discount" });
+                      await refresh();
+                      toast({ title: "Discount rejected" });
+                    } catch (e) {
+                      toast({ title: "Reject failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                    }
+                  }}>
+                    Reject discount
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {["Sent to Agent", "Sent", "Customer Reviewing"].includes(display.status) && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100">
+              <p className="font-medium">Customer decision</p>
+              <p className="mt-0.5 text-muted-foreground dark:text-sky-200/80">
+                {isAgent
+                  ? <>Use <strong>Accept</strong>, <strong>Reject</strong>, or <strong>Request revision</strong> after the customer decides. You can also share a customer review link.</>
+                  : <>When the client confirms, use <strong>Record acceptance</strong>. That unlocks Convert to Booking for staff. Use Request Revision if they want changes.</>}
+              </p>
+            </div>
+          )}
+
+          {(display.documents || []).length > 0 && (
+            <div className="rounded-lg border p-3 space-y-2">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase">Documents & vouchers</p>
+              <div className="space-y-1 text-xs">
+                {display.documents!.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between gap-2 rounded border px-2 py-1.5">
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{doc.docType}</span>
+                      {" · "}
+                      {doc.fileName}
+                    </span>
+                    {doc.downloadPath ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 shrink-0"
+                        onClick={async () => {
+                          try {
+                            const blob = await apiFetchBlob(doc.downloadPath!);
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = doc.fileName || "document";
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          } catch (e) {
+                            toast({ title: "Download failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                          }
+                        }}
+                      >
+                        <FileDown className="w-3.5 h-3.5 mr-1" /> Download
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="rounded-lg border p-3 bg-muted/20">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Approval Workflow</p>
             <div className="flex items-center justify-between">
@@ -764,34 +907,40 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             onChangeRooms={undefined}
           />
 
-          {!isAgent && (
-            <div className="rounded-lg border p-3 space-y-2">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase">Validity & versions</p>
-              <div className="flex flex-wrap gap-2 items-end">
-                <div>
-                  <Label className="text-[10px]">Extend valid until</Label>
-                  <Input className="h-8 w-40 text-xs" type="date" value={extendDate} onChange={(e) => setExtendDate(e.target.value)} />
-                </div>
-                <Button size="sm" variant="outline" onClick={async () => {
-                  try {
-                    const res = await api.extendQuotation(display.id, extendDate);
-                    upsertQuotation(mapApiQuotation(res.quotation));
-                    setFull(mapApiQuotation(res.quotation));
-                    toast({ title: "Validity updated" });
-                  } catch (e) {
-                    toast({ title: "Extend failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
-                  }
-                }}>Extend / renew</Button>
-                <Button size="sm" variant="outline" onClick={async () => {
-                  try {
-                    const res = await api.createQuotationCustomerLink(display.id);
-                    const url = res.url || `${window.location.origin}/q/${res.token}`;
-                    await navigator.clipboard.writeText(url);
-                    toast({ title: "Customer link copied", description: `Bound to version ${res.versionNumber}` });
-                  } catch (e) {
-                    toast({ title: "Link failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
-                  }
-                }}>Copy customer link</Button>
+          <div className="rounded-lg border p-3 space-y-2">
+            <p className="text-[11px] font-semibold text-muted-foreground uppercase">
+              {isAgent ? "Share with customer" : "Validity & versions"}
+            </p>
+            <div className="flex flex-wrap gap-2 items-end">
+              {!isAgent && (
+                <>
+                  <div>
+                    <Label className="text-[10px]">Extend valid until</Label>
+                    <Input className="h-8 w-40 text-xs" type="date" value={extendDate} onChange={(e) => setExtendDate(e.target.value)} />
+                  </div>
+                  <Button size="sm" variant="outline" onClick={async () => {
+                    try {
+                      const res = await api.extendQuotation(display.id, extendDate);
+                      upsertQuotation(mapApiQuotation(res.quotation));
+                      setFull(mapApiQuotation(res.quotation));
+                      toast({ title: "Validity updated" });
+                    } catch (e) {
+                      toast({ title: "Extend failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                    }
+                  }}>Extend / renew</Button>
+                </>
+              )}
+              <Button size="sm" variant="outline" onClick={async () => {
+                try {
+                  const res = await api.createQuotationCustomerLink(display.id);
+                  const url = res.url || `${window.location.origin}/q/${res.token}`;
+                  await navigator.clipboard.writeText(url);
+                  toast({ title: "Customer link copied", description: `Bound to version ${res.versionNumber}` });
+                } catch (e) {
+                  toast({ title: "Link failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                }
+              }}>Copy customer link</Button>
+              {!isAgent && (
                 <Button size="sm" variant="outline" onClick={async () => {
                   try {
                     await api.createQuotationVersion(display.id, { changeSummary: "Manual snapshot" });
@@ -802,8 +951,9 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                     toast({ title: "Version failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
                   }
                 }}>Save version</Button>
-              </div>
-              {versions.length > 0 && (
+              )}
+            </div>
+            {!isAgent && versions.length > 0 && (
                 <div className="max-h-36 overflow-y-auto text-xs space-y-1">
                   {versions.map((v) => (
                     <div key={v.id} className="flex justify-between items-center gap-2 rounded border px-2 py-1">
@@ -851,9 +1001,8 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
           {customerResponses.length > 0 && (
             <div className="rounded-lg border p-3 space-y-2">
@@ -899,31 +1048,44 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             <Button variant="outline" size="sm" onClick={() => pdf(display)}><FileDown className="w-3.5 h-3.5 mr-1" /> Download PDF</Button>
             <Button variant="outline" size="sm" disabled={display.status === "Expired"} onClick={() => email(display)}><Mail className="w-3.5 h-3.5 mr-1" /> Email</Button>
             <Button variant="outline" size="sm" disabled={display.status === "Expired"} onClick={() => whatsapp(display)}><MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp</Button>
-            {["Sent", "Sent to Agent", "Customer Reviewing", "Draft", "In Progress"].includes(display.status) && display.status !== "Expired" && (
+            {["Sent to Agent", "Sent"].includes(display.status) && (
+              <Button variant="outline" size="sm" onClick={async () => {
+                try {
+                  await api.setQuotationStatus(display.id, "Customer Reviewing");
+                  await refresh();
+                  toast({ title: "Marked as Customer Reviewing" });
+                } catch (e) {
+                  toast({ title: "Update failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                }
+              }}>
+                <Eye className="w-3.5 h-3.5 mr-1" /> Mark Customer Reviewing
+              </Button>
+            )}
+            {["Sent", "Sent to Agent", "Customer Reviewing"].includes(display.status) && display.status !== "Expired" && (
               <Button variant="outline" size="sm" onClick={async () => {
                 try {
                   await api.acceptQuotation(display.id, { personName: display.customerName });
                   await refresh();
-                  toast({ title: "Quotation accepted", description: "Convert to Booking is now available for employees" });
+                  toast({
+                    title: isAgent ? "Quotation accepted" : "Customer acceptance recorded",
+                    description: isAgent ? "Trevio ops can convert this to a booking" : "Convert to Booking is now available for employees",
+                  });
                 } catch (e) {
                   toast({ title: "Accept failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
                 }
               }}>
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Accept Quote
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> {isAgent ? "Accept" : "Record acceptance"}
               </Button>
             )}
             {["Sent to Agent", "Customer Reviewing", "Sent"].includes(display.status) && (
-              <Button variant="outline" size="sm" onClick={async () => {
-                try {
-                  await api.requestQuotationRevision(display.id, { comments: "Please revise pricing / hotels" });
-                  await refresh();
-                  toast({ title: "Revision requested" });
-                } catch (e) {
-                  toast({ title: "Revision failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
-                }
-              }}>
-                Request Revision
-              </Button>
+              <>
+                <Button variant="outline" size="sm" onClick={() => { setDecisionComments(""); setDecisionOpen("revision"); }}>
+                  Request Revision
+                </Button>
+                <Button variant="outline" size="sm" className="text-rose-700 border-rose-200 hover:bg-rose-50" onClick={() => { setDecisionComments(""); setDecisionOpen("reject"); }}>
+                  <XCircle className="w-3.5 h-3.5 mr-1" /> Reject
+                </Button>
+              </>
             )}
             {!isAgent && (display.status === "Accepted" || display.status === "Converted to Booking") && (
               <Button
@@ -940,33 +1102,97 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
               <p className="text-xs text-destructive w-full">This quotation has expired. Extend validity and re-approve before sending or converting.</p>
             )}
             {!isAgent && ["Draft", "In Progress"].includes(display.status) && (
-              <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={async () => {
-                try {
-                  await api.submitQuotationApproval(display.id);
-                  await refresh();
-                  toast({ title: "Submitted for approval" });
-                } catch (e) {
-                  toast({ title: "Submit failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
-                }
-              }}>
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Submit Approval
-              </Button>
+              <div className="flex flex-wrap items-center gap-2 w-full">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground mr-auto">
+                  <input
+                    type="checkbox"
+                    checked={requireFinance}
+                    onChange={(e) => setRequireFinance(e.target.checked)}
+                  />
+                  Require Finance approval
+                </label>
+                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={async () => {
+                  try {
+                    await api.submitQuotationApproval(display.id, { financeApprovalRequired: requireFinance });
+                    await refresh();
+                    toast({ title: "Submitted for approval", description: "Executive Prep complete · awaiting Team Lead" });
+                  } catch (e) {
+                    toast({ title: "Submit failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
+                  }
+                }}>
+                  <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Submit Approval
+                </Button>
+              </div>
             )}
-            {!isAgent && display.status === "Pending Approval" && (
+            {!isAgent && display.status === "Pending Approval" && canApprovePending && pendingStage && (
               <Button size="sm" className="ml-auto" onClick={async () => {
                 try {
-                  await api.approveQuotation(display.id, { readyToSend: true, stage: "Team Lead" });
+                  await api.approveQuotation(display.id, { stage: pendingStage });
                   await refresh();
-                  toast({ title: "Approved & ready to send" });
+                  toast({ title: pendingStage === "Finance" ? "Finance approved · Ready to send" : "Team Lead approved" });
                 } catch (e) {
                   toast({ title: "Approve failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
                 }
               }}>
-                Approve & Send
+                Approve {pendingStage}
               </Button>
+            )}
+            {!isAgent && display.approvalStatus === "Approved" && latestStage(display, "Ready to Send")?.status === "Approved" && (
+              <Badge variant="outline" className="border-emerald-300 text-emerald-800 bg-emerald-50">Ready to Send</Badge>
             )}
           </div>
         </div>
+
+        <Dialog open={decisionOpen != null} onOpenChange={(v) => { if (!v) setDecisionOpen(null); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{decisionOpen === "reject" ? "Reject quotation" : "Request revision"}</DialogTitle>
+              <DialogDescription>
+                {decisionOpen === "reject"
+                  ? "Share why the customer is declining so the sales team can follow up."
+                  : "Tell the team what needs to change (hotels, price, dates, etc.)."}
+              </DialogDescription>
+            </DialogHeader>
+            <Textarea
+              rows={4}
+              placeholder={decisionOpen === "reject" ? "Reason for rejection…" : "Revision notes…"}
+              value={decisionComments}
+              onChange={(e) => setDecisionComments(e.target.value)}
+            />
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDecisionOpen(null)}>Cancel</Button>
+              <Button
+                disabled={decisionBusy || !decisionComments.trim()}
+                className={decisionOpen === "reject" ? "bg-rose-600 hover:bg-rose-700" : undefined}
+                onClick={async () => {
+                  if (!decisionOpen) return;
+                  setDecisionBusy(true);
+                  try {
+                    if (decisionOpen === "reject") {
+                      await api.rejectQuotation(display.id, { comments: decisionComments.trim() });
+                      toast({ title: "Quotation rejected" });
+                    } else {
+                      await api.requestQuotationRevision(display.id, { comments: decisionComments.trim() });
+                      toast({ title: "Revision requested" });
+                    }
+                    setDecisionOpen(null);
+                    await refresh();
+                  } catch (e) {
+                    toast({
+                      title: decisionOpen === "reject" ? "Reject failed" : "Revision failed",
+                      description: e instanceof ApiError ? e.message : "Error",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setDecisionBusy(false);
+                  }
+                }}
+              >
+                {decisionBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : decisionOpen === "reject" ? "Confirm reject" : "Submit revision"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );
@@ -978,7 +1204,9 @@ export function QuotationsView() {
   const user = useAuthStore((s) => s.user);
   const quotePrefill = useAppStore((s) => s.quotePrefill);
   const setQuotePrefill = useAppStore((s) => s.setQuotePrefill);
+  const setView = useAppStore((s) => s.setView);
   const quotations = useDemoDataStore((s) => s.quotations);
+  const leads = useDemoDataStore((s) => s.leads);
   const upsertQuotation = useDemoDataStore((s) => s.upsertQuotation);
   const hydrateFromApi = useDemoDataStore((s) => s.hydrateFromApi);
   const [selected, setSelected] = useState<Quotation | null>(null);
@@ -990,6 +1218,8 @@ export function QuotationsView() {
   const [quickQuoteOpen, setQuickQuoteOpen] = useState(false);
   const [agentQuoteOpen, setAgentQuoteOpen] = useState(false);
   const [tripComposerOpen, setTripComposerOpen] = useState(false);
+  const [fromEnquiryOpen, setFromEnquiryOpen] = useState(false);
+  const [enquiryLeadId, setEnquiryLeadId] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [sort, setSort] = useState("latest");
@@ -997,6 +1227,28 @@ export function QuotationsView() {
   const [travelTo, setTravelTo] = useState("");
   const [analytics, setAnalytics] = useState<Record<string, number | undefined>>({});
   const isAgent = user?.role === "travel_agent";
+
+  const enquiryLeads = useMemo(
+    () => leads.filter((l) => !["Won", "Lost"].includes(l.stage)).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [leads],
+  );
+
+  function openFromEnquiry(lead: Lead) {
+    setQuotePrefill({
+      leadId: lead.id,
+      customerName: lead.customerName,
+      contactEmail: lead.email,
+      contactPhone: lead.phone,
+      service: lead.service,
+      budget: lead.value,
+      enquiryRef: `LEAD-${lead.id.slice(-6)}`,
+    });
+    setEditWizardId(null);
+    setFromEnquiryOpen(false);
+    setEnquiryLeadId("");
+    setWizardOpen(true);
+    toast({ title: "Opening quotation wizard", description: `Prefilling from ${lead.customerName}` });
+  }
 
   useEffect(() => {
     if (!quotePrefill || isAgent) return;
@@ -1081,6 +1333,9 @@ export function QuotationsView() {
               <Button variant="outline" onClick={() => setTripComposerOpen(true)}>
                 <Sparkles className="w-4 h-4 mr-1" /> Compose trip
               </Button>
+              <Button variant="outline" onClick={() => setView("crm")}>
+                <FileText className="w-4 h-4 mr-1" /> Submit enquiry
+              </Button>
             </div>
           ) : !isAgent ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -1109,6 +1364,17 @@ export function QuotationsView() {
                     </span>
                     <span className="text-xs text-muted-foreground pl-5">
                       Packages, costing, and approval workflow
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
+                    onClick={() => setFromEnquiryOpen(true)}
+                  >
+                    <span className="font-medium flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5" /> From CRM enquiry
+                    </span>
+                    <span className="text-xs text-muted-foreground pl-5">
+                      Prefill customer, contact, budget from a lead
                     </span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
@@ -1149,6 +1415,61 @@ export function QuotationsView() {
               <ProductQuoteBuilderDialog open={productQuoteOpen} onOpenChange={setProductQuoteOpen} />
               <InternationalQuotationDialog open={intlQuoteOpen} onOpenChange={setIntlQuoteOpen} />
               <CreateQuotationDialog open={quickQuoteOpen} onOpenChange={setQuickQuoteOpen} />
+              <Dialog open={fromEnquiryOpen} onOpenChange={setFromEnquiryOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Create quote from enquiry</DialogTitle>
+                    <DialogDescription>
+                      Pick a CRM lead to prefill the quotation wizard.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {enquiryLeads.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No open leads found. Add an enquiry in CRM first.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-xs">Enquiry / lead</Label>
+                        <Select value={enquiryLeadId || "none"} onValueChange={(v) => setEnquiryLeadId(v === "none" ? "" : v)}>
+                          <SelectTrigger className="mt-1"><SelectValue placeholder="Select lead" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Select lead…</SelectItem>
+                            {enquiryLeads.map((l) => (
+                              <SelectItem key={l.id} value={l.id}>
+                                {l.customerName} · {l.service} · {l.stage} · {formatINR(l.value)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {enquiryLeadId && (() => {
+                        const lead = enquiryLeads.find((l) => l.id === enquiryLeadId);
+                        if (!lead) return null;
+                        return (
+                          <div className="rounded-lg border bg-muted/20 p-3 text-xs space-y-1">
+                            <p><span className="text-muted-foreground">Customer:</span> {lead.customerName}</p>
+                            <p><span className="text-muted-foreground">Contact:</span> {lead.email || "—"} · {lead.phone || "—"}</p>
+                            <p><span className="text-muted-foreground">Budget:</span> {formatINR(lead.value)}</p>
+                            <p><span className="text-muted-foreground">Enquiry ref:</span> LEAD-{lead.id.slice(-6)}</p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setFromEnquiryOpen(false)}>Cancel</Button>
+                    <Button
+                      disabled={!enquiryLeadId}
+                      className="bg-teal-600 hover:bg-teal-700"
+                      onClick={() => {
+                        const lead = enquiryLeads.find((l) => l.id === enquiryLeadId);
+                        if (lead) openFromEnquiry(lead);
+                      }}
+                    >
+                      Open wizard
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </div>
           ) : undefined
         }

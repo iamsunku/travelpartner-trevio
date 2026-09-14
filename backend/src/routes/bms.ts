@@ -64,7 +64,11 @@ function sanitizeBookingForRole<T>(booking: T, role?: string): T {
     clone.supplierPayouts = [];
   }
   if (Array.isArray(clone.documents)) {
-    clone.documents = filterDocumentsForRole(clone.documents as Array<{ visibility?: unknown }>, role);
+    const bookingId = typeof clone.id === "string" ? clone.id : "";
+    clone.documents = filterDocumentsForRole(clone.documents as Array<{ id?: string; visibility?: unknown }>, role).map((doc) => ({
+      ...doc,
+      ...(bookingId && doc.id ? { downloadPath: `/api/bookings/${bookingId}/documents/${doc.id}/content` } : {}),
+    }));
   }
   return clone as T;
 }

@@ -27,6 +27,10 @@ export type QuoteAccessShape = {
 
 const TEAM_LEAD_APPROVERS = new Set(["team_lead", "branch_manager", "agency_admin", "super_admin"]);
 const FINANCE_APPROVERS = new Set(["accountant", "management", "agency_admin", "super_admin"]);
+const EXEC_PREP_ROLES = new Set([
+  "sales_executive", "employee", "product_executive", "team_lead",
+  "branch_manager", "agency_admin", "super_admin", "management",
+]);
 
 const ALREADY_RELEASED = new Set([
   "Sent to Agent",
@@ -54,6 +58,9 @@ export function agentCanAccessQuote(
 export function canApproveStage(role: string | undefined, stage: string): boolean {
   if (stage === "Finance") return FINANCE_APPROVERS.has(role || "");
   if (stage === "Team Lead") return TEAM_LEAD_APPROVERS.has(role || "");
+  if (stage === "Discount") return TEAM_LEAD_APPROVERS.has(role || "") || role === "management";
+  if (stage === "Executive Prep") return EXEC_PREP_ROLES.has(role || "");
+  if (stage === "Ready to Send") return TEAM_LEAD_APPROVERS.has(role || "") || FINANCE_APPROVERS.has(role || "");
   return false;
 }
 
@@ -80,6 +87,10 @@ function approvalIncompleteReason(quote: QuoteAccessShape): string | null {
   if (finance && finance.status !== "Approved") {
     return "Finance approval is required before this quotation can be sent.";
   }
+  const ready = latestApproval(quote.approvals, "Ready to Send");
+  if (ready && ready.status !== "Approved") {
+    return "Quotation must be marked Ready to Send before it can be shared.";
+  }
   return null;
 }
 
@@ -95,6 +106,13 @@ export function quoteSendBlockReason(quote: QuoteAccessShape, now: Date = new Da
   const pastValidity = quotePastValidityBlockReason(quote, now);
   if (pastValidity) {
     return "This quotation’s validity date has passed. Renew before sending.";
+  }
+  // Discount stage Pending/Rejected blocks send even if Team Lead / Finance already cleared.
+  const discountPending = (quote.approvals || []).some(
+    (a) => a.stage === "Discount" && (a.status === "Pending" || a.status === "Rejected"),
+  );
+  if (discountPending) {
+    return "Discount approval is pending or was rejected. Resolve it before sending.";
   }
   if (ALREADY_RELEASED.has(status) && quote.approvalStatus === "Approved") {
     return approvalIncompleteReason(quote);

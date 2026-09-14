@@ -135,7 +135,11 @@ export function getNavForUser(user: Pick<User, "role" | "permissions" | "product
         if ((item.key === "holiday" || item.key === "packages") && !canBookProduct(user, "packages")) return false;
       }
       return !item.module || hasPermission(user, item.module);
-    }),
+    }).map((item) => (
+      user.role === "travel_agent" && item.key === "crm"
+        ? { ...item, label: "My Enquiries" }
+        : item
+    )),
   })).filter((section) => section.items.length > 0);
 }
 

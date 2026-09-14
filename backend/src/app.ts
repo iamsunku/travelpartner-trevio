@@ -882,7 +882,14 @@ app.post("/api/customers", requireAuth, requirePermission("customers"), validate
 
 app.get("/api/leads", requireAuth, requirePermission("crm"), async (req: AuthRequest, res) => {
   try {
-    const leads = await db.lead.findMany({ where: { ...agencyScope(req), ...branchScope(req, "assignedToId") }, orderBy: { createdAt: "desc" }, take: 200 });
+    const agentOnly = req.auth?.role === "travel_agent"
+      ? { assignedToId: req.auth.userId }
+      : {};
+    const leads = await db.lead.findMany({
+      where: { ...agencyScope(req), ...branchScope(req, "assignedToId"), ...agentOnly },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
     res.json({ leads, total: leads.length });
   } catch (e) {
     logger.error(e);
@@ -893,19 +900,22 @@ app.get("/api/leads", requireAuth, requirePermission("crm"), async (req: AuthReq
 app.post("/api/leads", requireAuth, requirePermission("crm"), validate(leadSchema), async (req: AuthRequest, res) => {
   try {
     const body = req.body;
+    const isAgent = req.auth?.role === "travel_agent";
     const lead = await db.lead.create({
       data: {
         customerName: body.customerName,
         email: body.email || "",
         phone: body.phone || "",
-        source: body.source,
+        source: isAgent ? (body.source || "Referral") : body.source,
         service: body.service,
         value: body.value,
         stage: body.stage || "New",
-        assignedTo: body.assignedTo || "Unassigned",
+        assignedTo: isAgent
+          ? (req.auth?.email || body.assignedTo || "Agent")
+          : (body.assignedTo || "Unassigned"),
         assignedToId: req.auth?.userId,
         expectedClose: body.expectedClose || new Date().toISOString().slice(0, 10),
-        notes: body.notes || "",
+        notes: body.notes || (isAgent ? "Submitted via Agent Portal" : ""),
         agencyId: ownAgencyId(req),
         branchId: ownBranchId(req),
       },
@@ -920,8 +930,11 @@ app.post("/api/leads", requireAuth, requirePermission("crm"), validate(leadSchem
 app.patch("/api/leads/:id", requireAuth, requirePermission("crm"), async (req: AuthRequest, res) => {
   try {
     const id = routeParamId(req);
+    const agentOnly = req.auth?.role === "travel_agent"
+      ? { assignedToId: req.auth.userId }
+      : {};
     const existing = await db.lead.findFirst({
-      where: { id, ...agencyScope(req), ...branchScope(req, "assignedToId") },
+      where: { id, ...agencyScope(req), ...branchScope(req, "assignedToId"), ...agentOnly },
     });
     if (!existing) {
       res.status(404).json({ error: "Not found" });

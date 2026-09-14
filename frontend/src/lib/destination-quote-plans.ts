@@ -331,15 +331,145 @@ export const THAILAND_4N_PLAN: DestinationQuotePlan = {
   ],
 };
 
-function skeletonPlan(opts: {
+function destinationPackage(opts: {
+  name: string;
+  selected?: boolean;
+  sortOrder: number;
+  description: string;
+  hotelName: string;
+  star: string;
+  roomType: string;
+  city: string;
+  nights: number;
+  hotelCost: number;
+  hotelSell: number;
+  imageUrl?: string;
+  dayTitles: string[];
+  inclusions: string[];
+  exclusions: string[];
+  visa?: boolean;
+}): QuotationPackage {
+  const days = opts.dayTitles.length;
+  return {
+    name: opts.name,
+    isSelected: Boolean(opts.selected),
+    sortOrder: opts.sortOrder,
+    description: opts.description,
+    hotels: [
+      {
+        hotelName: opts.hotelName,
+        starCategory: opts.star,
+        roomType: opts.roomType,
+        mealPlan: "Breakfast",
+        checkIn: "",
+        checkOut: "",
+        rooms: 1,
+        nights: opts.nights,
+        city: opts.city,
+        address: "",
+        rating: opts.star,
+        imageUrl: opts.imageUrl || "",
+        costPrice: opts.hotelCost,
+        sellingPrice: opts.hotelSell,
+      },
+    ],
+    flights: [
+      {
+        airline: "To be confirmed",
+        flightNumber: "TBA",
+        from: "BLR",
+        to: opts.city.slice(0, 3).toUpperCase(),
+        date: "",
+        depTime: "",
+        arrTime: "",
+        cabinClass: opts.name === "Economy" ? "Economy" : opts.name === "Luxury" ? "Business" : "Economy",
+        costPrice: opts.name === "Luxury" ? 45000 : 28000,
+        sellingPrice: opts.name === "Luxury" ? 52000 : 34000,
+        fare: opts.name === "Luxury" ? 52000 : 34000,
+        qty: 2,
+      },
+    ],
+    transfers: [
+      {
+        transferType: "Airport Pickup",
+        vehicleType: opts.name === "Economy" ? "Sedan" : "SUV",
+        pickup: "Airport",
+        drop: "Hotel",
+        date: "",
+        costPrice: 1500,
+        sellingPrice: 2500,
+        source: "MANUAL",
+      },
+    ],
+    activities: [],
+    meals: [],
+    itinerary: opts.dayTitles.map((title, i) => ({
+      day: i + 1,
+      title,
+      city: opts.city,
+      mealPlan: i === 0 ? "Dinner" : i === days - 1 ? "Breakfast" : "Breakfast",
+      coverImage: opts.imageUrl || "",
+      gallery: [],
+      items: [
+        {
+          activityName: i === 0 ? "Arrival & hotel check-in" : i === days - 1 ? "Checkout & departure" : "Sightseeing / leisure",
+          description: "",
+          pickupTime: "",
+          duration: "",
+          vehicle: "",
+          guide: "",
+          voucher: "",
+          remarks: "",
+        },
+      ],
+    })),
+    visa: {
+      enabled: opts.visa !== false,
+      visaType: "Tourist",
+      entryType: "Single Entry",
+      sellingPrice: 0,
+      costPrice: 0,
+      remarks: "Confirm visa eligibility before ticketing.",
+    },
+    insurance: { enabled: false, provider: "", planName: "", sellingPrice: 0, costPrice: 0 },
+    addOns: [],
+    inclusions: opts.inclusions,
+    exclusions: opts.exclusions,
+  };
+}
+
+function multiTierPlan(opts: {
   id: string;
   label: string;
   destination: string;
   country: string;
   nights: number;
-  international?: boolean;
+  coverImage: string;
+  city: string;
+  dayTitles: string[];
+  tiers: Array<{
+    name: string;
+    hotelName: string;
+    star: string;
+    roomType: string;
+    hotelCost: number;
+    hotelSell: number;
+  }>;
+  specialRequests?: string;
 }): DestinationQuotePlan {
   const days = opts.nights + 1;
+  const baseIncl = [
+    "Accommodation with breakfast",
+    `${opts.nights} nights stay`,
+    "Airport transfers (arrival & departure)",
+    "Sightseeing as stated in the itinerary",
+  ];
+  const baseExcl = [
+    "Flights unless listed as confirmed",
+    "Early check-in / late check-out",
+    "Personal expenses & tips",
+    "Travel insurance unless opted",
+  ];
   return {
     id: opts.id,
     label: opts.label,
@@ -347,74 +477,175 @@ function skeletonPlan(opts: {
     form: {
       destination: opts.destination,
       country: opts.country,
-      isInternational: opts.international ?? true,
+      isInternational: true,
       adults: 2,
       children: 0,
       infants: 0,
       currency: "INR",
-      specialRequests: "Quote subject to availability. Confirm passport validity before ticketing.",
+      coverImage: opts.coverImage,
+      specialRequests: opts.specialRequests || "Twin/double sharing. Subject to availability until confirmed.",
       termsAndConditions:
-        `Sample ${opts.destination} itinerary template. Rates subject to availability. Not a confirmed booking.`,
+        `Applicable taxes follow configured Tax Rules. ${opts.destination} quote on twin/double sharing. Passport must be valid 6 months after return.`,
       paymentTerms: "50% advance to confirm. Balance before travel as per supplier policy.",
-      cancellationPolicy: "Cancellation charges follow hotel, airline and ground-supplier policies.",
-      refundPolicy: "Refunds processed after supplier confirmation, typically within 15 working days.",
+      cancellationPolicy: "Cancellation charges follow hotel, airline and ground-supplier policies. Notify in writing.",
+      refundPolicy: "Refunds (if any) after supplier confirmation, typically within 15 working days.",
     },
-    packages: [
-      {
-        name: "Standard",
-        isSelected: true,
-        sortOrder: 0,
-        description: `${opts.destination} ${opts.nights}N / ${days}D starter template`,
-        hotels: [],
-        flights: [],
-        transfers: [],
-        activities: [],
-        meals: [],
-        itinerary: Array.from({ length: days }, (_, i) => ({
-          day: i + 1,
-          title: `Day ${i + 1}`,
-          city: opts.destination,
-          mealPlan: i === 0 ? "Dinner" : "Breakfast",
-          coverImage: "",
-          gallery: [],
-          items: [
-            {
-              activityName: i === 0 ? "Arrival & transfer" : i === days - 1 ? "Departure" : "Sightseeing / leisure",
-              description: "",
-              pickupTime: "",
-              duration: "",
-              vehicle: "",
-              guide: "",
-              voucher: "",
-              remarks: "",
-            },
-          ],
-        })),
-        visa: {
-          enabled: Boolean(opts.international),
-          visaType: "Tourist",
-          entryType: "Single Entry",
-          sellingPrice: 0,
-          costPrice: 0,
-          remarks: "Catalogue template only — confirm visa eligibility independently.",
-        },
-        insurance: { enabled: false, provider: "", planName: "", sellingPrice: 0, costPrice: 0 },
-        addOns: [],
-        inclusions: ["Accommodation as selected", "Transfers as selected", "Sightseeing as stated"],
-        exclusions: ["Flights unless listed", "Personal expenses", "Travel insurance unless listed"],
-      },
-    ],
+    packages: opts.tiers.map((tier, i) =>
+      destinationPackage({
+        name: tier.name,
+        selected: i === 0,
+        sortOrder: i,
+        description: `${opts.destination} ${opts.nights}N / ${days}D — ${tier.name}`,
+        hotelName: tier.hotelName,
+        star: tier.star,
+        roomType: tier.roomType,
+        city: opts.city,
+        nights: opts.nights,
+        hotelCost: tier.hotelCost,
+        hotelSell: tier.hotelSell,
+        imageUrl: opts.coverImage,
+        dayTitles: opts.dayTitles,
+        inclusions: baseIncl,
+        exclusions: baseExcl,
+        visa: true,
+      }),
+    ),
   };
 }
 
 export const DESTINATION_QUOTE_PLANS: DestinationQuotePlan[] = [
   THAILAND_4N_PLAN,
-  skeletonPlan({ id: "singapore-3n", label: "Singapore 3N 4D", destination: "Singapore", country: "Singapore", nights: 3 }),
-  skeletonPlan({ id: "malaysia-4n", label: "Malaysia 4N 5D — Kuala Lumpur", destination: "Kuala Lumpur", country: "Malaysia", nights: 4 }),
-  skeletonPlan({ id: "bali-5n", label: "Bali 5N 6D", destination: "Bali", country: "Indonesia", nights: 5 }),
-  skeletonPlan({ id: "vietnam-5n", label: "Vietnam 5N 6D — Da Nang / Hoi An", destination: "Da Nang", country: "Vietnam", nights: 5 }),
-  skeletonPlan({ id: "dubai-4n", label: "Dubai 4N 5D", destination: "Dubai", country: "UAE", nights: 4 }),
-  skeletonPlan({ id: "europe-7n", label: "Europe 7N 8D starter", destination: "Paris", country: "France", nights: 7 }),
+  multiTierPlan({
+    id: "singapore-3n",
+    label: "Singapore 3N 4D",
+    destination: "Singapore",
+    country: "Singapore",
+    nights: 3,
+    city: "Singapore",
+    coverImage: "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?auto=format&fit=crop&w=1600&q=80",
+    dayTitles: [
+      "Day 1: Arrival & Marina Bay",
+      "Day 2: Sentosa & Universal Studios",
+      "Day 3: Gardens by the Bay & city tour",
+      "Day 4: Departure",
+    ],
+    tiers: [
+      { name: "Economy", hotelName: "Hotel Boss or similar", star: "3", roomType: "Superior", hotelCost: 18000, hotelSell: 24000 },
+      { name: "Deluxe", hotelName: "Parkroyal Collection Marina Bay or similar", star: "4", roomType: "Deluxe", hotelCost: 32000, hotelSell: 42000 },
+      { name: "Premium", hotelName: "Marina Bay Sands or similar", star: "5", roomType: "Deluxe Room", hotelCost: 55000, hotelSell: 72000 },
+    ],
+  }),
+  multiTierPlan({
+    id: "malaysia-4n",
+    label: "Malaysia 4N 5D — Kuala Lumpur",
+    destination: "Kuala Lumpur",
+    country: "Malaysia",
+    nights: 4,
+    city: "Kuala Lumpur",
+    coverImage: "https://images.unsplash.com/photo-1596422846543-75c6fc7107f2?auto=format&fit=crop&w=1600&q=80",
+    dayTitles: [
+      "Day 1: Arrival & Petronas Twin Towers",
+      "Day 2: Batu Caves & city highlights",
+      "Day 3: Genting Highlands day trip",
+      "Day 4: Shopping & leisure",
+      "Day 5: Departure",
+    ],
+    tiers: [
+      { name: "Economy", hotelName: "Hotel Sentral Pudu or similar", star: "3", roomType: "Standard", hotelCost: 12000, hotelSell: 16000 },
+      { name: "Deluxe", hotelName: "Pavilion Hotel Kuala Lumpur or similar", star: "4", roomType: "Deluxe", hotelCost: 22000, hotelSell: 30000 },
+      { name: "Premium", hotelName: "Mandarin Oriental KL or similar", star: "5", roomType: "Deluxe", hotelCost: 40000, hotelSell: 52000 },
+    ],
+  }),
+  multiTierPlan({
+    id: "bali-5n",
+    label: "Bali 5N 6D",
+    destination: "Bali",
+    country: "Indonesia",
+    nights: 5,
+    city: "Bali",
+    coverImage: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=1600&q=80",
+    dayTitles: [
+      "Day 1: Arrival Ubud / Seminyak",
+      "Day 2: Ubud temples & rice terraces",
+      "Day 3: Uluwatu & Kecak dance",
+      "Day 4: Nusa Penida or leisure beach",
+      "Day 5: Spa & shopping",
+      "Day 6: Departure",
+    ],
+    tiers: [
+      { name: "Economy", hotelName: "Harris Hotel Seminyak or similar", star: "3", roomType: "Superior", hotelCost: 16000, hotelSell: 22000 },
+      { name: "Deluxe", hotelName: "Padma Resort Legian or similar", star: "4", roomType: "Deluxe", hotelCost: 30000, hotelSell: 40000 },
+      { name: "Luxury", hotelName: "Four Seasons Jimbaran or similar", star: "5", roomType: "Garden Villa", hotelCost: 70000, hotelSell: 95000 },
+    ],
+  }),
+  multiTierPlan({
+    id: "vietnam-5n",
+    label: "Vietnam 5N 6D — Da Nang / Hoi An",
+    destination: "Da Nang",
+    country: "Vietnam",
+    nights: 5,
+    city: "Da Nang",
+    coverImage: "https://images.unsplash.com/photo-1583417319070-4a69db38a482?auto=format&fit=crop&w=1600&q=80",
+    dayTitles: [
+      "Day 1: Arrival Da Nang",
+      "Day 2: Ba Na Hills & Golden Bridge",
+      "Day 3: Hoi An ancient town",
+      "Day 4: Marble Mountains & My Khe beach",
+      "Day 5: Leisure / optional Hue",
+      "Day 6: Departure",
+    ],
+    tiers: [
+      { name: "Economy", hotelName: "Cicilia Hotels & Resort Da Nang or similar", star: "3", roomType: "Superior", hotelCost: 14000, hotelSell: 19000 },
+      { name: "Deluxe", hotelName: "Vinpearl Resort & Spa Da Nang or similar", star: "4", roomType: "Deluxe Ocean", hotelCost: 28000, hotelSell: 38000 },
+      { name: "Premium", hotelName: "InterContinental Da Nang or similar", star: "5", roomType: "Lantern Suite", hotelCost: 55000, hotelSell: 72000 },
+    ],
+  }),
+  multiTierPlan({
+    id: "dubai-4n",
+    label: "Dubai 4N 5D",
+    destination: "Dubai",
+    country: "UAE",
+    nights: 4,
+    city: "Dubai",
+    coverImage: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1600&q=80",
+    dayTitles: [
+      "Day 1: Arrival & Dubai Marina",
+      "Day 2: Desert safari & BBQ dinner",
+      "Day 3: Burj Khalifa & Dubai Mall",
+      "Day 4: Abu Dhabi day trip or leisure",
+      "Day 5: Departure",
+    ],
+    tiers: [
+      { name: "Economy", hotelName: "Citymax Hotel Bur Dubai or similar", star: "3", roomType: "Standard", hotelCost: 20000, hotelSell: 27000 },
+      { name: "Deluxe", hotelName: "Pullman Dubai Downtown or similar", star: "4", roomType: "Deluxe", hotelCost: 38000, hotelSell: 50000 },
+      { name: "Luxury", hotelName: "Atlantis The Palm or similar", star: "5", roomType: "Ocean Room", hotelCost: 75000, hotelSell: 98000 },
+    ],
+  }),
+  multiTierPlan({
+    id: "europe-7n",
+    label: "Europe 7N 8D — Paris starter",
+    destination: "Paris",
+    country: "France",
+    nights: 7,
+    city: "Paris",
+    coverImage: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1600&q=80",
+    dayTitles: [
+      "Day 1: Arrival Paris",
+      "Day 2: Louvre & Seine cruise",
+      "Day 3: Eiffel Tower & Champ de Mars",
+      "Day 4: Versailles day trip",
+      "Day 5: Montmartre & shopping",
+      "Day 6: Disneyland Paris (optional)",
+      "Day 7: Leisure / museums",
+      "Day 8: Departure",
+    ],
+    specialRequests: "Schengen visa required. Twin sharing. Euro rail / city passes optional add-ons.",
+    tiers: [
+      { name: "Economy", hotelName: "Ibis Styles Paris or similar", star: "3", roomType: "Standard", hotelCost: 45000, hotelSell: 58000 },
+      { name: "Deluxe", hotelName: "Mercure Paris Centre or similar", star: "4", roomType: "Superior", hotelCost: 70000, hotelSell: 90000 },
+      { name: "Premium", hotelName: "Hotel Plaza Athénée or similar", star: "5", roomType: "Deluxe", hotelCost: 140000, hotelSell: 180000 },
+    ],
+  }),
 ];
 
 export function getDestinationQuotePlan(id: string) {

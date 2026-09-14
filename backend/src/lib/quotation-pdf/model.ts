@@ -55,6 +55,27 @@ export type QuotationPdfPackage = {
     date?: string;
     description?: string;
   }>;
+  visa?: {
+    enabled: boolean;
+    visaType?: string;
+    entryType?: string;
+    processingTime?: string;
+    documentsRequired?: string;
+    appointmentRequired?: boolean;
+    appointmentNote?: string;
+    remarks?: string;
+    feeLabel?: string;
+  } | null;
+  insurance?: {
+    enabled: boolean;
+    provider?: string;
+    planName?: string;
+    coverage?: string;
+    validity?: string;
+    policyNumber?: string;
+    remarks?: string;
+    premiumLabel?: string;
+  } | null;
   itinerary: Array<{
     day?: number | string;
     title?: string;
@@ -300,6 +321,41 @@ function mapItinerary(rows: Record<string, unknown>[]) {
   }));
 }
 
+function mapVisa(raw: unknown): QuotationPdfPackage["visa"] {
+  const visa = asRecord(raw);
+  if (!visa || !visa.enabled) return null;
+  const fee = moneyNumber(visa.sellingPrice ?? visa.premium);
+  const currency = str(visa.currency, "INR") || "INR";
+  return {
+    enabled: true,
+    visaType: str(visa.visaType) || undefined,
+    entryType: str(visa.entryType) || undefined,
+    processingTime: str(visa.processingTime) || undefined,
+    documentsRequired: str(visa.documentsRequired) || undefined,
+    appointmentRequired: Boolean(visa.appointmentRequired),
+    appointmentNote: str(visa.appointmentNote) || undefined,
+    remarks: str(visa.remarks || visa.notes || visa.description) || undefined,
+    feeLabel: fee > 0 ? `${currency} ${fee.toLocaleString("en-IN")}` : undefined,
+  };
+}
+
+function mapInsurance(raw: unknown): QuotationPdfPackage["insurance"] {
+  const insurance = asRecord(raw);
+  if (!insurance || !insurance.enabled) return null;
+  const premium = moneyNumber(insurance.premium ?? insurance.sellingPrice);
+  const currency = str(insurance.currency, "INR") || "INR";
+  return {
+    enabled: true,
+    provider: str(insurance.provider) || undefined,
+    planName: str(insurance.planName) || undefined,
+    coverage: str(insurance.coverage) || undefined,
+    validity: str(insurance.validity) || undefined,
+    policyNumber: str(insurance.policyNumber) || undefined,
+    remarks: str(insurance.remarks || insurance.notes || insurance.description) || undefined,
+    premiumLabel: premium > 0 ? `${currency} ${premium.toLocaleString("en-IN")}` : undefined,
+  };
+}
+
 function mapPackage(pkg: Record<string, unknown>, quote: Record<string, unknown>): QuotationPdfPackage {
   const inclusions = Array.isArray(pkg.inclusions) && pkg.inclusions.length
     ? pkg.inclusions.map(String)
@@ -315,6 +371,8 @@ function mapPackage(pkg: Record<string, unknown>, quote: Record<string, unknown>
     transfers: mapTransfers(asArr(pkg.transfers)),
     activities: mapActivities(asArr(pkg.activities)),
     meals: mapMeals(asArr(pkg.meals)),
+    visa: mapVisa(pkg.visa),
+    insurance: mapInsurance(pkg.insurance),
     itinerary: mapItinerary(asArr(pkg.itinerary)),
     inclusions,
     exclusions,

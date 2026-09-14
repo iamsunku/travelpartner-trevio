@@ -193,6 +193,103 @@ export function maxDiscountPercent(role?: string): number {
   return 5;
 }
 
+/** Fixed-INR discount ceiling before manager approval is required. */
+export function maxDiscountFixed(role?: string): number {
+  if (!role) return 5_000;
+  if (["super_admin", "agency_admin"].includes(role)) return Number.POSITIVE_INFINITY;
+  if (["branch_manager", "management", "team_lead"].includes(role)) return 50_000;
+  if (["sales_executive", "employee", "accountant"].includes(role)) return 10_000;
+  return 5_000;
+}
+
+export function discountRequiresApproval(
+  role: string | undefined,
+  discountType?: string | null,
+  discountValue?: number | null,
+): boolean {
+  const value = Number(discountValue || 0);
+  if (!discountType || value <= 0) return false;
+  if (["super_admin", "agency_admin"].includes(role || "")) return false;
+  if (discountType === "Percentage") return value > maxDiscountPercent(role);
+  if (discountType === "Fixed") return value > maxDiscountFixed(role);
+  return false;
+}
+
+export function canApproveDiscount(role?: string): boolean {
+  return ["super_admin", "agency_admin", "branch_manager", "management", "team_lead"].includes(role || "");
+}
+
+export function latestApprovalStage(
+  approvals: Array<{ stage?: string | null; status?: string | null }> | null | undefined,
+  stage: string,
+): { stage?: string | null; status?: string | null } | undefined {
+  if (!Array.isArray(approvals)) return undefined;
+  for (let i = approvals.length - 1; i >= 0; i -= 1) {
+    if (approvals[i]?.stage === stage) return approvals[i];
+  }
+  return undefined;
+}
+
+/** Blocks Team Lead / send flows while a discount request is outstanding. */
+export function discountApprovalBlockReason(
+  quote: {
+    discountType?: string | null;
+    discountValue?: number | null;
+    approvals?: Array<{ stage?: string | null; status?: string | null }> | null;
+  },
+  actorRole?: string,
+): string | null {
+  const disc = latestApprovalStage(quote.approvals, "Discount");
+  if (disc?.status === "Pending") {
+    return "Discount approval is pending. A manager must approve the discount before continuing.";
+  }
+  if (disc?.status === "Rejected") {
+    return "Discount was rejected. Reduce the discount or request approval again.";
+  }
+  // If discount currently exceeds what this actor can set alone and there is no Approved Discount row.
+  if (discountRequiresApproval(actorRole, quote.discountType, quote.discountValue) && disc?.status !== "Approved") {
+    return "This discount exceeds your approval limit. Request discount approval first.";
+  }
+  return null;
+}
+
+export type DiscountApprovalAction =
+  | { action: "none" }
+  | { action: "create"; status: "Pending" | "Approved"; comments: string };
+
+/** Decide whether to append a Discount approval row after a discount change. */
+export function nextDiscountApprovalAction(opts: {
+  role?: string;
+  discountType?: string | null;
+  discountValue?: number | null;
+  latestDiscountStatus?: string | null;
+  /** When false, an existing Approved Discount is kept if still over limit. */
+  discountChanged?: boolean;
+}): DiscountApprovalAction {
+  const needs = discountRequiresApproval(opts.role, opts.discountType, opts.discountValue);
+  const latest = opts.latestDiscountStatus || null;
+  const label = `${opts.discountType || "Discount"} ${opts.discountValue ?? 0}`;
+  const changed = opts.discountChanged !== false;
+
+  if (!needs) {
+    if (latest === "Pending" || latest === "Rejected") {
+      return { action: "create", status: "Approved", comments: "Discount within approval limit — auto-cleared" };
+    }
+    return { action: "none" };
+  }
+
+  if (canApproveDiscount(opts.role)) {
+    if (latest !== "Approved") {
+      return { action: "create", status: "Approved", comments: `${label} — within manager authority` };
+    }
+    return { action: "none" };
+  }
+
+  if (latest === "Pending") return { action: "none" };
+  if (latest === "Approved" && !changed) return { action: "none" };
+  return { action: "create", status: "Pending", comments: `Request: ${label}` };
+}
+
 export function isAgentLike(role?: string): boolean {
   return role === "travel_agent" || role === "customer";
 }
@@ -220,7 +317,12 @@ function stripSensitive(value: unknown, hideAgentMarkup: boolean): unknown {
 
 function scrubDocuments<T extends Record<string, unknown>>(quote: T, role?: string): T {
   if (!Array.isArray(quote.documents)) return quote;
-  return { ...quote, documents: filterDocumentsForRole(quote.documents as Array<{ visibility?: unknown }>, role) };
+  const quoteId = typeof quote.id === "string" ? quote.id : "";
+  const documents = filterDocumentsForRole(quote.documents as Array<{ id?: string; visibility?: unknown }>, role).map((doc) => ({
+    ...doc,
+    ...(quoteId && doc.id ? { downloadPath: `/api/quotations/${quoteId}/documents/${doc.id}/content` } : {}),
+  }));
+  return { ...quote, documents };
 }
 
 /** Strip confidential fields for agents/customers. Customers see selling price only. */

@@ -172,6 +172,84 @@ export default function CustomerQuotationPage() {
                 </dl>
               </section>
 
+              {(quote.packages?.length || 0) > 1 && (
+                <section className="rounded-xl border bg-white/90 p-5 shadow-sm overflow-x-auto">
+                  <h2 className="font-semibold">Compare packages</h2>
+                  <p className="mt-1 text-sm text-slate-600">Side-by-side overview — pick the option that fits your trip.</p>
+                  <table className="mt-4 w-full min-w-[520px] border-collapse text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th className="py-2 pr-3 font-medium">Feature</th>
+                        {quote.packages!.map((pkg) => (
+                          <th key={pkg.id || pkg.name} className="py-2 px-2 font-medium text-slate-800 normal-case tracking-normal">
+                            <div className="flex flex-col gap-1">
+                              <span>{pkg.name}</span>
+                              {quote.canRespond && (
+                                <label className="flex items-center gap-1.5 text-[11px] font-normal text-sky-800">
+                                  <input
+                                    type="radio"
+                                    name="pkg-compare"
+                                    checked={selectedPackageId === pkg.id}
+                                    onChange={() => setSelectedPackageId(pkg.id)}
+                                  />
+                                  Select
+                                </label>
+                              )}
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="align-top">
+                      <tr className="border-b">
+                        <td className="py-2 pr-3 text-slate-500">Total</td>
+                        {quote.packages!.map((pkg) => (
+                          <td key={`t-${pkg.id || pkg.name}`} className="py-2 px-2 font-semibold text-sky-900">
+                            {money(pkg.total, quote.currency)}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2 pr-3 text-slate-500">Hotels</td>
+                        {quote.packages!.map((pkg) => (
+                          <td key={`h-${pkg.id || pkg.name}`} className="py-2 px-2">
+                            {(pkg.hotels?.length || 0) > 0
+                              ? pkg.hotels!.map((h) => [h.hotelName, h.roomType, h.mealPlan].filter(Boolean).join(" · ")).join("; ")
+                              : "—"}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2 pr-3 text-slate-500">Flights</td>
+                        {quote.packages!.map((pkg) => (
+                          <td key={`f-${pkg.id || pkg.name}`} className="py-2 px-2">
+                            {(pkg.flights?.length || 0) > 0
+                              ? pkg.flights!.map((f) => `${f.airline || ""} ${f.from || ""}→${f.to || ""}`.trim()).join("; ")
+                              : "—"}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2 pr-3 text-slate-500">Itinerary days</td>
+                        {quote.packages!.map((pkg) => (
+                          <td key={`i-${pkg.id || pkg.name}`} className="py-2 px-2">
+                            {pkg.itinerary?.length || 0}
+                          </td>
+                        ))}
+                      </tr>
+                      <tr className="border-b">
+                        <td className="py-2 pr-3 text-slate-500">Key inclusions</td>
+                        {quote.packages!.map((pkg) => (
+                          <td key={`inc-${pkg.id || pkg.name}`} className="py-2 px-2 text-xs text-slate-700">
+                            {(pkg.inclusions || []).slice(0, 4).join(" · ") || "—"}
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </section>
+              )}
+
               {(quote.packages || []).map((pkg) => (
                 <section key={pkg.id || pkg.name} className="rounded-xl border bg-white/90 p-5 shadow-sm">
                   <div className="flex items-center justify-between gap-2">

@@ -22,7 +22,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { useDemoDataStore } from "@/store/demo-data-store";
-import { useAppStore } from "@/store/app-store";
+import { useAppStore, useAuthStore } from "@/store/app-store";
 import { ApiError } from "@/lib/api";
 import { isValidEmail, isValidPhone } from "@/lib/field-validation";
 import type { Lead } from "@/types";
@@ -183,12 +183,14 @@ function KanbanColumn({
 
 function NewLeadDialog() {
   const { toast } = useToast();
+  const user = useAuthStore((s) => s.user);
+  const isAgent = user?.role === "travel_agent";
   const addLead = useDemoDataStore((s) => s.addLead);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     customerName: "", email: "", phone: "", source: "Website",
-    service: "Holiday", value: "", assignedTo: "Sneha Reddy", expectedClose: "",
+    service: "Holiday", value: "", assignedTo: "Sneha Reddy", expectedClose: "", notes: "",
   });
 
   async function handleSubmit() {
@@ -214,22 +216,24 @@ function NewLeadDialog() {
         customerName: form.customerName,
         email: form.email,
         phone: form.phone,
-        source: form.source as Lead["source"],
+        source: (isAgent ? "Referral" : form.source) as Lead["source"],
         service: form.service as Lead["service"],
         value: Number(form.value),
-        assignedTo: form.assignedTo,
+        assignedTo: isAgent ? (user?.name || user?.email || "Agent") : form.assignedTo,
         expectedClose: form.expectedClose || new Date().toISOString().slice(0, 10),
-        notes: "",
+        notes: isAgent
+          ? [form.notes.trim(), "Submitted via Agent Portal"].filter(Boolean).join(" — ")
+          : "",
       });
       toast({
-        title: "Lead created",
+        title: isAgent ? "Enquiry submitted" : "Lead created",
         description: `${form.customerName} added to New stage (₹${Number(form.value).toLocaleString("en-IN")})`,
       });
       setOpen(false);
-      setForm({ customerName: "", email: "", phone: "", source: "Website", service: "Holiday", value: "", assignedTo: "Sneha Reddy", expectedClose: "" });
+      setForm({ customerName: "", email: "", phone: "", source: "Website", service: "Holiday", value: "", assignedTo: "Sneha Reddy", expectedClose: "", notes: "" });
     } catch (e) {
       toast({
-        title: "Could not create lead",
+        title: isAgent ? "Could not submit enquiry" : "Could not create lead",
         description: e instanceof ApiError ? e.message : "The server rejected this lead. Nothing was saved.",
         variant: "destructive",
       });
@@ -242,13 +246,17 @@ function NewLeadDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button className="bg-primary hover:bg-primary/90">
-          <Plus className="w-4 h-4 mr-1" /> New Lead
+          <Plus className="w-4 h-4 mr-1" /> {isAgent ? "Submit enquiry" : "New Lead"}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Create New Lead</DialogTitle>
-          <DialogDescription>Add a new enquiry to your sales pipeline.</DialogDescription>
+          <DialogTitle>{isAgent ? "Submit new enquiry" : "Create New Lead"}</DialogTitle>
+          <DialogDescription>
+            {isAgent
+              ? "Send a customer enquiry to Trevio. Ops can follow up and create a quotation."
+              : "Add a new enquiry to your sales pipeline."}
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 max-h-[60vh] overflow-y-auto scroll-thin pr-1">
           <div className="grid grid-cols-2 gap-3">
@@ -264,18 +272,20 @@ function NewLeadDialog() {
               <Label htmlFor="nl-phone">Phone</Label>
               <Input id="nl-phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 98000 00000" />
             </div>
-            <div>
-              <Label>Source</Label>
-              <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["Website", "WhatsApp", "Phone", "Walk-in", "Facebook", "Instagram", "Google Ads", "Referral"].map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
+            {!isAgent && (
+              <div>
+                <Label>Source</Label>
+                <Select value={form.source} onValueChange={(v) => setForm({ ...form, source: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["Website", "WhatsApp", "Phone", "Walk-in", "Facebook", "Instagram", "Google Ads", "Referral"].map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className={isAgent ? "col-span-2" : undefined}>
               <Label>Service</Label>
               <Select value={form.service} onValueChange={(v) => setForm({ ...form, service: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -290,27 +300,41 @@ function NewLeadDialog() {
               <Label htmlFor="nl-value">Value (₹)</Label>
               <Input id="nl-value" type="number" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} placeholder="50000" />
             </div>
-            <div>
-              <Label>Assign To</Label>
-              <Select value={form.assignedTo} onValueChange={(v) => setForm({ ...form, assignedTo: v })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {["Sneha Reddy", "Rahul Khanna", "Deepa Rao", "Aisha Khan", "Priya Nair"].map((s) => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="col-span-2">
+            {!isAgent && (
+              <div>
+                <Label>Assign To</Label>
+                <Select value={form.assignedTo} onValueChange={(v) => setForm({ ...form, assignedTo: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {["Sneha Reddy", "Rahul Khanna", "Deepa Rao", "Aisha Khan", "Priya Nair"].map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className={isAgent ? "col-span-2" : undefined}>
               <Label htmlFor="nl-close">Expected Close Date</Label>
               <Input id="nl-close" type="date" value={form.expectedClose} onChange={(e) => setForm({ ...form, expectedClose: e.target.value })} />
             </div>
+            {isAgent && (
+              <div className="col-span-2">
+                <Label htmlFor="nl-notes">Notes / requirements</Label>
+                <Textarea
+                  id="nl-notes"
+                  rows={3}
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  placeholder="Destination, dates, hotel preference…"
+                />
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={saving} className="bg-primary hover:bg-primary/90">
-            {saving ? "Creating…" : "Create Lead"}
+            {saving ? (isAgent ? "Submitting…" : "Creating…") : (isAgent ? "Submit enquiry" : "Create Lead")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -417,6 +441,8 @@ function LeadsPipeline() {
 
 function EnquiriesTab() {
   const leads = useDemoDataStore((s) => s.leads);
+  const user = useAuthStore((s) => s.user);
+  const isAgent = user?.role === "travel_agent";
   const setView = useAppStore((s) => s.setView);
   const setQuotePrefill = useAppStore((s) => s.setQuotePrefill);
   const { toast } = useToast();
@@ -506,8 +532,8 @@ function EnquiriesTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Enquiries</CardTitle>
-          <CardDescription>{leads.length} enquiries from all sources</CardDescription>
+          <CardTitle>{isAgent ? "My enquiries" : "All Enquiries"}</CardTitle>
+          <CardDescription>{leads.length} enquiries{isAgent ? " you submitted" : " from all sources"}</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <div className="max-h-96 overflow-y-auto scroll-thin">
@@ -555,9 +581,11 @@ function EnquiriesTab() {
                         {new Date(l.createdAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}
                       </TableCell>
                       <TableCell>
-                        <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => handleCreateQuote(l)}>
-                          <FileText className="w-3 h-3 mr-1" /> Quote
-                        </Button>
+                        {!isAgent && (
+                          <Button size="sm" variant="outline" className="h-7 text-[11px]" onClick={() => handleCreateQuote(l)}>
+                            <FileText className="w-3 h-3 mr-1" /> Quote
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -572,25 +600,34 @@ function EnquiriesTab() {
 }
 
 export function CrmView() {
+  const user = useAuthStore((s) => s.user);
+  const isAgent = user?.role === "travel_agent";
+
   return (
     <PageShell>
       <PageHeader
-        title="CRM & Sales"
-        subtitle="Manage leads, track your pipeline, and convert enquiries into bookings."
+        title={isAgent ? "My Enquiries" : "CRM & Sales"}
+        subtitle={isAgent
+          ? "Submit new customer enquiries and track the ones you own."
+          : "Manage leads, track your pipeline, and convert enquiries into bookings."}
         action={<NewLeadDialog />}
       />
-      <Tabs defaultValue="pipeline">
-        <TabsList className="bg-muted/60">
-          <TabsTrigger value="pipeline">Leads Pipeline</TabsTrigger>
-          <TabsTrigger value="enquiries">Enquiries</TabsTrigger>
-        </TabsList>
-        <TabsContent value="pipeline" className="mt-4">
-          <LeadsPipeline />
-        </TabsContent>
-        <TabsContent value="enquiries" className="mt-4">
-          <EnquiriesTab />
-        </TabsContent>
-      </Tabs>
+      {isAgent ? (
+        <EnquiriesTab />
+      ) : (
+        <Tabs defaultValue="pipeline">
+          <TabsList className="bg-muted/60">
+            <TabsTrigger value="pipeline">Leads Pipeline</TabsTrigger>
+            <TabsTrigger value="enquiries">Enquiries</TabsTrigger>
+          </TabsList>
+          <TabsContent value="pipeline" className="mt-4">
+            <LeadsPipeline />
+          </TabsContent>
+          <TabsContent value="enquiries" className="mt-4">
+            <EnquiriesTab />
+          </TabsContent>
+        </Tabs>
+      )}
     </PageShell>
   );
 }

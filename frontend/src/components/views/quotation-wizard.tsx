@@ -1,17 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, ImageIcon, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Check, ChevronLeft, ChevronRight, Copy, FileDown, ImageIcon, Loader2, Mail, MessageCircle, Plus, Printer, Search, Trash2, X } from "lucide-react";
 import { api, apiFetch, ApiError } from "@/lib/api";
 import { mapApiQuotation, mapApiUser } from "@/lib/api-mappers";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore } from "@/store/app-store";
 import type { ProductRecord, Quotation, QuotationPackage } from "@/types";
 import { formatFullINR } from "@/components/shared/ui-helpers";
-import { previewPackageLayers, resolveQuotationCosting } from "@/lib/quote-costing";
+import { calcPackageCosting, resolveQuotationCosting, toCalendarDate } from "@/lib/quote-costing";
+import {
+  canApproveDiscount,
+  discountRequiresApproval,
+  latestDiscountApproval,
+  maxDiscountFixed,
+  maxDiscountPercent,
+} from "@/lib/quote-discount";
 import { QuotePriceBreakdown } from "@/components/shared/quote-price-breakdown";
 import { DESTINATION_QUOTE_PLANS, getDestinationQuotePlan } from "@/lib/destination-quote-plans";
-import { downloadQuotationPdf } from "@/lib/quotation-actions";
+import { downloadQuotationPdf, deliverQuotationEmail, deliverQuotationWhatsApp } from "@/lib/quotation-actions";
+import { downloadClientQuotationBrochure } from "@/lib/client-quotation-brochure";
 import { DestinationSelect } from "@/components/shared/destination-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,8 +88,32 @@ function emptyPackage(name: string, selected = false): QuotationPackage {
     activities: [],
     meals: [],
     itinerary: [{ day: 1, title: "Day 1", city: "", mealPlan: "", coverImage: "", gallery: [], items: [{ activityName: "Airport Arrival", description: "Meet & greet" }] }],
-    visa: { enabled: false, visaType: "Tourist", entryType: "Single Entry", sellingPrice: 0, costPrice: 0 },
-    insurance: { enabled: false, provider: "", planName: "", sellingPrice: 0, costPrice: 0 },
+    visa: {
+      enabled: false,
+      visaType: "Tourist Visa",
+      entryType: "Single Entry",
+      processingTime: "",
+      documentsRequired: "",
+      appointmentRequired: false,
+      appointmentNote: "",
+      remarks: "",
+      feeNotes: "",
+      sellingPrice: 0,
+      costPrice: 0,
+    },
+    insurance: {
+      enabled: false,
+      provider: "",
+      planName: "",
+      coverage: "",
+      validity: "",
+      policyNumber: "",
+      remarks: "",
+      sellingPrice: 0,
+      costPrice: 0,
+      premium: 0,
+      policyDocuments: [],
+    },
     addOns: [],
     inclusions: ["Accommodation", "Breakfast", "Airport transfers"],
     exclusions: ["Flights", "Personal expenses", "Tips"],
@@ -106,6 +138,7 @@ export function QuotationWizardDialog({
   const upsertQuotation = useDemoDataStore((s) => s.upsertQuotation);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [requireFinanceApproval, setRequireFinanceApproval] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [id, setId] = useState<string | null>(quotationId || null);
   const [leadId, setLeadId] = useState<string | null>(null);
@@ -290,21 +323,38 @@ export function QuotationWizardDialog({
 
   const liveCosting = useMemo(
     () =>
-      previewPackageLayers({
+      calcPackageCosting({
         hotels: selected?.hotels,
         flights: selected?.flights,
         transfers: selected?.transfers,
         activities: selected?.activities,
         meals: selected?.meals,
-        nights,
-        trevioMarkupValue: form.trevioMarkupValue,
+        addOns: selected?.addOns,
+        visa: selected?.visa as { enabled?: boolean; costPrice?: number; sellingPrice?: number } | null,
+        insurance: selected?.insurance as {
+          enabled?: boolean;
+          costPrice?: number;
+          sellingPrice?: number;
+          premium?: number;
+        } | null,
+        taxRate: form.taxRate,
         discountType: form.discountType || null,
         discountValue: form.discountValue,
+        trevioMarkupValue: form.trevioMarkupValue,
         adults: form.adults,
         children: form.children,
         infants: form.infants,
       }),
-    [selected, nights, form.trevioMarkupValue, form.discountType, form.discountValue, form.adults, form.children, form.infants],
+    [
+      selected,
+      form.taxRate,
+      form.discountType,
+      form.discountValue,
+      form.trevioMarkupValue,
+      form.adults,
+      form.children,
+      form.infants,
+    ],
   );
 
   useEffect(() => {
@@ -446,7 +496,7 @@ export function QuotationWizardDialog({
     });
   }
 
-  async function persist(nextStep = step, opts?: { submitApproval?: boolean; approveNow?: boolean }) {
+  async function persist(nextStep = step, opts?: { submitApproval?: boolean; approveNow?: boolean; financeApprovalRequired?: boolean }) {
     if (!form.customerName.trim() || !form.destination.trim()) {
       toast({ title: "Customer and destination are required", variant: "destructive" });
       return null;
@@ -499,7 +549,9 @@ export function QuotationWizardDialog({
         agentName: quotation.agentName || f.agentName,
       }));
       if (submitApproval && quotation.id) {
-        const submitted = await api.submitQuotationApproval(quotation.id);
+        const submitted = await api.submitQuotationApproval(quotation.id, {
+          financeApprovalRequired: Boolean(opts?.financeApprovalRequired ?? requireFinanceApproval),
+        });
         quotation = mapApiQuotation(submitted.quotation);
       }
       if (approveNow && quotation.id) {
@@ -509,9 +561,15 @@ export function QuotationWizardDialog({
       upsertQuotation(quotation);
       if (quotation.packages?.length) setPackages(quotation.packages);
       onSaved?.(quotation);
+      const disc = latestDiscountApproval(quotation.approvals);
+      const discountNote = disc?.status === "Pending"
+        ? " · Discount approval requested"
+        : disc?.status === "Approved" && discountRequiresApproval("sales_executive", form.discountType || null, form.discountValue)
+          ? " · Discount approved"
+          : "";
       toast({
         title: approveNow ? "Approved & ready to send" : submitApproval ? "Submitted for approval" : "Draft saved",
-        description: quotation.quoteNo,
+        description: `${quotation.quoteNo}${discountNote}`,
       });
       return quotation;
     } catch (e) {
@@ -538,6 +596,68 @@ export function QuotationWizardDialog({
     setStep((s) => Math.max(s - 1, 0));
   }
 
+  function buildReviewQuote(quoteId?: string | null): Quotation {
+    return {
+      id: quoteId || id || "",
+      quoteNo: quoteNo || "DRAFT",
+      customerName: form.customerName,
+      service: form.isInternational ? "International" : "Holiday",
+      items: packages.length,
+      amount: liveCosting.totalSelling,
+      gst: liveCosting.gst,
+      total: liveCosting.total,
+      status: "Draft",
+      validTill: form.validTill,
+      createdBy: form.salesExecutiveName,
+      createdAt: new Date().toISOString(),
+      contactPerson: form.contactPerson,
+      contactEmail: form.contactEmail,
+      contactPhone: form.contactPhone,
+      destination: form.destination,
+      country: form.country,
+      coverImage: form.coverImage || undefined,
+      travelDates: form.travelStartDate,
+      travelStartDate: form.travelStartDate,
+      travelEndDate: form.travelEndDate,
+      nights: nights ?? undefined,
+      days: nights != null ? nights + 1 : undefined,
+      adults: form.adults,
+      children: form.children,
+      infants: form.infants,
+      currency: form.currency,
+      packageIncludes: selected?.inclusions,
+      packageExcludes: selected?.exclusions,
+      termsAndConditions: form.termsAndConditions,
+      paymentTerms: form.paymentTerms,
+      cancellationPolicy: form.cancellationPolicy,
+      refundPolicy: form.refundPolicy,
+      hotelTerms: form.hotelTerms,
+      flightTerms: form.flightTerms,
+      visaTerms: form.visaTerms,
+      insuranceTerms: form.insuranceTerms,
+      forceMajeure: form.forceMajeure,
+      travelDisclaimer: form.travelDisclaimer,
+      salesExecutiveName: form.salesExecutiveName,
+      specialRequests: form.specialRequests,
+      taxRate: form.taxRate,
+      perPersonCost: liveCosting.perPersonCost,
+      packages,
+    };
+  }
+
+  async function ensureSavedForDelivery(): Promise<Quotation | null> {
+    if (!form.customerName.trim() || !form.destination.trim()) {
+      toast({ title: "Customer and destination are required", variant: "destructive" });
+      return null;
+    }
+    const saved = await persist(step);
+    if (!saved?.id) {
+      toast({ title: "Save the draft first", description: "Email and WhatsApp need a saved quotation.", variant: "destructive" });
+      return null;
+    }
+    return { ...buildReviewQuote(saved.id), ...saved, id: saved.id, quoteNo: saved.quoteNo || quoteNo || "DRAFT" };
+  }
+
   const progressPct = Math.round(((step + 1) / STEPS.length) * 100);
 
   return (
@@ -545,6 +665,9 @@ export function QuotationWizardDialog({
       <DialogContent
         showCloseButton
         className="sm:max-w-5xl lg:max-w-6xl w-[calc(100%-1.5rem)] p-0 gap-0 max-h-[92vh] overflow-hidden flex flex-col"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <DialogHeader className="px-5 pt-5 pb-3 border-b shrink-0 space-y-3 text-left">
           <div className="flex flex-wrap items-start justify-between gap-2 pr-8">
@@ -741,30 +864,32 @@ export function QuotationWizardDialog({
             </FormSection>
 
             <FormSection title="Destination" description="City for the trip and cover image for the customer PDF.">
-              <div className="sm:col-span-2 space-y-1.5">
-                <Label className="text-sm font-medium">Search destination master</Label>
-                <DestinationSelect
-                  value={destinationId}
-                  onChange={(id) => {
-                    setDestinationId(id);
-                    apiFetch<{ item: { name: string; country?: string; heroImage?: string | null; bannerImage?: string | null; thumbnail?: string | null; galleryImages?: string[] } }>(`/api/destinations/${id}`)
-                      .then((data) => {
-                        const hero = data.item.heroImage || data.item.bannerImage || data.item.thumbnail || data.item.galleryImages?.[0] || "";
-                        const country = data.item.country || "";
-                        const intl = Boolean(country && !["india", "in", "bharat"].includes(country.trim().toLowerCase()));
-                        setForm((f) => ({
-                          ...f,
-                          destination: data.item.name || f.destination,
-                          country: country || f.country,
-                          coverImage: f.coverImage || hero,
-                          isInternational: intl,
-                        }));
-                      })
-                      .catch(() => undefined);
-                  }}
-                  placeholder="Search destinations…"
-                />
-              </div>
+              {!form.destination.trim() ? (
+                <div className="sm:col-span-2 space-y-1.5">
+                  <Label className="text-sm font-medium">Search destination master</Label>
+                  <DestinationSelect
+                    value={destinationId}
+                    onChange={(id) => {
+                      setDestinationId(id);
+                      apiFetch<{ item: { name: string; country?: string; heroImage?: string | null; bannerImage?: string | null; thumbnail?: string | null; galleryImages?: string[] } }>(`/api/destinations/${id}`)
+                        .then((data) => {
+                          const hero = data.item.heroImage || data.item.bannerImage || data.item.thumbnail || data.item.galleryImages?.[0] || "";
+                          const country = data.item.country || "";
+                          const intl = Boolean(country && !["india", "in", "bharat"].includes(country.trim().toLowerCase()));
+                          setForm((f) => ({
+                            ...f,
+                            destination: data.item.name || f.destination,
+                            country: country || f.country,
+                            coverImage: f.coverImage || hero,
+                            isInternational: intl,
+                          }));
+                        })
+                        .catch(() => undefined);
+                    }}
+                    placeholder="Search destinations…"
+                  />
+                </div>
+              ) : null}
               <Field label="Destination city *" value={form.destination} onChange={(v) => setForm({ ...form, destination: v })} />
               <Field
                 label="Country"
@@ -845,9 +970,34 @@ export function QuotationWizardDialog({
           <ServiceEditor
             title="Hotels"
             rows={(selected?.hotels || []) as Record<string, unknown>[]}
-            fields={["hotelName", "starCategory", "roomType", "mealPlan", "checkIn", "checkOut", "rooms", "city", "imageUrl", "costPrice", "sellingPrice", "supplier", "remarks"]}
+            fields={["hotelName", "starCategory", "roomType", "mealPlan", "checkIn", "checkOut", "nights", "rooms", "address", "city", "supplier", "confirmationNo", "contactPerson", "contactPhone", "contactEmail", "costPrice", "sellingPrice", "markup", "remarks", "imageUrl"]}
             onChange={(rows) => patchSelected({ hotels: rows })}
-            template={{ hotelName: "", starCategory: "4", roomType: "Deluxe", mealPlan: "Breakfast", rooms: 1, city: "", imageUrl: "", costPrice: 8000, sellingPrice: 10000, source: "MANUAL" }}
+            template={{
+              hotelName: "",
+              starCategory: "4",
+              roomType: "Deluxe",
+              mealPlan: "Breakfast",
+              checkIn: form.travelStartDate || "",
+              checkOut: form.travelEndDate || "",
+              checkInTime: "14:00",
+              checkOutTime: "11:00",
+              nights: nights ?? "",
+              rooms: 1,
+              address: "",
+              city: form.destination || "",
+              supplier: "",
+              confirmationNo: "",
+              contactPerson: "",
+              contactPhone: "",
+              contactEmail: "",
+              imageUrl: "",
+              costPrice: 8000,
+              sellingPrice: 10000,
+              markup: 2000,
+              remarks: "",
+              source: "MANUAL",
+              hotelDocuments: [],
+            }}
             catalogKind="hotels"
             travelDate={form.travelStartDate}
             travelEndDate={form.travelEndDate}
@@ -863,7 +1013,7 @@ export function QuotationWizardDialog({
             rows={(selected?.flights || []) as Record<string, unknown>[]}
             fields={["airline", "flightNumber", "from", "to", "date", "depTime", "arrTime", "duration", "baggage", "cabinClass", "currency", "pnr", "remarks", "costPrice", "sellingPrice", "fare"]}
             onChange={(rows) => patchSelected({ flights: rows })}
-            template={{ airline: "", flightNumber: "", from: "", to: "", cabinClass: "Economy", currency: form.currency || "INR", duration: "", baggage: "", remarks: "", pnr: "", costPrice: 12000, sellingPrice: 15000, fare: 15000, source: "MANUAL" }}
+            template={{ airline: "", flightNumber: "", from: "", to: "", cabinClass: "Economy", currency: form.currency || "INR", duration: "", baggage: "", remarks: "", pnr: "", costPrice: 12000, sellingPrice: 15000, fare: 15000, source: "MANUAL", flightDocuments: [] }}
             catalogKind="flights"
             travelDate={form.travelStartDate}
             destinationId={destinationId}
@@ -884,6 +1034,7 @@ export function QuotationWizardDialog({
               baggage: String(item.baggage || ""),
               currency: String(item.currency || form.currency || "INR"),
               date: form.travelStartDate,
+              flightDocuments: [],
             })}
           />
         )}
@@ -1025,49 +1176,80 @@ export function QuotationWizardDialog({
               rows={(selected?.transfers || []) as Record<string, unknown>[]}
               fields={["transferType", "date", "pickup", "drop", "vehicleType", "costPrice", "sellingPrice", "supplier"]}
               onChange={(rows) => patchSelected({ transfers: rows })}
-              template={{ transferType: "Airport Pickup", vehicleType: "Sedan", costPrice: 1500, sellingPrice: 2200, source: "MANUAL" }}
+              template={{ transferType: "Airport Pickup", vehicleType: "Sedan", pickup: "", drop: "", date: form.travelStartDate || "", costPrice: 1500, sellingPrice: 2200, supplier: "", source: "MANUAL" }}
               catalogKind="transfers"
               travelDate={form.travelStartDate}
               destinationId={destinationId}
               destination={form.destination}
+              quotationId={id}
               catalogToRow={(item) => ({
                 productId: item.id,
                 productType: "TRANSFER",
                 source: "CONTRACTED_PRODUCT",
-                transferType: String(item.transferType || item.name || "Transfer"),
+                transferType: String(item.transferType || item.name || "Airport Pickup"),
                 vehicleType: String(item.vehicleType || "Sedan"),
                 pickup: String(item.pickupLocation || ""),
                 drop: String(item.dropLocation || ""),
+                date: form.travelStartDate || "",
                 sellingPrice: Number(item.privatePrice ?? item.sharedPrice ?? 0),
-                supplier: item.supplier?.name,
+                costPrice: 0,
+                supplier: item.supplier?.name || "",
               })}
             />
             <ServiceEditor
               title="Activities"
               rows={(selected?.activities || []) as Record<string, unknown>[]}
-              fields={["activityName", "description", "date", "ticketType", "adultRate", "childRate", "adults", "children", "imageUrl", "costPrice", "sellingPrice"]}
+              fields={["activityCategory", "activityName", "description", "date", "timeSlot", "ticketType", "adultRate", "childRate", "adults", "children", "supplier", "imageUrl", "costPrice", "sellingPrice"]}
               onChange={(rows) => patchSelected({ activities: rows })}
-              template={{ activityName: "", description: "", ticketType: "Standard", adultRate: 2500, childRate: 1500, adults: form.adults, children: form.children, imageUrl: "", costPrice: 2000, sellingPrice: 2500, source: "MANUAL" }}
+              template={{
+                activityCategory: "Attraction",
+                activityName: "",
+                description: "",
+                date: form.travelStartDate || "",
+                timeSlot: "",
+                ticketType: "Standard",
+                adultRate: 2500,
+                childRate: 1500,
+                adults: form.adults,
+                children: form.children,
+                supplier: "",
+                imageUrl: "",
+                costPrice: 2000,
+                sellingPrice: 2500,
+                source: "MANUAL",
+                activityDocuments: [],
+              }}
               catalogKind="activities"
               travelDate={form.travelStartDate}
               destinationId={destinationId}
               destination={form.destination}
-              catalogToRow={(item) => ({
+              quotationId={id}
+              catalogToRow={(item) => {
+                const extra = item as ProductRecord & Record<string, unknown>;
+                return {
                 productId: item.id,
                 productType: "ACTIVITY",
                 source: "CONTRACTED_PRODUCT",
+                activityCategory: String(extra.category || extra.activityType || "Attraction"),
                 activityName: item.name,
                 description: String(item.shortDescription || item.description || ""),
-                ticketType: String(item.ticketType || "Standard"),
-                startTime: String(item.startTime || ""),
-                closingTime: String(item.closingTime || ""),
-                duration: String(item.duration || ""),
+                date: form.travelStartDate || "",
+                timeSlot: String(extra.startTime || ""),
+                ticketType: String(extra.ticketType || "Standard"),
+                startTime: String(extra.startTime || ""),
+                closingTime: String(extra.closingTime || ""),
+                duration: String(extra.duration || ""),
                 adults: form.adults,
                 children: form.children,
+                adultRate: Number(extra.adultPrice || 0),
+                childRate: Number(extra.childPrice || 0),
                 imageUrl: firstProductImage(item),
-                sellingPrice: Number(item.adultPrice || 0),
-                supplier: item.supplier?.name,
-              })}
+                sellingPrice: Number(extra.adultPrice || 0),
+                costPrice: 0,
+                supplier: item.supplier?.name || "",
+                activityDocuments: [],
+              };
+              }}
             />
           </div>
         )}
@@ -1078,68 +1260,235 @@ export function QuotationWizardDialog({
             rows={(selected?.meals || []) as Record<string, unknown>[]}
             fields={["restaurant", "cuisine", "mealType", "dietary", "date", "adults", "children", "adultRate", "childRate", "costPrice", "sellingPrice"]}
             onChange={(rows) => patchSelected({ meals: rows })}
-            template={{ mealType: "Dinner", cuisine: "Local", dietary: "", adults: form.adults, children: form.children, adultRate: 1200, childRate: 800, costPrice: 900, sellingPrice: 1200, source: "MANUAL" }}
+            template={{ mealType: "Dinner", restaurant: "", cuisine: "Local", dietary: "", date: form.travelStartDate || "", adults: form.adults, children: form.children, adultRate: 1200, childRate: 800, costPrice: 900, sellingPrice: 1200, source: "MANUAL" }}
             catalogKind="meals"
             travelDate={form.travelStartDate}
             destinationId={destinationId}
             destination={form.destination}
-            catalogToRow={(item) => ({
+            quotationId={id}
+            catalogToRow={(item) => {
+              const extra = item as ProductRecord & Record<string, unknown>;
+              return {
               productId: item.id,
               productType: "MEAL",
               source: "CONTRACTED_PRODUCT",
-              restaurant: String(item.restaurant || item.name || ""),
-              mealType: String(item.mealType || "Other"),
-              cuisine: String(item.city || ""),
+              restaurant: String(extra.restaurant || item.name || ""),
+              mealType: String(extra.mealType || "Dinner"),
+              cuisine: String(extra.cuisine || item.city || ""),
               dietary: "",
+              date: form.travelStartDate || "",
               description: String(item.description || ""),
               transferBadge: item.transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer",
               adults: form.adults,
               children: form.children,
-              sellingPrice: Number(item.adultPrice || 0),
-            })}
+              sellingPrice: Number(extra.adultPrice || 0),
+            };
+            }}
           />
         )}
 
         {step === 6 && (
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="border rounded-lg p-3 space-y-2">
+            <div className="border rounded-lg p-3 space-y-3">
               <div className="flex items-center gap-2">
                 <Checkbox
                   checked={Boolean(selected?.insurance && (selected.insurance as { enabled?: boolean }).enabled)}
                   onCheckedChange={(v) => patchSelected({
-                    insurance: { ...(selected?.insurance || {}), enabled: Boolean(v), provider: "TATA AIG", planName: "Travel Guard", costPrice: 800, sellingPrice: 1200 },
+                    insurance: {
+                      ...(selected?.insurance || {}),
+                      enabled: Boolean(v),
+                      provider: String((selected?.insurance as { provider?: string })?.provider || "TATA AIG"),
+                      planName: String((selected?.insurance as { planName?: string })?.planName || "Travel Guard"),
+                      coverage: String((selected?.insurance as { coverage?: string })?.coverage || ""),
+                      validity: String((selected?.insurance as { validity?: string })?.validity || ""),
+                      policyNumber: String((selected?.insurance as { policyNumber?: string })?.policyNumber || ""),
+                      remarks: String((selected?.insurance as { remarks?: string })?.remarks || ""),
+                      costPrice: Number((selected?.insurance as { costPrice?: number })?.costPrice || 800),
+                      sellingPrice: Number((selected?.insurance as { sellingPrice?: number })?.sellingPrice || 1200),
+                      premium: Number((selected?.insurance as { premium?: number })?.premium
+                        || (selected?.insurance as { sellingPrice?: number })?.sellingPrice
+                        || 1200),
+                      policyDocuments: Array.isArray((selected?.insurance as { policyDocuments?: unknown })?.policyDocuments)
+                        ? (selected?.insurance as { policyDocuments: Array<Record<string, string>> }).policyDocuments
+                        : [],
+                    },
                   })}
                 />
                 <Label>Enable Travel Insurance</Label>
               </div>
               {Boolean((selected?.insurance as { enabled?: boolean })?.enabled) && (
                 <>
-                  <Field label="Provider" value={String((selected?.insurance as { provider?: string })?.provider || "")} onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, provider: v } })} />
-                  <Field label="Plan" value={String((selected?.insurance as { planName?: string })?.planName || "")} onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, planName: v } })} />
-                  <Field label="Selling" type="number" value={String((selected?.insurance as { sellingPrice?: number })?.sellingPrice || 0)} onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, sellingPrice: Number(v) || 0 } })} />
-                  <Field label="Cost" type="number" value={String((selected?.insurance as { costPrice?: number })?.costPrice || 0)} onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, costPrice: Number(v) || 0 } })} />
+                  <Field
+                    label="Insurance provider"
+                    value={String((selected?.insurance as { provider?: string })?.provider || "")}
+                    onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, provider: v } })}
+                  />
+                  <Field
+                    label="Plan name"
+                    value={String((selected?.insurance as { planName?: string })?.planName || "")}
+                    onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, planName: v } })}
+                  />
+                  <Field
+                    label="Coverage"
+                    value={String((selected?.insurance as { coverage?: string })?.coverage || "")}
+                    onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, coverage: v } })}
+                  />
+                  <Field
+                    label="Validity"
+                    value={String((selected?.insurance as { validity?: string })?.validity || "")}
+                    onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, validity: v } })}
+                  />
+                  <Field
+                    label="Premium"
+                    type="number"
+                    value={String(
+                      (selected?.insurance as { premium?: number })?.premium
+                      ?? (selected?.insurance as { sellingPrice?: number })?.sellingPrice
+                      ?? 0,
+                    )}
+                    onChange={(v) => {
+                      const premium = Number(v) || 0;
+                      patchSelected({ insurance: { ...selected?.insurance, premium, sellingPrice: premium } });
+                    }}
+                  />
+                  <Field
+                    label="Cost"
+                    type="number"
+                    value={String((selected?.insurance as { costPrice?: number })?.costPrice || 0)}
+                    onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, costPrice: Number(v) || 0 } })}
+                  />
+                  <Field
+                    label="Policy number"
+                    value={String((selected?.insurance as { policyNumber?: string })?.policyNumber || "")}
+                    onChange={(v) => patchSelected({ insurance: { ...selected?.insurance, policyNumber: v } })}
+                  />
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Remarks</Label>
+                    <Textarea
+                      className="min-h-[72px]"
+                      value={String((selected?.insurance as { remarks?: string })?.remarks || "")}
+                      onChange={(e) => patchSelected({ insurance: { ...selected?.insurance, remarks: e.target.value } })}
+                    />
+                  </div>
+                  <InsurancePolicyAttach
+                    quotationId={id}
+                    documents={Array.isArray((selected?.insurance as { policyDocuments?: unknown })?.policyDocuments)
+                      ? ((selected?.insurance as { policyDocuments: Array<Record<string, string>> }).policyDocuments)
+                      : []}
+                    onChange={(docs) => patchSelected({ insurance: { ...selected?.insurance, policyDocuments: docs } })}
+                  />
                 </>
               )}
             </div>
-            <div className="border rounded-lg p-3 space-y-2">
+            <div className="border rounded-lg p-3 space-y-3">
               <div className="flex items-center gap-2">
                 <Checkbox
                   checked={Boolean(selected?.visa && (selected.visa as { enabled?: boolean }).enabled)}
                   onCheckedChange={(v) => patchSelected({
-                    visa: { ...(selected?.visa || {}), enabled: Boolean(v), visaType: "Tourist", entryType: "Single Entry", costPrice: 3000, sellingPrice: 4500, required: form.isInternational },
+                    visa: {
+                      ...(selected?.visa || {}),
+                      enabled: Boolean(v),
+                      visaType: String((selected?.visa as { visaType?: string })?.visaType || "Tourist Visa"),
+                      entryType: String((selected?.visa as { entryType?: string })?.entryType || "Single Entry"),
+                      processingTime: String((selected?.visa as { processingTime?: string })?.processingTime || ""),
+                      documentsRequired: String((selected?.visa as { documentsRequired?: string })?.documentsRequired || ""),
+                      appointmentRequired: Boolean((selected?.visa as { appointmentRequired?: boolean })?.appointmentRequired),
+                      appointmentNote: String((selected?.visa as { appointmentNote?: string })?.appointmentNote || ""),
+                      remarks: String((selected?.visa as { remarks?: string })?.remarks || ""),
+                      feeNotes: String((selected?.visa as { feeNotes?: string })?.feeNotes || ""),
+                      costPrice: Number((selected?.visa as { costPrice?: number })?.costPrice || 3000),
+                      sellingPrice: Number((selected?.visa as { sellingPrice?: number })?.sellingPrice || 4500),
+                      required: form.isInternational,
+                    },
                   })}
                 />
                 <Label>Visa Required / Include Visa Service</Label>
               </div>
               {Boolean((selected?.visa as { enabled?: boolean })?.enabled) && (
                 <>
-                  <Field label="Visa Type" value={String((selected?.visa as { visaType?: string })?.visaType || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, visaType: v } })} />
-                  <Field label="Entry" value={String((selected?.visa as { entryType?: string })?.entryType || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, entryType: v } })} />
-                  <Field label="Processing time" value={String((selected?.visa as { processingTime?: string })?.processingTime || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, processingTime: v } })} />
-                  <Field label="Fee notes" value={String((selected?.visa as { feeNotes?: string })?.feeNotes || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, feeNotes: v } })} />
-                  <Field label="Documents required" value={String((selected?.visa as { documentsRequired?: string })?.documentsRequired || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, documentsRequired: v } })} />
-                  <Field label="Appointment note" value={String((selected?.visa as { appointmentNote?: string })?.appointmentNote || "")} onChange={(v) => patchSelected({ visa: { ...selected?.visa, appointmentNote: v } })} />
-                  <Field label="Selling" type="number" value={String((selected?.visa as { sellingPrice?: number })?.sellingPrice || 0)} onChange={(v) => patchSelected({ visa: { ...selected?.visa, sellingPrice: Number(v) || 0 } })} />
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Visa type</Label>
+                    <Select
+                      value={normalizeVisaType(String((selected?.visa as { visaType?: string })?.visaType || "Tourist Visa"))}
+                      onValueChange={(v) => patchSelected({ visa: { ...selected?.visa, visaType: v } })}
+                    >
+                      <SelectTrigger className="h-10"><SelectValue placeholder="Select visa type" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Tourist Visa">Tourist Visa</SelectItem>
+                        <SelectItem value="Business Visa">Business Visa</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Entry type</Label>
+                    <Select
+                      value={normalizeEntryType(String((selected?.visa as { entryType?: string })?.entryType || "Single Entry"))}
+                      onValueChange={(v) => patchSelected({ visa: { ...selected?.visa, entryType: v } })}
+                    >
+                      <SelectTrigger className="h-10"><SelectValue placeholder="Select entry type" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Single Entry">Single Entry</SelectItem>
+                        <SelectItem value="Multiple Entry">Multiple Entry</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Field
+                    label="Processing time"
+                    value={String((selected?.visa as { processingTime?: string })?.processingTime || "")}
+                    onChange={(v) => patchSelected({ visa: { ...selected?.visa, processingTime: v } })}
+                  />
+                  <Field
+                    label="Visa fee (selling)"
+                    type="number"
+                    value={String((selected?.visa as { sellingPrice?: number })?.sellingPrice || 0)}
+                    onChange={(v) => patchSelected({ visa: { ...selected?.visa, sellingPrice: Number(v) || 0 } })}
+                  />
+                  <Field
+                    label="Visa fee (cost)"
+                    type="number"
+                    value={String((selected?.visa as { costPrice?: number })?.costPrice || 0)}
+                    onChange={(v) => patchSelected({ visa: { ...selected?.visa, costPrice: Number(v) || 0 } })}
+                  />
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Required documents</Label>
+                    <Textarea
+                      className="min-h-[72px]"
+                      value={String((selected?.visa as { documentsRequired?: string })?.documentsRequired || "")}
+                      onChange={(e) => patchSelected({ visa: { ...selected?.visa, documentsRequired: e.target.value } })}
+                      placeholder="Passport, photos, bank statement…"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Checkbox
+                      checked={Boolean((selected?.visa as { appointmentRequired?: boolean })?.appointmentRequired)}
+                      onCheckedChange={(v) => patchSelected({
+                        visa: { ...selected?.visa, appointmentRequired: Boolean(v) },
+                      })}
+                    />
+                    <Label>Appointment required</Label>
+                  </div>
+                  {Boolean((selected?.visa as { appointmentRequired?: boolean })?.appointmentRequired) && (
+                    <Field
+                      label="Appointment note"
+                      value={String((selected?.visa as { appointmentNote?: string })?.appointmentNote || "")}
+                      onChange={(v) => patchSelected({ visa: { ...selected?.visa, appointmentNote: v } })}
+                    />
+                  )}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Remarks</Label>
+                    <Textarea
+                      className="min-h-[72px]"
+                      value={String((selected?.visa as { remarks?: string })?.remarks || "")}
+                      onChange={(e) => patchSelected({ visa: { ...selected?.visa, remarks: e.target.value } })}
+                    />
+                  </div>
+                  <VisaDocumentAttach
+                    quotationId={id}
+                    documents={Array.isArray((selected?.visa as { visaDocuments?: unknown })?.visaDocuments)
+                      ? ((selected?.visa as { visaDocuments: Array<Record<string, string>> }).visaDocuments)
+                      : []}
+                    onChange={(docs) => patchSelected({ visa: { ...selected?.visa, visaDocuments: docs } })}
+                  />
                 </>
               )}
               <p className="text-[11px] text-muted-foreground">
@@ -1160,8 +1509,8 @@ export function QuotationWizardDialog({
                           visa: {
                             ...(selected?.visa || {}),
                             enabled: true,
-                            visaType: visaRecommendation.suggestedVisaType,
-                            entryType: visaRecommendation.suggestedEntryType,
+                            visaType: normalizeVisaType(visaRecommendation.suggestedVisaType),
+                            entryType: normalizeEntryType(visaRecommendation.suggestedEntryType),
                             required: visaRecommendation.visaTypicallyRequired,
                             catalogueRecommendation: visaRecommendation.catalogueDetails,
                             disclaimer: visaRecommendation.disclaimer,
@@ -1180,12 +1529,9 @@ export function QuotationWizardDialog({
         )}
 
         {step === 7 && (
-          <ServiceEditor
-            title="Optional Add-ons"
+          <AddOnsEditor
             rows={(selected?.addOns || []) as Record<string, unknown>[]}
-            fields={["name", "description", "quantity", "costPrice", "sellingPrice", "remarks"]}
-            onChange={(rows) => patchSelected({ addOns: rows.map((r) => ({ ...r, enabled: true })) })}
-            template={{ name: "eSIM", description: "", quantity: 1, costPrice: 500, sellingPrice: 899 }}
+            onChange={(rows) => patchSelected({ addOns: rows })}
           />
         )}
 
@@ -1226,9 +1572,107 @@ export function QuotationWizardDialog({
               <Field label="Discount Value" type="number" value={String(form.discountValue)} onChange={(v) => setForm({ ...form, discountValue: Number(v) || 0 })} />
               <Field label="Trevio markup %" type="number" value={String(form.trevioMarkupValue ?? 0)} onChange={(v) => setForm({ ...form, trevioMarkupValue: Number(v) || 0, trevioMarkupType: "Percentage" })} />
             </div>
+            {discountRequiresApproval(user?.role, form.discountType || null, form.discountValue) && (
+              <div className={cn(
+                "rounded-lg border px-3 py-2 text-xs",
+                canApproveDiscount(user?.role)
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+                  : "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100",
+              )}>
+                {canApproveDiscount(user?.role) ? (
+                  <p>
+                    This discount exceeds the standard sales limit
+                    {form.discountType === "Percentage"
+                      ? ` (${maxDiscountPercent("sales_executive")}%)`
+                      : ` (₹${maxDiscountFixed("sales_executive").toLocaleString("en-IN")})`}
+                    . Saving will auto-approve it under your manager authority.
+                  </p>
+                ) : (
+                  <p>
+                    This discount exceeds your limit
+                    {form.discountType === "Percentage"
+                      ? ` of ${maxDiscountPercent(user?.role)}%`
+                      : ` of ₹${maxDiscountFixed(user?.role).toLocaleString("en-IN")}`}
+                    . Saving requests <strong>Discount approval</strong> — Team Lead / manager must approve before submit-for-approval or send.
+                  </p>
+                )}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
-              Contracted cost comes from the saved rate snapshot. Trevio markup is internal. Tax is applied only from an active tax rule — if none exists, saving is allowed but the quote cannot be finalized until tax configuration exists.
+              Contracted cost comes from each service net cost. Trevio markup is internal. Tax is applied only from an active tax rule — if none exists, saving is allowed but the quote cannot be finalized until tax configuration exists.
             </p>
+
+            <div className="rounded-xl border overflow-hidden">
+              <div className="px-3 py-2 border-b bg-muted/30">
+                <p className="text-sm font-semibold">Costing engine</p>
+                <p className="text-[11px] text-muted-foreground">Automatic net cost and selling price by service</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/20 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2 font-medium">Service</th>
+                      <th className="px-3 py-2 font-medium text-right">Net cost</th>
+                      <th className="px-3 py-2 font-medium text-right">Selling price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {liveCosting.services.map((row) => (
+                      <tr key={row.key} className="border-b last:border-0">
+                        <td className="px-3 py-2">{row.label}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatFullINR(row.netCost)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatFullINR(row.sellingPrice)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 border-t bg-muted/10 text-xs">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total net cost</p>
+                  <p className="font-semibold tabular-nums">{formatFullINR(liveCosting.totalNetCost)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Total selling</p>
+                  <p className="font-semibold tabular-nums">{formatFullINR(liveCosting.totalSellingBeforeDiscount)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Discount</p>
+                  <p className="font-semibold tabular-nums">{formatFullINR(liveCosting.discountAmount)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Gross profit</p>
+                  <p className="font-semibold tabular-nums">{formatFullINR(liveCosting.grossProfit)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Profit margin</p>
+                  <p className="font-semibold tabular-nums">{liveCosting.profitMargin}%</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {form.taxRate > 0 ? `GST / Tax (${form.taxRate}%)` : "GST / Tax"}
+                  </p>
+                  <p className="font-semibold tabular-nums">
+                    {form.taxRate > 0 ? formatFullINR(liveCosting.gst) : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Final package cost</p>
+                  <p className="font-semibold tabular-nums text-teal-700 dark:text-teal-300">{formatFullINR(liveCosting.finalPackageCost)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Per person cost</p>
+                  <p className="font-semibold tabular-nums">{formatFullINR(liveCosting.perPersonCost)}</p>
+                </div>
+                {liveCosting.trevioMarkupAmount > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Trevio markup</p>
+                    <p className="font-semibold tabular-nums">{formatFullINR(liveCosting.trevioMarkupAmount)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <QuotePriceBreakdown
               costing={resolveQuotationCosting({
                 amount: liveCosting.taxableAmount,
@@ -1242,6 +1686,7 @@ export function QuotationWizardDialog({
                 discountAmount: liveCosting.discountAmount,
                 discountType: form.discountType || null,
                 discountValue: form.discountValue,
+                trevioMarkupValue: form.trevioMarkupValue,
                 adults: form.adults,
                 children: form.children,
                 infants: form.infants,
@@ -1371,8 +1816,9 @@ export function QuotationWizardDialog({
               <Info label="Packages" value={packages.map((p) => p.name).join(", ")} />
               <Info label="Selected" value={selected?.name || "—"} />
             </div>
-            <div className="rounded-lg border p-3 bg-muted/30 text-xs space-y-2">
-              <p className="font-semibold">Customer preview hides cost, profit, suppliers, and internal notes.</p>
+            <div className="rounded-lg border p-3 bg-muted/30 text-xs space-y-3">
+              <p className="font-semibold">Generate professional quote</p>
+              <p className="text-muted-foreground">Customer preview hides cost, profit, suppliers, and internal notes.</p>
               <p>Hotels: {(selected?.hotels || []).length} · Flights: {(selected?.flights || []).length} · Activities: {(selected?.activities || []).length}</p>
               <p>
                 Photos: {form.coverImage ? "cover · " : ""}
@@ -1382,76 +1828,105 @@ export function QuotationWizardDialog({
               </p>
               <p>Insurance: {(selected?.insurance as { enabled?: boolean })?.enabled ? "Yes" : "No"} · Visa: {(selected?.visa as { enabled?: boolean })?.enabled ? "Yes" : "No"}</p>
               <p>Final (preview): {formatFullINR(liveCosting.total)} · Per person: {formatFullINR(liveCosting.perPersonCost)}</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  if (!form.customerName.trim() || !form.destination.trim()) {
-                    toast({ title: "Customer and destination are required for the client PDF", variant: "destructive" });
-                    return;
-                  }
-                  const preview: Quotation = {
-                    id: id || "",
-                    quoteNo: quoteNo || "DRAFT",
-                    customerName: form.customerName,
-                    service: form.isInternational ? "International" : "Holiday",
-                    items: packages.length,
-                    amount: liveCosting.totalSelling,
-                    gst: liveCosting.gst,
-                    total: liveCosting.total,
-                    status: "Draft",
-                    validTill: form.validTill,
-                    createdBy: form.salesExecutiveName,
-                    createdAt: new Date().toISOString(),
-                    contactPerson: form.contactPerson,
-                    contactEmail: form.contactEmail,
-                    contactPhone: form.contactPhone,
-                    destination: form.destination,
-                    country: form.country,
-                    coverImage: form.coverImage || undefined,
-                    travelDates: form.travelStartDate,
-                    travelStartDate: form.travelStartDate,
-                    travelEndDate: form.travelEndDate,
-                    nights: nights ?? undefined,
-                    days: nights != null ? nights + 1 : undefined,
-                    adults: form.adults,
-                    children: form.children,
-                    infants: form.infants,
-                    currency: form.currency,
-                    packageIncludes: selected?.inclusions,
-                    packageExcludes: selected?.exclusions,
-                    termsAndConditions: form.termsAndConditions,
-                    paymentTerms: form.paymentTerms,
-                    cancellationPolicy: form.cancellationPolicy,
-                    refundPolicy: form.refundPolicy,
-                    salesExecutiveName: form.salesExecutiveName,
-                    specialRequests: form.specialRequests,
-                    taxRate: form.taxRate,
-                    perPersonCost: liveCosting.perPersonCost,
-                    packages,
-                  };
-                  try {
-                    const ok = await downloadQuotationPdf(preview, undefined, { mode: id ? "preview" : "customer" });
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (!form.customerName.trim() || !form.destination.trim()) {
+                      toast({ title: "Customer and destination are required for the client PDF", variant: "destructive" });
+                      return;
+                    }
+                    try {
+                      const preview = buildReviewQuote();
+                      const ok = await downloadQuotationPdf(preview, undefined, { mode: id ? "preview" : "customer" });
+                      toast({
+                        title: ok ? "Client PDF ready" : "PDF failed",
+                        description: ok
+                          ? id
+                            ? "Branded quotation PDF downloaded."
+                            : "Brochure opened. Save the quote to generate a stored server PDF."
+                          : "Could not open the PDF.",
+                        variant: ok ? "default" : "destructive",
+                      });
+                    } catch (e) {
+                      toast({
+                        title: "PDF blocked",
+                        description: e instanceof Error ? e.message : "Could not generate PDF",
+                        variant: "destructive",
+                      });
+                    }
+                  }}
+                >
+                  <FileDown className="w-3.5 h-3.5 mr-1" /> PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (!form.customerName.trim() || !form.destination.trim()) {
+                      toast({ title: "Customer and destination are required", variant: "destructive" });
+                      return;
+                    }
+                    const ok = await downloadClientQuotationBrochure(buildReviewQuote());
                     toast({
-                      title: ok ? "Client PDF ready" : "PDF failed",
-                      description: ok
-                        ? id
-                          ? "Internal preview PDF generated and downloaded (customer-facing content)."
-                          : "Brochure opened. Save the quote to generate a stored server PDF."
-                        : "Could not open the PDF.",
+                      title: ok ? "Print dialog opened" : "Print failed",
+                      description: ok ? "Use your browser print dialog to print or save as PDF." : "Pop-up may be blocked.",
                       variant: ok ? "default" : "destructive",
                     });
-                  } catch (e) {
+                  }}
+                >
+                  <Printer className="w-3.5 h-3.5 mr-1" /> Print
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={async () => {
+                    const quote = await ensureSavedForDelivery();
+                    if (!quote) return;
+                    if (!quote.contactEmail?.trim()) {
+                      toast({ title: "Add contact email in Basic Details", variant: "destructive" });
+                      return;
+                    }
+                    const res = await deliverQuotationEmail(quote);
                     toast({
-                      title: "PDF blocked",
-                      description: e instanceof Error ? e.message : "Could not generate PDF",
-                      variant: "destructive",
+                      title: res.ok ? "Email sent" : "Email failed",
+                      description: res.ok
+                        ? `Quotation PDF emailed to ${quote.contactEmail}.`
+                        : res.error || "Could not send email",
+                      variant: res.ok ? "default" : "destructive",
                     });
-                  }
-                }}
-              >
-                Preview client PDF (what customer receives)
-              </Button>
+                  }}
+                >
+                  <Mail className="w-3.5 h-3.5 mr-1" /> Email
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={async () => {
+                    const quote = await ensureSavedForDelivery();
+                    if (!quote) return;
+                    if (!quote.contactPhone?.trim()) {
+                      toast({ title: "Add contact phone in Basic Details", variant: "destructive" });
+                      return;
+                    }
+                    const res = await deliverQuotationWhatsApp(quote);
+                    toast({
+                      title: res.ok ? "WhatsApp sent" : "WhatsApp failed",
+                      description: res.ok
+                        ? `Quotation PDF sent to ${quote.contactPhone}.`
+                        : res.error || "Could not send WhatsApp",
+                      variant: res.ok ? "default" : "destructive",
+                    });
+                  }}
+                >
+                  <MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp
+                </Button>
+              </div>
             </div>
             {packages.length > 1 && (
               <div className="overflow-x-auto">
@@ -1474,6 +1949,10 @@ export function QuotationWizardDialog({
                     <tr>
                       <td className="p-2 border-t">Insurance</td>
                       {packages.map((p) => <td key={p.name} className="p-2 border-t">{(p.insurance as { enabled?: boolean })?.enabled ? "Yes" : "No"}</td>)}
+                    </tr>
+                    <tr>
+                      <td className="p-2 border-t">Visa</td>
+                      {packages.map((p) => <td key={p.name} className="p-2 border-t">{(p.visa as { enabled?: boolean })?.enabled ? "Yes" : "No"}</td>)}
                     </tr>
                   </tbody>
                 </table>
@@ -1513,6 +1992,14 @@ export function QuotationWizardDialog({
                     </Button>
                   ) : (
                     <>
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground mr-auto">
+                        <input
+                          type="checkbox"
+                          checked={requireFinanceApproval}
+                          onChange={(e) => setRequireFinanceApproval(e.target.checked)}
+                        />
+                        Require Finance approval
+                      </label>
                       <Button variant="outline" disabled={busy} onClick={async () => { await persist(step); onOpenChange(false); }}>
                         Finish later
                       </Button>
@@ -1521,7 +2008,7 @@ export function QuotationWizardDialog({
                         disabled={busy}
                         className={["super_admin", "agency_admin"].includes(String(user?.role || "")) ? undefined : "bg-teal-600 hover:bg-teal-700"}
                         onClick={async () => {
-                          const q = await persist(step, { submitApproval: true });
+                          const q = await persist(step, { submitApproval: true, financeApprovalRequired: requireFinanceApproval });
                           if (q) onOpenChange(false);
                         }}
                       >
@@ -1532,7 +2019,7 @@ export function QuotationWizardDialog({
                           disabled={busy}
                           className="bg-teal-600 hover:bg-teal-700"
                           onClick={async () => {
-                            const q = await persist(step, { approveNow: true });
+                            const q = await persist(step, { approveNow: true, financeApprovalRequired: false });
                             if (q) onOpenChange(false);
                           }}
                         >
@@ -1735,10 +2222,19 @@ function hotelFromCatalog(item: ProductRecord): Record<string, unknown> {
     starCategory: String(item.starCategory || ""),
     roomType: String(first?.name || "Deluxe"),
     mealPlan: String(first?.mealPlan || "Breakfast"),
+    address: String(item.address || ""),
     city: String(item.city || item.destination?.name || ""),
+    checkInTime: String(item.checkInTime || "14:00"),
+    checkOutTime: String(item.checkOutTime || "11:00"),
+    contactPerson: String(item.contactPerson || ""),
+    contactPhone: String(item.contactPhone || ""),
+    contactEmail: String(item.contactEmail || ""),
     imageUrl: firstProductImage(item),
     sellingPrice: selling,
     supplier: item.supplier?.name,
+    confirmationNo: "",
+    remarks: "",
+    hotelDocuments: [],
     source: "CONTRACTED_PRODUCT",
     productType: "HOTEL",
   };
@@ -1752,6 +2248,341 @@ const CATALOG_TYPE = {
   meals: "MEAL",
   flights: "FLIGHT",
 } as const;
+
+const TRANSFER_TYPES = [
+  "Airport Pickup",
+  "Airport Drop",
+  "Hotel Transfer",
+  "Intercity Transfer",
+  "SIC",
+  "Private Vehicle",
+  "Coach",
+] as const;
+
+const VEHICLE_TYPES = [
+  "Sedan",
+  "SUV",
+  "Van",
+  "Luxury Car",
+  "Mini Coach",
+  "Full Coach",
+] as const;
+
+const ACTIVITY_CATEGORIES = [
+  "Attraction",
+  "Theme Park",
+  "Cruise",
+  "Museum",
+  "Adventure Activity",
+  "Show",
+  "Local Tour",
+] as const;
+
+const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"] as const;
+
+function normalizeVisaType(value: string): "Tourist Visa" | "Business Visa" {
+  const v = value.trim().toLowerCase();
+  if (v.includes("business")) return "Business Visa";
+  return "Tourist Visa";
+}
+
+function normalizeEntryType(value: string): "Single Entry" | "Multiple Entry" {
+  const v = value.trim().toLowerCase();
+  if (v.includes("multi")) return "Multiple Entry";
+  return "Single Entry";
+}
+
+const FIELD_SELECT_OPTIONS: Record<string, readonly string[]> = {
+  transferType: TRANSFER_TYPES,
+  vehicleType: VEHICLE_TYPES,
+  activityCategory: ACTIVITY_CATEGORIES,
+  mealType: MEAL_TYPES,
+};
+
+function fieldInputType(field: string): string {
+  if (field === "checkIn" || field === "checkOut" || field === "date") return "date";
+  if (field === "checkInTime" || field === "checkOutTime" || field === "depTime" || field === "arrTime" || field === "timeSlot") return "time";
+  if (["costPrice", "sellingPrice", "fare", "rooms", "quantity", "adultRate", "childRate", "adults", "children", "nights", "markup", "starCategory"].includes(field)) {
+    return "number";
+  }
+  return "text";
+}
+
+function fieldLabel(field: string): string {
+  if (field === "imageUrl") return "Image URL";
+  if (field === "checkIn") return "Check-in";
+  if (field === "checkOut") return "Check-out";
+  if (field === "confirmationNo") return "Confirmation number";
+  if (field === "contactPerson") return "Contact person";
+  if (field === "contactPhone") return "Contact phone";
+  if (field === "contactEmail") return "Contact email";
+  if (field === "nights") return "Number of nights";
+  if (field === "rooms") return "Number of rooms";
+  if (field === "markup") return "Markup";
+  if (field === "starCategory") return "Star category";
+  if (field === "costPrice") return "Cost price";
+  if (field === "sellingPrice") return "Selling price";
+  if (field === "transferType") return "Transfer type";
+  if (field === "vehicleType") return "Vehicle type";
+  if (field === "activityCategory") return "Activity category";
+  if (field === "timeSlot") return "Time slot";
+  if (field === "ticketType") return "Ticket type";
+  if (field === "adultRate") return "Adult rate";
+  if (field === "childRate") return "Child rate";
+  if (field === "mealType") return "Meal type";
+  if (field === "dietary") return "Special dietary requirements";
+  return field.replace(/([A-Z])/g, " $1");
+}
+
+function stayNights(checkIn?: string, checkOut?: string): number | null {
+  const a = toCalendarDate(checkIn);
+  const b = toCalendarDate(checkOut);
+  if (!a || !b || b <= a) return null;
+  const ms = new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime();
+  return Math.max(1, Math.round(ms / 86400000));
+}
+
+function hotelDisplayPrice(item: ProductRecord): number {
+  const rooms = Array.isArray(item.roomCategories) ? (item.roomCategories as Array<Record<string, unknown>>) : [];
+  const first = rooms[0] as { pricing?: Record<string, number> } | undefined;
+  const pricing = first?.pricing || {};
+  return Number(pricing.double ?? pricing.single ?? item.adultPrice ?? 0) || 0;
+}
+
+function toTimeValue(value?: string | null, fallback = ""): string {
+  if (!value) return fallback;
+  const v = String(value).trim();
+  const iso = v.match(/^(\d{1,2}):(\d{2})/);
+  if (iso) return `${iso[1].padStart(2, "0")}:${iso[2]}`;
+  const ampm = v.match(/^(\d{1,2})\s*(am|pm)$/i);
+  if (ampm) {
+    let h = Number(ampm[1]) % 12;
+    if (/pm/i.test(ampm[2])) h += 12;
+    return `${String(h).padStart(2, "0")}:00`;
+  }
+  return fallback;
+}
+
+const OPTIONAL_ADDON_PRESETS: Array<{
+  name: string;
+  description: string;
+  costPrice: number;
+  sellingPrice: number;
+}> = [
+  { name: "International SIM Card", description: "Local SIM with data for the trip", costPrice: 400, sellingPrice: 799 },
+  { name: "eSIM", description: "Instant digital SIM — activate on arrival", costPrice: 500, sellingPrice: 899 },
+  { name: "Airport Lounge Access", description: "Departure lounge pass", costPrice: 1500, sellingPrice: 2499 },
+  { name: "Early Check-in", description: "Subject to hotel availability", costPrice: 800, sellingPrice: 1500 },
+  { name: "Late Check-out", description: "Subject to hotel availability", costPrice: 800, sellingPrice: 1500 },
+  { name: "Extra Excursions", description: "Optional day trip / sightseeing add-on", costPrice: 2000, sellingPrice: 3500 },
+  { name: "Private Guide", description: "Dedicated local guide for selected days", costPrice: 3000, sellingPrice: 4999 },
+  { name: "Birthday Decorations", description: "Room / venue birthday setup", costPrice: 1200, sellingPrice: 2499 },
+  { name: "Honeymoon Setup", description: "Romantic room décor & amenities", costPrice: 1500, sellingPrice: 2999 },
+  { name: "Travel Accessories", description: "Travel kit / adapters / essentials", costPrice: 300, sellingPrice: 699 },
+];
+
+function AddOnsEditor({
+  rows,
+  onChange,
+}: {
+  rows: Record<string, unknown>[];
+  onChange: (rows: Record<string, unknown>[]) => void;
+}) {
+  function isEnabled(name: string) {
+    return rows.some((r) => String(r.name || "") === name && r.enabled !== false);
+  }
+
+  function findRow(name: string) {
+    return rows.find((r) => String(r.name || "") === name);
+  }
+
+  function togglePreset(preset: (typeof OPTIONAL_ADDON_PRESETS)[number], enabled: boolean) {
+    if (enabled) {
+      if (isEnabled(preset.name)) return;
+      const existing = findRow(preset.name);
+      if (existing) {
+        onChange(rows.map((r) => (String(r.name) === preset.name ? { ...r, enabled: true } : r)));
+        return;
+      }
+      onChange([
+        ...rows,
+        {
+          name: preset.name,
+          description: preset.description,
+          quantity: 1,
+          costPrice: preset.costPrice,
+          sellingPrice: preset.sellingPrice,
+          remarks: "",
+          enabled: true,
+          source: "PRESET",
+        },
+      ]);
+      return;
+    }
+    // Remove from package extras — does not touch hotels/flights/main services.
+    onChange(rows.filter((r) => String(r.name || "") !== preset.name));
+  }
+
+  function updateRow(name: string, patch: Record<string, unknown>) {
+    onChange(rows.map((r) => (String(r.name || "") === name ? { ...r, ...patch, enabled: true } : r)));
+  }
+
+  function addCustom() {
+    onChange([
+      ...rows,
+      {
+        name: "Custom add-on",
+        description: "",
+        quantity: 1,
+        costPrice: 0,
+        sellingPrice: 0,
+        remarks: "",
+        enabled: true,
+        source: "MANUAL",
+      },
+    ]);
+  }
+
+  const customRows = rows.filter(
+    (r) => r.enabled !== false && !OPTIONAL_ADDON_PRESETS.some((p) => p.name === String(r.name || "")),
+  );
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm font-semibold">Optional Add-ons</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Enable extras to grow revenue. Turning these on or off does not change hotels, flights, or the main package.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {OPTIONAL_ADDON_PRESETS.map((preset) => {
+          const enabled = isEnabled(preset.name);
+          const row = findRow(preset.name);
+          return (
+            <div key={preset.name} className="rounded-xl border bg-card p-3 space-y-3">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  checked={enabled}
+                  onCheckedChange={(v) => togglePreset(preset, Boolean(v))}
+                  className="mt-0.5"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium">{preset.name}</p>
+                  <p className="text-xs text-muted-foreground">{preset.description}</p>
+                </div>
+                {!enabled && (
+                  <p className="text-xs text-muted-foreground tabular-nums shrink-0">
+                    from {formatFullINR(preset.sellingPrice)}
+                  </p>
+                )}
+              </div>
+              {enabled && row && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pl-7">
+                  <Field
+                    label="Quantity"
+                    type="number"
+                    value={String(row.quantity ?? 1)}
+                    onChange={(v) => updateRow(preset.name, { quantity: Number(v) || 1 })}
+                  />
+                  <Field
+                    label="Cost"
+                    type="number"
+                    value={String(row.costPrice ?? 0)}
+                    onChange={(v) => updateRow(preset.name, { costPrice: Number(v) || 0 })}
+                  />
+                  <Field
+                    label="Selling price"
+                    type="number"
+                    value={String(row.sellingPrice ?? 0)}
+                    onChange={(v) => updateRow(preset.name, { sellingPrice: Number(v) || 0 })}
+                  />
+                  <Field
+                    label="Remarks"
+                    value={String(row.remarks || "")}
+                    onChange={(v) => updateRow(preset.name, { remarks: v })}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {customRows.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Custom add-ons</p>
+          {customRows.map((row, idx) => {
+            const name = String(row.name || `Custom ${idx + 1}`);
+            return (
+              <div key={`${name}-${idx}`} className="rounded-xl border bg-card p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 relative">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="absolute right-2 top-2 h-8 w-8 p-0"
+                  onClick={() => onChange(rows.filter((r) => r !== row))}
+                  aria-label="Remove custom add-on"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+                <Field
+                  label="Name"
+                  value={name}
+                  onChange={(v) => {
+                    onChange(rows.map((r) => (r === row ? { ...r, name: v, enabled: true } : r)));
+                  }}
+                />
+                <Field
+                  label="Description"
+                  value={String(row.description || "")}
+                  onChange={(v) => {
+                    onChange(rows.map((r) => (r === row ? { ...r, description: v, enabled: true } : r)));
+                  }}
+                />
+                <Field
+                  label="Quantity"
+                  type="number"
+                  value={String(row.quantity ?? 1)}
+                  onChange={(v) => {
+                    onChange(rows.map((r) => (r === row ? { ...r, quantity: Number(v) || 1, enabled: true } : r)));
+                  }}
+                />
+                <Field
+                  label="Cost"
+                  type="number"
+                  value={String(row.costPrice ?? 0)}
+                  onChange={(v) => {
+                    onChange(rows.map((r) => (r === row ? { ...r, costPrice: Number(v) || 0, enabled: true } : r)));
+                  }}
+                />
+                <Field
+                  label="Selling price"
+                  type="number"
+                  value={String(row.sellingPrice ?? 0)}
+                  onChange={(v) => {
+                    onChange(rows.map((r) => (r === row ? { ...r, sellingPrice: Number(v) || 0, enabled: true } : r)));
+                  }}
+                />
+                <Field
+                  label="Remarks"
+                  value={String(row.remarks || "")}
+                  onChange={(v) => {
+                    onChange(rows.map((r) => (r === row ? { ...r, remarks: v, enabled: true } : r)));
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <Button type="button" size="sm" variant="outline" onClick={addCustom}>
+        <Plus className="w-3.5 h-3.5 mr-1" /> Add custom add-on
+      </Button>
+    </div>
+  );
+}
 
 function ServiceEditor({
   title, rows, fields, onChange, template, catalogKind, catalogToRow, travelDate, travelEndDate, quotationId, destinationId, destination,
@@ -1769,6 +2600,33 @@ function ServiceEditor({
   destinationId?: string;
   destination?: string;
 }) {
+  const [catalogOpen, setCatalogOpen] = useState(false);
+
+  function addSelfBooked() {
+    setCatalogOpen(false);
+    const row = { ...template };
+    if (catalogKind === "hotels") {
+      row.checkIn = toCalendarDate(String(row.checkIn || "")) || travelDate || "";
+      row.checkOut = toCalendarDate(String(row.checkOut || "")) || travelEndDate || "";
+      if (!row.checkInTime) row.checkInTime = "14:00";
+      if (!row.checkOutTime) row.checkOutTime = "11:00";
+      if (!row.city && destination) row.city = destination;
+      const n = stayNights(String(row.checkIn || ""), String(row.checkOut || ""));
+      row.nights = n ?? "";
+      const cost = Number(row.costPrice || 0);
+      const sell = Number(row.sellingPrice || 0);
+      row.markup = Math.round(sell - cost);
+      if (!Array.isArray(row.hotelDocuments)) row.hotelDocuments = [];
+    }
+    if (catalogKind === "flights" && !Array.isArray(row.flightDocuments)) {
+      row.flightDocuments = [];
+    }
+    if (catalogKind === "activities" && !Array.isArray(row.activityDocuments)) {
+      row.activityDocuments = [];
+    }
+    onChange([...rows, row]);
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex justify-between items-start gap-3 flex-wrap">
@@ -1788,15 +2646,33 @@ function ServiceEditor({
               travelEndDate={travelEndDate}
               destinationId={destinationId}
               destination={destination}
+              open={catalogOpen}
+              onOpenChange={setCatalogOpen}
+              onAddSelfBooked={addSelfBooked}
               onPick={(item, rate) => {
                 const base = catalogToRow(item);
                 const selling = Number(base.sellingPrice || rate.displayPrice || 0);
+                const cost = Number(rate.contractedCost || 0);
+                const cin = travelDate || String(base.checkIn || "");
+                const cout = travelEndDate || String(base.checkOut || "");
                 onChange([...rows, {
                   ...base,
                   ...(catalogKind === "hotels" ? {
-                    checkIn: travelDate || base.checkIn || "",
-                    checkOut: travelEndDate || base.checkOut || "",
+                    checkIn: cin,
+                    checkOut: cout,
+                    checkInTime: String(base.checkInTime || "14:00"),
+                    checkOutTime: String(base.checkOutTime || "11:00"),
+                    nights: stayNights(cin, cout) ?? "",
                     rooms: Number(base.rooms || 1),
+                    city: String(base.city || destination || ""),
+                    markup: Math.round((selling || cost) - cost),
+                    hotelDocuments: Array.isArray(base.hotelDocuments) ? base.hotelDocuments : [],
+                  } : {}),
+                  ...(catalogKind === "flights" ? {
+                    flightDocuments: Array.isArray(base.flightDocuments) ? base.flightDocuments : [],
+                  } : {}),
+                  ...(catalogKind === "activities" ? {
+                    activityDocuments: Array.isArray(base.activityDocuments) ? base.activityDocuments : [],
                   } : {}),
                   source: "CONTRACTED_PRODUCT",
                   productType: CATALOG_TYPE[catalogKind],
@@ -1806,9 +2682,10 @@ function ServiceEditor({
                   rateSelectedAt: new Date().toISOString(),
                   rateTravelDate: travelDate,
                   rateUnresolved: false,
-                  costPrice: rate.contractedCost,
-                  sellingPrice: selling || rate.contractedCost,
+                  costPrice: cost,
+                  sellingPrice: selling || cost,
                 }]);
+                setCatalogOpen(false);
               }}
             />
           )}
@@ -1818,7 +2695,7 @@ function ServiceEditor({
               onPick={(row) => onChange([...rows, row])}
             />
           )}
-          <Button size="sm" variant="outline" onClick={() => onChange([...rows, { ...template }])}>
+          <Button size="sm" variant="outline" type="button" onClick={addSelfBooked}>
             <Plus className="w-3.5 h-3.5 mr-1" /> Add self-booked
           </Button>
         </div>
@@ -1828,101 +2705,421 @@ function ServiceEditor({
           No {title.toLowerCase()} yet — pick from catalog or add self-booked.
         </div>
       )}
-      {rows.map((row, i) => (
-        <div key={i} className="rounded-xl border bg-card p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 relative">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="absolute right-2 top-2 h-8 w-8 p-0"
-            onClick={() => onChange(rows.filter((_, j) => j !== i))}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </Button>
-          {row.rateUnresolved === true && (
-            <p className="sm:col-span-2 md:col-span-3 text-xs text-destructive">{NO_VALID_RATE}</p>
-          )}
-          {Boolean(row.transferBadge) && (
-            <p className="sm:col-span-2 md:col-span-3 text-[11px] uppercase tracking-wide text-muted-foreground">{String(row.transferBadge)}</p>
-          )}
-          {Boolean(row.source) && (
-            <p className="sm:col-span-2 md:col-span-3 text-[10px] text-muted-foreground">Source: {String(row.source)}</p>
-          )}
-          {fields.map((f) => (
-            <div key={f} className={cn("space-y-1.5", isImageField(f) ? "sm:col-span-2 md:col-span-3 pr-8" : "")}>
-              <Label className="text-xs font-medium capitalize text-muted-foreground">
-                {f === "imageUrl" ? "Image URL" : f.replace(/([A-Z])/g, " $1")}
-              </Label>
-              {isImageField(f) ? (
-                <ImageUrlField
-                  value={String(row[f] ?? "")}
-                  onChange={(v) => {
-                    const next = [...rows];
-                    next[i] = { ...next[i], [f]: v };
-                    onChange(next);
-                  }}
-                  placeholder="https://… photo for customer PDF"
-                />
-              ) : (
-                <Input
-                  className="h-9"
-                  value={String(row[f] ?? "")}
-                  onChange={(e) => {
-                    const next = [...rows];
-                    const num = ["costPrice", "sellingPrice", "fare", "rooms", "quantity", "adultRate", "childRate", "adults", "children"].includes(f);
-                    next[i] = { ...next[i], [f]: num ? Number(e.target.value) || 0 : e.target.value };
-                    onChange(next);
-                  }}
-                />
-              )}
-            </div>
-          ))}
-          {catalogKind === "flights" && (
-            <FlightDocAttach
-              quotationId={quotationId}
-              documentId={String(row.ticketDocumentId || "")}
-              fileName={String(row.ticketFileName || "")}
-              onLinked={(doc) => {
-                const next = [...rows];
-                next[i] = {
-                  ...next[i],
-                  ticketDocumentId: doc.id,
-                  ticketFileName: doc.fileName,
-                  // Private download path only — never a public static URL
-                  ticketDownloadPath: doc.downloadPath,
-                };
-                onChange(next);
-              }}
-            />
-          )}
-        </div>
-      ))}
+      {rows.map((row, i) => {
+        const checkIn = toCalendarDate(String(row.checkIn || ""));
+        const checkOut = toCalendarDate(String(row.checkOut || ""));
+        const dateError = catalogKind === "hotels" && checkIn && checkOut && checkOut <= checkIn
+          ? "Check-out date must be after check-in date."
+          : null;
+        return (
+          <div key={i} className="rounded-xl border bg-card p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 relative">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="absolute right-2 top-2 h-8 w-8 p-0"
+              onClick={() => onChange(rows.filter((_, j) => j !== i))}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+            {row.rateUnresolved === true && (
+              <p className="sm:col-span-2 md:col-span-3 text-xs text-destructive">{NO_VALID_RATE}</p>
+            )}
+            {dateError && (
+              <p className="sm:col-span-2 md:col-span-3 text-xs text-destructive">{dateError}</p>
+            )}
+            {Boolean(row.transferBadge) && (
+              <p className="sm:col-span-2 md:col-span-3 text-[11px] uppercase tracking-wide text-muted-foreground">{String(row.transferBadge)}</p>
+            )}
+            {Boolean(row.source) && (
+              <p className="sm:col-span-2 md:col-span-3 text-[10px] text-muted-foreground">Source: {String(row.source)}</p>
+            )}
+            {fields.map((f) => {
+              const inputType = fieldInputType(f);
+              const raw = String(row[f] ?? "");
+              const value = inputType === "date" ? (toCalendarDate(raw) || "") : raw;
+              const isStayDate = catalogKind === "hotels" && (f === "checkIn" || f === "checkOut");
+              const timeKey = f === "checkIn" ? "checkInTime" : "checkOutTime";
+              const timeFallback = f === "checkIn" ? "14:00" : "11:00";
+              const timeValue = isStayDate
+                ? toTimeValue(String(row[timeKey] ?? ""), timeFallback)
+                : "";
+              const selectOptions = FIELD_SELECT_OPTIONS[f];
+              const selectValue = value || undefined;
+              const selectItems = selectOptions
+                ? (selectValue && !(selectOptions as readonly string[]).includes(selectValue)
+                  ? [selectValue, ...selectOptions]
+                  : [...selectOptions])
+                : [];
+              return (
+                <div key={f} className={cn("space-y-1.5", isImageField(f) || isStayDate ? "sm:col-span-2 md:col-span-3 pr-8" : "")}>
+                  <Label className="text-xs font-medium capitalize text-muted-foreground">
+                    {fieldLabel(f)}
+                  </Label>
+                  {isImageField(f) ? (
+                    <ImageUrlField
+                      value={raw}
+                      onChange={(v) => {
+                        const next = [...rows];
+                        next[i] = { ...next[i], [f]: v };
+                        onChange(next);
+                      }}
+                      placeholder="https://… photo for customer PDF"
+                    />
+                  ) : isStayDate ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <Input
+                        className="h-9"
+                        type="date"
+                        min={f === "checkOut" && checkIn ? checkIn : undefined}
+                        value={value}
+                        onChange={(e) => {
+                          const next = [...rows];
+                          const dateVal = toCalendarDate(e.target.value) || e.target.value;
+                          const existingTime = toTimeValue(String(next[i][timeKey] ?? ""), "");
+                          const patch: Record<string, unknown> = {
+                            ...next[i],
+                            [f]: dateVal,
+                            [timeKey]: existingTime || timeFallback,
+                          };
+                          const cin = toCalendarDate(String(f === "checkIn" ? dateVal : patch.checkIn || ""));
+                          const cout = toCalendarDate(String(f === "checkOut" ? dateVal : patch.checkOut || ""));
+                          const n = stayNights(cin, cout);
+                          if (n != null) patch.nights = n;
+                          next[i] = patch;
+                          onChange(next);
+                        }}
+                      />
+                      <Input
+                        className="h-9"
+                        type="time"
+                        value={timeValue}
+                        onChange={(e) => {
+                          const next = [...rows];
+                          next[i] = {
+                            ...next[i],
+                            [timeKey]: toTimeValue(e.target.value, timeFallback),
+                          };
+                          onChange(next);
+                        }}
+                      />
+                    </div>
+                  ) : selectOptions ? (
+                    <Select
+                      value={selectValue}
+                      onValueChange={(v) => {
+                        const next = [...rows];
+                        next[i] = { ...next[i], [f]: v };
+                        onChange(next);
+                      }}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder={`Select ${fieldLabel(f).toLowerCase()}`} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selectItems.map((opt) => (
+                          <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      className="h-9"
+                      type={inputType}
+                      readOnly={f === "nights" || f === "markup"}
+                      min={f === "checkOut" && checkIn ? checkIn : undefined}
+                      value={
+                        f === "nights"
+                          ? String(stayNights(checkIn, checkOut) ?? row.nights ?? "")
+                          : f === "markup"
+                            ? String(Math.round(Number(row.sellingPrice || 0) - Number(row.costPrice || 0)))
+                            : value
+                      }
+                      onChange={(e) => {
+                        if (f === "nights" || f === "markup") return;
+                        const next = [...rows];
+                        const num = inputType === "number";
+                        let nextVal: string | number = num ? Number(e.target.value) || 0 : e.target.value;
+                        if (inputType === "date") nextVal = toCalendarDate(String(nextVal)) || String(nextVal);
+                        const patch: Record<string, unknown> = { ...next[i], [f]: nextVal };
+                        if (f === "costPrice" || f === "sellingPrice") {
+                          const cost = Number(f === "costPrice" ? nextVal : patch.costPrice || 0);
+                          const sell = Number(f === "sellingPrice" ? nextVal : patch.sellingPrice || 0);
+                          patch.markup = Math.round(sell - cost);
+                        }
+                        next[i] = patch;
+                        onChange(next);
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+            {catalogKind === "hotels" && (
+              <HotelDocumentsAttach
+                quotationId={quotationId}
+                documents={Array.isArray(row.hotelDocuments) ? (row.hotelDocuments as Array<Record<string, string>>) : []}
+                onChange={(docs) => {
+                  const next = [...rows];
+                  next[i] = { ...next[i], hotelDocuments: docs };
+                  onChange(next);
+                }}
+              />
+            )}
+            {catalogKind === "flights" && (
+              <FlightDocumentsAttach
+                quotationId={quotationId}
+                documents={(() => {
+                  const docs = Array.isArray(row.flightDocuments)
+                    ? [...(row.flightDocuments as Array<Record<string, string>>)]
+                    : [];
+                  if (row.ticketDocumentId && !docs.some((d) => d.id === String(row.ticketDocumentId))) {
+                    docs.unshift({
+                      id: String(row.ticketDocumentId),
+                      fileName: String(row.ticketFileName || "Ticket"),
+                      docType: "FLIGHT_TICKET",
+                      downloadPath: String(row.ticketDownloadPath || ""),
+                    });
+                  }
+                  return docs;
+                })()}
+                onChange={(docs) => {
+                  const next = [...rows];
+                  next[i] = {
+                    ...next[i],
+                    flightDocuments: docs,
+                    ticketDocumentId: "",
+                    ticketFileName: "",
+                    ticketDownloadPath: "",
+                  };
+                  onChange(next);
+                }}
+              />
+            )}
+            {catalogKind === "activities" && (
+              <ActivityDocumentsAttach
+                quotationId={quotationId}
+                documents={Array.isArray(row.activityDocuments) ? (row.activityDocuments as Array<Record<string, string>>) : []}
+                onChange={(docs) => {
+                  const next = [...rows];
+                  next[i] = { ...next[i], activityDocuments: docs };
+                  onChange(next);
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-function FlightDocAttach({
+
+function HotelDocumentsAttach({
   quotationId,
-  documentId,
-  fileName,
-  onLinked,
+  documents,
+  onChange,
 }: {
   quotationId?: string | null;
-  documentId?: string;
-  fileName?: string;
-  onLinked: (doc: { id: string; fileName: string; downloadPath: string }) => void;
+  documents: Array<Record<string, string>>;
+  onChange: (docs: Array<Record<string, string>>) => void;
 }) {
   const { toast } = useToast();
+  const kinds: Array<{ docType: string; label: string; accept: string }> = [
+    { docType: "HOTEL_VOUCHER", label: "Hotel voucher", accept: ".pdf,image/jpeg,image/png" },
+    { docType: "HOTEL_CONFIRMATION", label: "Booking confirmation", accept: ".pdf,image/jpeg,image/png" },
+    { docType: "OTHER", label: "PDF / image", accept: ".pdf,image/jpeg,image/png" },
+  ];
+
   if (!quotationId) {
     return (
       <p className="sm:col-span-2 md:col-span-3 text-[11px] text-muted-foreground">
-        Save the draft to attach ticket / invoice via private document storage.
+        Save the draft to upload hotel voucher, confirmation, PDF, or images.
       </p>
     );
   }
+
   return (
-    <div className="sm:col-span-2 md:col-span-3 space-y-1">
-      <Label className="text-xs text-muted-foreground">Ticket / invoice (private)</Label>
-      <div className="flex items-center gap-2">
+    <div className="sm:col-span-2 md:col-span-3 space-y-2 rounded-lg border bg-muted/10 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Uploads</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {kinds.map((kind) => (
+          <div key={kind.docType} className="space-y-1">
+            <Label className="text-[11px] text-muted-foreground">{kind.label}</Label>
+            <Input
+              type="file"
+              accept={kind.accept}
+              className="h-9 text-xs"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                void api.uploadQuotationDocument(quotationId, file, {
+                  docType: kind.docType,
+                  visibility: "AGENT",
+                  relatedEntity: "hotel",
+                  description: kind.label,
+                })
+                  .then((res) => {
+                    onChange([
+                      ...documents,
+                      {
+                        id: res.document.id,
+                        fileName: res.document.fileName,
+                        docType: res.document.docType || kind.docType,
+                        downloadPath: res.document.downloadPath,
+                      },
+                    ]);
+                    toast({ title: `${kind.label} uploaded` });
+                  })
+                  .catch((err) => {
+                    toast({ title: err instanceof Error ? err.message : "Upload failed", variant: "destructive" });
+                  })
+                  .finally(() => {
+                    e.target.value = "";
+                  });
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      {documents.length > 0 && (
+        <div className="space-y-1">
+          {documents.map((doc, idx) => (
+            <div key={`${doc.id}-${idx}`} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="truncate text-muted-foreground">
+                {doc.docType || "DOC"} · {doc.fileName || doc.id}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2"
+                onClick={() => onChange(documents.filter((_, j) => j !== idx))}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FlightDocumentsAttach({
+  quotationId,
+  documents,
+  onChange,
+}: {
+  quotationId?: string | null;
+  documents: Array<Record<string, string>>;
+  onChange: (docs: Array<Record<string, string>>) => void;
+}) {
+  const { toast } = useToast();
+  const kinds: Array<{ docType: string; label: string; accept: string }> = [
+    { docType: "FLIGHT_TICKET", label: "Ticket", accept: ".pdf,image/jpeg,image/png" },
+    { docType: "FLIGHT_CONFIRMATION", label: "Flight confirmation", accept: ".pdf,image/jpeg,image/png" },
+    { docType: "FLIGHT_INVOICE", label: "Invoice", accept: ".pdf,image/jpeg,image/png" },
+  ];
+
+  if (!quotationId) {
+    return (
+      <p className="sm:col-span-2 md:col-span-3 text-[11px] text-muted-foreground">
+        Save the draft to upload ticket, flight confirmation, or invoice.
+      </p>
+    );
+  }
+
+  return (
+    <div className="sm:col-span-2 md:col-span-3 space-y-2 rounded-lg border bg-muted/10 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Uploads</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {kinds.map((kind) => (
+          <div key={kind.docType} className="space-y-1">
+            <Label className="text-[11px] text-muted-foreground">{kind.label}</Label>
+            <Input
+              type="file"
+              accept={kind.accept}
+              className="h-9 text-xs"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                void api.uploadQuotationDocument(quotationId, file, {
+                  docType: kind.docType,
+                  visibility: "AGENT",
+                  relatedEntity: "flight",
+                  description: kind.label,
+                })
+                  .then((res) => {
+                    onChange([
+                      ...documents,
+                      {
+                        id: res.document.id,
+                        fileName: res.document.fileName,
+                        docType: res.document.docType || kind.docType,
+                        downloadPath: res.document.downloadPath,
+                      },
+                    ]);
+                    toast({ title: `${kind.label} uploaded` });
+                  })
+                  .catch((err) => {
+                    toast({ title: err instanceof Error ? err.message : "Upload failed", variant: "destructive" });
+                  })
+                  .finally(() => {
+                    e.target.value = "";
+                  });
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      {documents.length > 0 && (
+        <div className="space-y-1">
+          {documents.map((doc, idx) => (
+            <div key={`${doc.id}-${idx}`} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="truncate text-muted-foreground">
+                {doc.docType || "DOC"} · {doc.fileName || doc.id}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2"
+                onClick={() => onChange(documents.filter((_, j) => j !== idx))}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityDocumentsAttach({
+  quotationId,
+  documents,
+  onChange,
+}: {
+  quotationId?: string | null;
+  documents: Array<Record<string, string>>;
+  onChange: (docs: Array<Record<string, string>>) => void;
+}) {
+  const { toast } = useToast();
+
+  if (!quotationId) {
+    return (
+      <p className="sm:col-span-2 md:col-span-3 text-[11px] text-muted-foreground">
+        Save the draft to upload an activity voucher.
+      </p>
+    );
+  }
+
+  return (
+    <div className="sm:col-span-2 md:col-span-3 space-y-2 rounded-lg border bg-muted/10 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Uploads</p>
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">Voucher</Label>
         <Input
           type="file"
           accept=".pdf,image/jpeg,image/png"
@@ -1931,26 +3128,210 @@ function FlightDocAttach({
             const file = e.target.files?.[0];
             if (!file) return;
             void api.uploadQuotationDocument(quotationId, file, {
-              docType: "FLIGHT_TICKET",
+              docType: "ACTIVITY_VOUCHER",
               visibility: "AGENT",
-              relatedEntity: "flight",
-              description: "Flight ticket / invoice",
+              relatedEntity: "activity",
+              description: "Activity voucher",
             })
               .then((res) => {
-                onLinked(res.document);
-                toast({ title: "Flight document stored privately" });
+                onChange([
+                  ...documents,
+                  {
+                    id: res.document.id,
+                    fileName: res.document.fileName,
+                    docType: res.document.docType || "ACTIVITY_VOUCHER",
+                    downloadPath: res.document.downloadPath,
+                  },
+                ]);
+                toast({ title: "Activity voucher uploaded" });
               })
               .catch((err) => {
                 toast({ title: err instanceof Error ? err.message : "Upload failed", variant: "destructive" });
+              })
+              .finally(() => {
+                e.target.value = "";
               });
           }}
         />
-        {(documentId || fileName) && (
-          <span className="text-[11px] text-muted-foreground truncate max-w-[160px]">
-            {fileName || documentId}
-          </span>
-        )}
       </div>
+      {documents.length > 0 && (
+        <div className="space-y-1">
+          {documents.map((doc, idx) => (
+            <div key={`${doc.id}-${idx}`} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="truncate text-muted-foreground">
+                {doc.docType || "VOUCHER"} · {doc.fileName || doc.id}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2"
+                onClick={() => onChange(documents.filter((_, j) => j !== idx))}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InsurancePolicyAttach({
+  quotationId,
+  documents,
+  onChange,
+}: {
+  quotationId?: string | null;
+  documents: Array<Record<string, string>>;
+  onChange: (docs: Array<Record<string, string>>) => void;
+}) {
+  const { toast } = useToast();
+
+  if (!quotationId) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        Save the draft to upload the insurance policy document.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border bg-muted/10 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Upload policy document</p>
+      <Input
+        type="file"
+        accept=".pdf,image/jpeg,image/png"
+        className="h-9 text-xs"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          void api.uploadQuotationDocument(quotationId, file, {
+            docType: "INSURANCE_POLICY",
+            visibility: "AGENT",
+            relatedEntity: "insurance",
+            description: "Insurance policy",
+          })
+            .then((res) => {
+              onChange([
+                ...documents,
+                {
+                  id: res.document.id,
+                  fileName: res.document.fileName,
+                  docType: res.document.docType || "INSURANCE_POLICY",
+                  downloadPath: res.document.downloadPath,
+                },
+              ]);
+              toast({ title: "Insurance policy uploaded" });
+            })
+            .catch((err) => {
+              toast({ title: err instanceof Error ? err.message : "Upload failed", variant: "destructive" });
+            })
+            .finally(() => {
+              e.target.value = "";
+            });
+        }}
+      />
+      {documents.length > 0 && (
+        <div className="space-y-1">
+          {documents.map((doc, idx) => (
+            <div key={`${doc.id}-${idx}`} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="truncate text-muted-foreground">
+                {doc.docType || "POLICY"} · {doc.fileName || doc.id}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2"
+                onClick={() => onChange(documents.filter((_, j) => j !== idx))}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VisaDocumentAttach({
+  quotationId,
+  documents,
+  onChange,
+}: {
+  quotationId?: string | null;
+  documents: Array<Record<string, string>>;
+  onChange: (docs: Array<Record<string, string>>) => void;
+}) {
+  const { toast } = useToast();
+
+  if (!quotationId) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        Save the draft to upload visa documents.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border bg-muted/10 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Upload visa documents</p>
+      <Input
+        type="file"
+        accept=".pdf,image/jpeg,image/png"
+        className="h-9 text-xs"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          void api.uploadQuotationDocument(quotationId, file, {
+            docType: "VISA_DOCUMENT",
+            visibility: "AGENT",
+            relatedEntity: "visa",
+            description: "Visa document",
+          })
+            .then((res) => {
+              onChange([
+                ...documents,
+                {
+                  id: res.document.id,
+                  fileName: res.document.fileName,
+                  docType: res.document.docType || "VISA_DOCUMENT",
+                  downloadPath: res.document.downloadPath,
+                },
+              ]);
+              toast({ title: "Visa document uploaded" });
+            })
+            .catch((err) => {
+              toast({ title: err instanceof Error ? err.message : "Upload failed", variant: "destructive" });
+            })
+            .finally(() => {
+              e.target.value = "";
+            });
+        }}
+      />
+      {documents.length > 0 && (
+        <div className="space-y-1">
+          {documents.map((doc, idx) => (
+            <div key={`${doc.id}-${idx}`} className="flex items-center justify-between gap-2 text-[11px]">
+              <span className="truncate text-muted-foreground">
+                {doc.docType || "VISA"} · {doc.fileName || doc.id}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2"
+                onClick={() => onChange(documents.filter((_, j) => j !== idx))}
+              >
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -2015,6 +3396,7 @@ function FlightApiSearch({
                   costPrice: 0,
                   remarks: "",
                   pnr: "",
+                  flightDocuments: [],
                 });
                 setOpen(false);
               }}
@@ -2037,6 +3419,9 @@ function CatalogPicker({
   travelEndDate,
   destinationId,
   destination,
+  open,
+  onOpenChange,
+  onAddSelfBooked,
   onPick,
 }: {
   kind: keyof typeof CATALOG_TYPE;
@@ -2044,56 +3429,217 @@ function CatalogPicker({
   travelEndDate?: string;
   destinationId?: string;
   destination?: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onAddSelfBooked?: () => void;
   onPick: (item: ProductRecord, rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null }) => void;
 }) {
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [star, setStar] = useState("all");
+  const [supplierId, setSupplierId] = useState("all");
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
+  const [availableOnly, setAvailableOnly] = useState(true);
+  const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
   const [items, setItems] = useState<ProductRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const destLabel = (destination || "").trim();
+  const isHotels = kind === "hotels";
+
+  useEffect(() => {
+    if (!open || !isHotels) return;
+    apiFetch<{ items: Array<{ id: string; name: string }> }>("/api/suppliers?pageSize=100")
+      .then((r) => setSuppliers((r.items || []).map((s) => ({ id: s.id, name: s.name }))))
+      .catch(() => setSuppliers([]));
+  }, [open, isHotels]);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
     const t = setTimeout(() => {
-      const params = new URLSearchParams({ liveOnly: "true", pageSize: "20" });
-      if (q.trim()) params.set("q", q.trim());
-      if (destinationId) params.set("destinationId", destinationId);
-      else if (destLabel) params.set("city", destLabel);
-      apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${params.toString()}`)
-        .then((r) => setItems(r.items || []))
-        .catch(() => setItems([]))
-        .finally(() => setLoading(false));
-    }, 200);
+      void (async () => {
+        try {
+          const params = new URLSearchParams({ liveOnly: "true", pageSize: isHotels ? "50" : "20" });
+          if (q.trim()) params.set("q", q.trim());
+          if (destinationId) params.set("destinationId", destinationId);
+          else if (destLabel) params.set("city", destLabel);
+          if (isHotels && star !== "all") params.set("starCategory", star);
+          if (isHotels && supplierId !== "all") params.set("supplierId", supplierId);
+          const res = await apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${params.toString()}`);
+          let next = res.items || [];
+          if (isHotels) {
+            const min = Number(minPrice);
+            const max = Number(maxPrice);
+            if (Number.isFinite(min) && min > 0) next = next.filter((item) => hotelDisplayPrice(item) >= min);
+            if (Number.isFinite(max) && max > 0) next = next.filter((item) => hotelDisplayPrice(item) <= max);
+            if (availableOnly && travelDate && travelEndDate) {
+              const checked = await Promise.all(
+                next.map(async (item) => {
+                  try {
+                    const rooms = Array.isArray(item.roomCategories) ? (item.roomCategories as Array<Record<string, unknown>>) : [];
+                    const firstRoom = rooms[0];
+                    const availParams = new URLSearchParams({
+                      checkIn: travelDate,
+                      checkOut: travelEndDate,
+                      rooms: "1",
+                    });
+                    if (firstRoom?.name) availParams.set("roomType", String(firstRoom.name));
+                    const avail = await apiFetch<{ ok: boolean }>(
+                      `/api/products/hotels/${item.id}/catalogue-availability?${availParams.toString()}`,
+                    );
+                    return avail.ok ? item : null;
+                  } catch {
+                    return item;
+                  }
+                }),
+              );
+              next = checked.filter(Boolean) as ProductRecord[];
+            }
+          }
+          setItems(next);
+        } catch {
+          setItems([]);
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }, 250);
     return () => clearTimeout(t);
-  }, [open, q, kind, destinationId, destLabel]);
+  }, [open, q, kind, destinationId, destLabel, star, supplierId, minPrice, maxPrice, availableOnly, travelDate, travelEndDate, isHotels]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      onOpenChange(false);
+    }
+    function onPointer(e: MouseEvent) {
+      const el = panelRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && !el.contains(e.target)) onOpenChange(false);
+    }
+    document.addEventListener("keydown", onKey, true);
+    document.addEventListener("mousedown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.removeEventListener("mousedown", onPointer);
+    };
+  }, [open, onOpenChange]);
 
   return (
-    <div className="relative">
-      <Button size="sm" variant="outline" type="button" onClick={() => setOpen((v) => !v)}>
+    <div className="relative" ref={panelRef}>
+      <Button size="sm" variant="outline" type="button" onClick={() => onOpenChange(!open)}>
         <Search className="w-3.5 h-3.5 mr-1" /> Catalog
       </Button>
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-80 rounded-md border bg-popover p-2 shadow-md">
-          <Input
-            className="h-8 text-xs mb-2"
-            placeholder={destLabel ? `Search ${kind} in ${destLabel}…` : `Search ${kind}…`}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            autoFocus
-          />
-          {destLabel && (
+        <div className={cn("absolute right-0 z-20 mt-1 rounded-md border bg-popover p-2 shadow-md", isHotels ? "w-[22rem] sm:w-[28rem]" : "w-80")}>
+          <div className="flex items-center gap-1 mb-2">
+            <Input
+              className="h-8 text-xs flex-1"
+              placeholder={
+                isHotels
+                  ? (destLabel ? `Hotel name in ${destLabel}…` : "Search hotel name…")
+                  : (destLabel ? `Search ${kind} in ${destLabel}…` : `Search ${kind}…`)
+              }
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              autoFocus
+            />
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 shrink-0"
+              aria-label="Close catalog"
+              onClick={() => onOpenChange(false)}
+            >
+              <X className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+
+          {isHotels && (
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Destination</Label>
+                <Input className="h-8 text-xs" value={destLabel || "—"} readOnly />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Star rating</Label>
+                <Select value={star} onValueChange={setStar}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Any" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Any</SelectItem>
+                    {[5, 4, 3, 2, 1].map((n) => (
+                      <SelectItem key={n} value={String(n)}>{n}★</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 col-span-2">
+                <Label className="text-[10px] text-muted-foreground">Supplier</Label>
+                <Select value={supplierId} onValueChange={setSupplierId}>
+                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Any supplier" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Any supplier</SelectItem>
+                    {suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Min price</Label>
+                <Input className="h-8 text-xs" type="number" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} placeholder="0" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] text-muted-foreground">Max price</Label>
+                <Input className="h-8 text-xs" type="number" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="Any" />
+              </div>
+              <label className="col-span-2 flex items-center gap-2 text-[11px] text-muted-foreground px-0.5">
+                <Checkbox checked={availableOnly} onCheckedChange={(v) => setAvailableOnly(v === true)} />
+                Only show available for travel dates
+              </label>
+            </div>
+          )}
+
+          {destLabel && !isHotels && (
             <p className="text-[10px] text-muted-foreground px-1 mb-1.5">
               Showing live {kind} for {destLabel}
             </p>
           )}
-          <div className="max-h-48 overflow-y-auto space-y-1">
+          {isHotels && destLabel && (
+            <p className="text-[10px] text-muted-foreground px-1 mb-1.5">
+              Hotel database · {destLabel}
+              {travelDate && travelEndDate ? ` · ${travelDate} → ${travelEndDate}` : ""}
+            </p>
+          )}
+
+          <div className="max-h-56 overflow-y-auto space-y-1">
             {loading && <p className="text-[11px] text-muted-foreground px-1">Loading…</p>}
             {!loading && items.length === 0 && (
-              <p className="text-[11px] text-muted-foreground px-1">
-                {destLabel ? `No live ${kind} for ${destLabel}.` : "No live products."}
-              </p>
+              <div className="space-y-2 px-1 py-1">
+                <p className="text-[11px] text-muted-foreground">
+                  {destLabel ? `No live ${kind} for ${destLabel}.` : "No live products."}
+                </p>
+                {onAddSelfBooked && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 w-full text-xs"
+                    onClick={() => {
+                      onOpenChange(false);
+                      onAddSelfBooked();
+                    }}
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add self-booked instead
+                  </Button>
+                )}
+              </div>
             )}
             {items.map((item) => (
               <button
@@ -2161,7 +3707,7 @@ function CatalogPicker({
                         return;
                       }
                       onPick(item, { rateId: rate.rateId, validFrom: rate.validFrom || "", validTo: rate.validTo || "", contractedCost: rate.contractedCost, displayPrice: rate.displayPrice });
-                      setOpen(false);
+                      onOpenChange(false);
                     } catch {
                       toast({ title: NO_VALID_RATE, variant: "destructive" });
                     }
@@ -2169,6 +3715,14 @@ function CatalogPicker({
                 }}
               >
                 <span className="font-medium">{item.name}</span>
+                {isHotels && (
+                  <span className="block text-[10px] text-muted-foreground">
+                    {item.starCategory ? `${item.starCategory}★` : "Unrated"}
+                    {item.supplier?.name ? ` · ${item.supplier.name}` : ""}
+                    {hotelDisplayPrice(item) > 0 ? ` · ${formatFullINR(hotelDisplayPrice(item))}` : ""}
+                    {item.city || item.destination?.name ? ` · ${String(item.city || item.destination?.name)}` : ""}
+                  </span>
+                )}
                 {kind === "activities" && (
                   <span className="block text-[10px] text-muted-foreground">
                     {String(item.startTime || item.operatingHours || "Timing on request")}
@@ -2176,7 +3730,6 @@ function CatalogPicker({
                     {item.duration ? ` · ${String(item.duration)}` : ""}
                     {item.adultPrice != null ? ` · ${formatFullINR(Number(item.adultPrice))}` : ""}
                     {item.description ? ` · ${String(item.description).slice(0, 80)}` : ""}
-                    {" · View details · Select"}
                   </span>
                 )}
                 {kind === "meals" && (
@@ -2184,7 +3737,7 @@ function CatalogPicker({
                     {item.transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer"}
                   </span>
                 )}
-                {(item.city || item.destination?.name) && (
+                {!isHotels && (item.city || item.destination?.name) && (
                   <span className="text-muted-foreground"> · {String(item.city || item.destination?.name)}</span>
                 )}
               </button>

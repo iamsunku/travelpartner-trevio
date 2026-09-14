@@ -9,8 +9,10 @@ import {
   buildTermsSnapshot,
   calcPackageCosting,
   canTransition,
+  discountApprovalBlockReason,
   isAgentLike,
-  maxDiscountPercent,
+  latestApprovalStage,
+  nextDiscountApprovalAction,
   nextQuoteNo,
   nightsBetween,
   normalizeStatus,
@@ -225,6 +227,40 @@ function packageWriteData(
     perPersonCost: toInt(costing.perPersonCost, 0),
     pricing: pkg.pricing != null ? jsonValue(pkg.pricing, {}) : undefined,
   };
+}
+
+async function applyDiscountApproval(opts: {
+  quotationId: string;
+  role?: string;
+  email?: string;
+  discountType?: string | null;
+  discountValue?: number | null;
+  approvals?: Array<{ stage?: string | null; status?: string | null }> | null;
+  discountChanged?: boolean;
+}) {
+  const decision = nextDiscountApprovalAction({
+    role: opts.role,
+    discountType: opts.discountType,
+    discountValue: opts.discountValue,
+    latestDiscountStatus: latestApprovalStage(opts.approvals, "Discount")?.status,
+    discountChanged: opts.discountChanged,
+  });
+  if (decision.action !== "create") return null;
+  return db.quotationApproval.create({
+    data: {
+      quotationId: opts.quotationId,
+      stage: "Discount",
+      status: decision.status,
+      comments: decision.comments,
+      ...(decision.status === "Approved"
+        ? {
+            approverName: opts.email,
+            approverRole: opts.role,
+            decidedAt: new Date(),
+          }
+        : {}),
+    },
+  });
 }
 
 async function loadActiveTaxRule(scope: Record<string, unknown>, asOf?: string | null): Promise<TaxRuleInput | null> {
@@ -605,12 +641,8 @@ export function mountQuotationRoutes(
         res.status(404).json({ error: "Not found" });
         return;
       }
-      let docs = quote.documents;
-      if (isAgentLike(req.auth?.role)) {
-        docs = docs.filter((d) => d.visibility === "Agent" || d.visibility === "Customer");
-      }
       const payload = sanitizeQuotationForRole(
-        { ...quote, documents: docs } as unknown as Record<string, unknown>,
+        quote as unknown as Record<string, unknown>,
         req.auth?.role,
       );
       res.json({ quotation: payload });
@@ -707,9 +739,20 @@ export function mountQuotationRoutes(
           agentMarkupType: body.agentMarkupType === "Percentage" ? "Percentage" : "Fixed",
           agentMarkup: Math.max(0, toInt(body.agentMarkup, 0)),
           exchangeRateExplicit: body.exchangeRateExplicit === true,
+          discountType: emptyToNull(body.discountType),
+          discountValue: toFloat(body.discountValue, 0),
           wizardStep: Math.max(1, toInt(body.wizardStep, 1) || 1),
           isInternational: Boolean(body.isInternational),
         },
+      });
+
+      await applyDiscountApproval({
+        quotationId: quote.id,
+        role: req.auth?.role,
+        email: req.auth?.email,
+        discountType: emptyToNull(body.discountType),
+        discountValue: toFloat(body.discountValue, 0),
+        approvals: [],
       });
 
       if (leadId) {
@@ -871,13 +914,13 @@ export function mountQuotationRoutes(
       const body = req.body || {};
       const nights = nightsBetween(body.travelStartDate ?? existing.travelStartDate, body.travelEndDate ?? existing.travelEndDate);
 
-      if (body.discountType || body.discountValue != null) {
-        const maxPct = maxDiscountPercent(req.auth?.role);
-        if (body.discountType === "Percentage" && Number(body.discountValue) > maxPct) {
-          res.status(400).json({ error: `Discount limited to ${maxPct}% for your role` });
-          return;
-        }
-      }
+      // Over-limit discounts are allowed but require a Discount approval stage (not a hard 400).
+      const nextDiscountType = isAgentLike(req.auth?.role)
+        ? existing.discountType
+        : (body.discountType !== undefined ? body.discountType : existing.discountType);
+      const nextDiscountValue = isAgentLike(req.auth?.role)
+        ? existing.discountValue
+        : (body.discountValue != null ? toFloat(body.discountValue, 0) : existing.discountValue);
 
       const data: Record<string, unknown> = {};
       const scalarKeys = [
@@ -1039,6 +1082,18 @@ export function mountQuotationRoutes(
         createdById: req.auth?.userId,
         changeSummary: "Wizard save",
         reason: "wizard_update",
+      });
+
+      await applyDiscountApproval({
+        quotationId: existing.id,
+        role: req.auth?.role,
+        email: req.auth?.email,
+        discountType: nextDiscountType,
+        discountValue: nextDiscountValue,
+        approvals: existing.approvals,
+        discountChanged:
+          String(nextDiscountType || "") !== String(existing.discountType || "")
+          || Number(nextDiscountValue || 0) !== Number(existing.discountValue || 0),
       });
 
       const latest = await db.quotation.findUnique({ where: { id: existing.id }, include: QUOTE_INCLUDE });
@@ -1284,6 +1339,23 @@ export function mountQuotationRoutes(
         res.status(400).json({ error: unresolved });
         return;
       }
+      const discountBlocked = discountApprovalBlockReason(existing, req.auth?.role);
+      if (discountBlocked) {
+        res.status(400).json({ error: discountBlocked });
+        return;
+      }
+      // Executive Prep → Team Lead → Finance (optional) → Ready to Send
+      await db.quotationApproval.create({
+        data: {
+          quotationId: existing.id,
+          stage: "Executive Prep",
+          status: "Approved",
+          approverName: req.auth?.email,
+          approverRole: req.auth?.role,
+          comments: "Submitted for internal approval",
+          decidedAt: new Date(),
+        },
+      });
       await db.quotationApproval.create({
         data: {
           quotationId: existing.id,
@@ -1306,7 +1378,7 @@ export function mountQuotationRoutes(
         include: QUOTE_INCLUDE,
       });
       await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Approval Submitted" });
-      await notifyQuote({ agencyId: existing.agencyId, title: "Approval required", message: `${existing.quoteNo} awaiting approval`, priority: "high" });
+      await notifyQuote({ agencyId: existing.agencyId, title: "Approval required", message: `${existing.quoteNo} awaiting Team Lead approval`, priority: "high" });
       res.json({ quotation });
     } catch (e) {
       logger.error(e);
@@ -1336,6 +1408,32 @@ export function mountQuotationRoutes(
         res.status(403).json({ error: "This approval was rejected" });
         return;
       }
+      if (stage === "Team Lead") {
+        const discountBlocked = discountApprovalBlockReason(existing, req.auth?.role);
+        if (discountBlocked && latest("Discount")?.status === "Pending") {
+          // Managers who can approve Discount may clear it in the same action.
+          if (canApproveStage(req.auth?.role, "Discount")) {
+            await db.quotationApproval.create({
+              data: {
+                quotationId: existing.id,
+                stage: "Discount",
+                status: "Approved",
+                approverName: req.auth?.email,
+                approverRole: req.auth?.role,
+                comments: req.body?.comments || "Approved with Team Lead",
+                decidedAt: new Date(),
+              },
+            });
+          } else {
+            res.status(400).json({ error: discountBlocked });
+            return;
+          }
+        } else if (discountBlocked) {
+          res.status(400).json({ error: discountBlocked });
+          return;
+        }
+      }
+
       await db.quotationApproval.create({
         data: {
           quotationId: existing.id,
@@ -1347,10 +1445,36 @@ export function mountQuotationRoutes(
           decidedAt: new Date(),
         },
       });
+
+      // Discount-only approvals do not flip overall quote approvalStatus.
+      if (stage === "Discount") {
+        const quotation = await db.quotation.findUnique({
+          where: { id: existing.id },
+          include: QUOTE_INCLUDE,
+        });
+        await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Approved", details: stage, updatedValue: { stage, comments: req.body?.comments, approver: req.auth?.email } });
+        await notifyQuote({ agencyId: existing.agencyId, title: "Discount approved", message: `${existing.quoteNo} discount approved` });
+        res.json({ quotation });
+        return;
+      }
+
       const finance = stage === "Finance" ? { status: "Approved" } : latest("Finance");
       const teamApproved = stage === "Team Lead" || latest("Team Lead")?.status === "Approved";
       const financeDone = !finance || finance.status === "Approved";
       const ready = teamApproved && financeDone;
+      if (ready) {
+        await db.quotationApproval.create({
+          data: {
+            quotationId: existing.id,
+            stage: "Ready to Send",
+            status: "Approved",
+            approverName: req.auth?.email,
+            approverRole: req.auth?.role,
+            comments: req.body?.comments || "Internal approval complete",
+            decidedAt: new Date(),
+          },
+        });
+      }
       const quotation = await db.quotation.update({
         where: { id: existing.id },
         data: {
@@ -1360,7 +1484,11 @@ export function mountQuotationRoutes(
         include: QUOTE_INCLUDE,
       });
       await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Approved", details: stage, updatedValue: { stage, comments: req.body?.comments, approver: req.auth?.email } });
-      await notifyQuote({ agencyId: existing.agencyId, title: "Approval approved", message: `${existing.quoteNo} approved (${stage})` });
+      await notifyQuote({
+        agencyId: existing.agencyId,
+        title: ready ? "Ready to send" : "Approval approved",
+        message: ready ? `${existing.quoteNo} is ready to send` : `${existing.quoteNo} approved (${stage})`,
+      });
       res.json({ quotation });
     } catch (e) {
       logger.error(e);
@@ -1391,6 +1519,16 @@ export function mountQuotationRoutes(
           decidedAt: new Date(),
         },
       });
+      if (stage === "Discount") {
+        const quotation = await db.quotation.findUnique({
+          where: { id: existing.id },
+          include: QUOTE_INCLUDE,
+        });
+        await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Rejected", details: req.body?.comments || "Discount rejected" });
+        await notifyQuote({ agencyId: existing.agencyId, title: "Discount rejected", message: `${existing.quoteNo} discount returned for revision`, priority: "high" });
+        res.json({ quotation });
+        return;
+      }
       const quotation = await db.quotation.update({
         where: { id: existing.id },
         data: { status: "In Progress", approvalStatus: "Rejected" },

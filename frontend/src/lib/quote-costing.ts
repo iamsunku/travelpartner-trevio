@@ -46,59 +46,90 @@ export function calcPackageCosting(pkg: {
   meals?: unknown;
   addOns?: unknown;
   visa?: { enabled?: boolean; costPrice?: number; sellingPrice?: number } | null;
-  insurance?: { enabled?: boolean; costPrice?: number; sellingPrice?: number } | null;
+  insurance?: {
+    enabled?: boolean;
+    costPrice?: number;
+    sellingPrice?: number;
+    premium?: number;
+  } | null;
   taxRate?: number;
   discountType?: string | null;
   discountValue?: number;
+  trevioMarkupValue?: number;
   adults?: number;
   children?: number;
   infants?: number;
 }) {
-  const parts = [
-    sumServiceLines(pkg.hotels),
-    sumServiceLines(pkg.flights),
-    sumServiceLines(pkg.transfers),
-    sumServiceLines(pkg.activities),
-    sumServiceLines(pkg.meals),
-    sumServiceLines(pkg.addOns),
+  const hotels = sumServiceLines(pkg.hotels);
+  const flights = sumServiceLines(pkg.flights);
+  const transfers = sumServiceLines(pkg.transfers);
+  const activities = sumServiceLines(pkg.activities);
+  const meals = sumServiceLines(pkg.meals);
+  const addOnLines = Array.isArray(pkg.addOns)
+    ? pkg.addOns.filter((row) => (row as { enabled?: boolean }).enabled !== false)
+    : [];
+  const addOns = sumServiceLines(addOnLines);
+
+  const visa = pkg.visa?.enabled
+    ? { cost: Number(pkg.visa.costPrice || 0), selling: Number(pkg.visa.sellingPrice || 0) }
+    : { cost: 0, selling: 0 };
+  const insurance = pkg.insurance?.enabled
+    ? {
+        cost: Number(pkg.insurance.costPrice || 0),
+        selling: Number(pkg.insurance.premium ?? pkg.insurance.sellingPrice ?? 0),
+      }
+    : { cost: 0, selling: 0 };
+
+  const services: Array<{ key: string; label: string; netCost: number; sellingPrice: number }> = [
+    { key: "hotels", label: "Hotels", netCost: hotels.cost, sellingPrice: hotels.selling },
+    { key: "flights", label: "Flights", netCost: flights.cost, sellingPrice: flights.selling },
+    { key: "transfers", label: "Transfers", netCost: transfers.cost, sellingPrice: transfers.selling },
+    { key: "activities", label: "Activities", netCost: activities.cost, sellingPrice: activities.selling },
+    { key: "meals", label: "Meals", netCost: meals.cost, sellingPrice: meals.selling },
+    { key: "visa", label: "Visa", netCost: visa.cost, sellingPrice: visa.selling },
+    { key: "insurance", label: "Insurance", netCost: insurance.cost, sellingPrice: insurance.selling },
+    { key: "addOns", label: "Add-ons", netCost: addOns.cost, sellingPrice: addOns.selling },
   ];
-  let totalNetCost = parts.reduce((s, p) => s + p.cost, 0);
-  let totalSelling = parts.reduce((s, p) => s + p.selling, 0);
-  if (pkg.visa?.enabled) {
-    totalNetCost += Number(pkg.visa.costPrice || 0);
-    totalSelling += Number(pkg.visa.sellingPrice || 0);
-  }
-  if (pkg.insurance?.enabled) {
-    totalNetCost += Number(pkg.insurance.costPrice || 0);
-    totalSelling += Number(pkg.insurance.sellingPrice || 0);
+
+  let totalNetCost = services.reduce((s, row) => s + row.netCost, 0);
+  let totalSellingBeforeDiscount = services.reduce((s, row) => s + row.sellingPrice, 0);
+  const trevioMarkupAmount = Math.round(totalNetCost * (Number(pkg.trevioMarkupValue || 0) / 100));
+  if (trevioMarkupAmount > 0) {
+    totalSellingBeforeDiscount += trevioMarkupAmount;
   }
 
   let discountAmount = 0;
   if (pkg.discountType === "Percentage") {
-    discountAmount = Math.round(totalSelling * (Number(pkg.discountValue || 0) / 100));
+    discountAmount = Math.round(totalSellingBeforeDiscount * (Number(pkg.discountValue || 0) / 100));
   } else if (pkg.discountType === "Fixed") {
     discountAmount = Math.round(Number(pkg.discountValue || 0));
   }
-  discountAmount = Math.min(discountAmount, totalSelling);
-  const afterDiscount = totalSelling - discountAmount;
+  discountAmount = Math.min(discountAmount, totalSellingBeforeDiscount);
+  const afterDiscount = totalSellingBeforeDiscount - discountAmount;
   const taxRate = Number(pkg.taxRate ?? 0);
   const gst = taxRate > 0 ? Math.round(afterDiscount * (taxRate / 100)) : 0;
-  const taxableAmount = afterDiscount - gst;
+  const taxableAmount = Math.max(0, afterDiscount - gst);
+  const finalPackageCost = afterDiscount;
   const grossProfit = afterDiscount - totalNetCost;
   const profitMargin = afterDiscount > 0 ? (grossProfit / afterDiscount) * 100 : 0;
   const pax = Math.max(1, Number(pkg.adults || 0) + Number(pkg.children || 0));
-  const perPersonCost = Math.round(afterDiscount / pax);
+  const perPersonCost = Math.round(finalPackageCost / pax);
 
   return {
+    services,
     totalNetCost,
+    totalSellingBeforeDiscount,
     totalSelling: afterDiscount,
     grossProfit,
     profitMargin: Math.round(profitMargin * 100) / 100,
     discountAmount,
     taxableAmount,
     gst,
-    total: afterDiscount,
+    taxRate,
+    total: finalPackageCost,
+    finalPackageCost,
     perPersonCost,
+    trevioMarkupAmount,
   };
 }
 
@@ -201,6 +232,7 @@ export function resolveQuotationCosting(quote: {
   discountAmount?: number | null;
   discountType?: string | null;
   discountValue?: number;
+  trevioMarkupValue?: number;
   adults?: number | null;
   children?: number | null;
   infants?: number | null;
@@ -269,10 +301,16 @@ export function resolveQuotationCosting(quote: {
       meals: selected.meals,
       addOns: selected.addOns,
       visa: selected.visa as { enabled?: boolean; costPrice?: number; sellingPrice?: number } | null,
-      insurance: selected.insurance as { enabled?: boolean; costPrice?: number; sellingPrice?: number } | null,
+      insurance: selected.insurance as {
+        enabled?: boolean;
+        costPrice?: number;
+        sellingPrice?: number;
+        premium?: number;
+      } | null,
       taxRate,
       discountType: quote.discountType || null,
       discountValue: Number(quote.discountValue || 0),
+      trevioMarkupValue: Number(quote.trevioMarkupValue || 0),
       adults,
       children,
       infants,
@@ -291,6 +329,8 @@ export function resolveQuotationCosting(quote: {
         profitMargin: live.profitMargin,
         perPersonCost: live.perPersonCost,
         discountAmount: live.discountAmount,
+        trevioMarkupAmount: live.trevioMarkupAmount,
+        trevioSellingPrice: live.totalSellingBeforeDiscount,
         ...rates,
         adults,
         children,

@@ -301,7 +301,7 @@ export interface Booking {
   changeRequests?: ChangeRequestItem[];
   addOns?: { id: string; addOnType: string; title: string; amount: number }[];
   invoices?: { id: string; invoiceNo: string; invoiceType: string; total: number; status: string; amount?: number; gst?: number; taxableAmount?: number; cgst?: number; sgst?: number; igst?: number; gstRate?: number; gstNumber?: string | null; amountPaid?: number; balanceAmount?: number; lineItems?: { description: string; amount: number }[]; notes?: string | null; createdAt?: string }[];
-  documents?: { id: string; docType: string; fileName: string; fileUrl: string }[];
+  documents?: { id: string; docType: string; fileName: string; fileUrl?: string; downloadPath?: string; visibility?: string }[];
   costDeviationApprovals?: CostDeviationApproval[];
   travelDetails?: TravelDetailsRecord | null;
   itinerary?: Array<Record<string, unknown>>;
@@ -543,6 +543,14 @@ export interface Quotation {
     createdByName?: string | null;
   }>;
   approvals?: Array<{ stage: string; status: string; comments?: string | null; decidedAt?: string | null }>;
+  documents?: Array<{
+    id: string;
+    docType: string;
+    fileName: string;
+    visibility?: string | null;
+    downloadPath?: string;
+    description?: string | null;
+  }>;
 }
 
 export type NewQuotationInput = {

@@ -655,8 +655,11 @@ export const api = {
       body: JSON.stringify({ status, ...body }),
     }),
 
-  submitQuotationApproval: (id: string) =>
-    apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/submit-approval`, { method: "POST", body: "{}" }),
+  submitQuotationApproval: (id: string, body?: Record<string, unknown>) =>
+    apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/submit-approval`, {
+      method: "POST",
+      body: JSON.stringify(body || {}),
+    }),
 
   approveQuotation: (id: string, body?: Record<string, unknown>) =>
     apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/approve`, {

@@ -6,7 +6,7 @@ import {
   Plane, Hotel, Palmtree, TrendingUp, TrendingDown, Wallet,
   Users, Target, Receipt, DollarSign, Calendar, ArrowUpRight, ArrowRight,
   Bell, Plus, FileSpreadsheet, CreditCard, Building2, Activity,
-  Server, Zap, AlertTriangle, CheckCircle2, Clock,
+  Server, Zap, AlertTriangle, CheckCircle2, Clock, FileText,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -140,11 +140,18 @@ function AgentDashboard() {
       <BrandHero
         eyebrow={greeting}
         title={user?.name || "Agent desk"}
-        subtitle="Quote packages, compose custom trips, and track customer acceptances — without CRM or cost leakage."
+        subtitle="Quote packages, compose trips, submit enquiries, and track acceptances — without cost leakage."
         actions={
           <>
             <Button className="bg-white text-primary hover:bg-white/90 shadow-sm h-9" onClick={() => setView("quotations")}>
               <Plus className="w-4 h-4 mr-1.5" /> Create quotation
+            </Button>
+            <Button
+              variant="outline"
+              className="bg-white/10 border-white/25 text-white hover:bg-white/20 h-9"
+              onClick={() => setView("crm")}
+            >
+              <FileText className="w-4 h-4 mr-1.5" /> Submit enquiry
             </Button>
             <Button
               variant="outline"
