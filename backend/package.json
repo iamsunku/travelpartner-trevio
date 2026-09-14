@@ -15,7 +15,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:backfill-rates": "tsx scripts/backfill-contracted-rates.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

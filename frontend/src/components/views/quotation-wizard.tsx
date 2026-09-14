@@ -446,7 +446,7 @@ export function QuotationWizardDialog({
     });
   }
 
-  async function persist(nextStep = step, submitApproval = false) {
+  async function persist(nextStep = step, opts?: { submitApproval?: boolean; approveNow?: boolean }) {
     if (!form.customerName.trim() || !form.destination.trim()) {
       toast({ title: "Customer and destination are required", variant: "destructive" });
       return null;
@@ -455,6 +455,8 @@ export function QuotationWizardDialog({
       toast({ title: "End date cannot be before start date", variant: "destructive" });
       return null;
     }
+    const submitApproval = Boolean(opts?.submitApproval || opts?.approveNow);
+    const approveNow = Boolean(opts?.approveNow);
     setBusy(true);
     setSaveError(null);
     try {
@@ -497,13 +499,20 @@ export function QuotationWizardDialog({
         agentName: quotation.agentName || f.agentName,
       }));
       if (submitApproval && quotation.id) {
-        const approved = await api.submitQuotationApproval(quotation.id);
+        const submitted = await api.submitQuotationApproval(quotation.id);
+        quotation = mapApiQuotation(submitted.quotation);
+      }
+      if (approveNow && quotation.id) {
+        const approved = await api.approveQuotation(quotation.id, { readyToSend: true, stage: "Team Lead" });
         quotation = mapApiQuotation(approved.quotation);
       }
       upsertQuotation(quotation);
       if (quotation.packages?.length) setPackages(quotation.packages);
       onSaved?.(quotation);
-      toast({ title: submitApproval ? "Submitted for approval" : "Draft saved", description: quotation.quoteNo });
+      toast({
+        title: approveNow ? "Approved & ready to send" : submitApproval ? "Submitted for approval" : "Draft saved",
+        description: quotation.quoteNo,
+      });
       return quotation;
     } catch (e) {
       const message = e instanceof ApiError ? e.message : "Could not save quotation";
@@ -1508,15 +1517,28 @@ export function QuotationWizardDialog({
                         Finish later
                       </Button>
                       <Button
+                        variant={["super_admin", "agency_admin"].includes(String(user?.role || "")) ? "outline" : "default"}
                         disabled={busy}
-                        className="bg-teal-600 hover:bg-teal-700"
+                        className={["super_admin", "agency_admin"].includes(String(user?.role || "")) ? undefined : "bg-teal-600 hover:bg-teal-700"}
                         onClick={async () => {
-                          const q = await persist(step, true);
+                          const q = await persist(step, { submitApproval: true });
                           if (q) onOpenChange(false);
                         }}
                       >
                         Submit for approval
                       </Button>
+                      {["super_admin", "agency_admin"].includes(String(user?.role || "")) && (
+                        <Button
+                          disabled={busy}
+                          className="bg-teal-600 hover:bg-teal-700"
+                          onClick={async () => {
+                            const q = await persist(step, { approveNow: true });
+                            if (q) onOpenChange(false);
+                          }}
+                        >
+                          Approve & finish
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>
@@ -2131,7 +2153,11 @@ function CatalogPicker({
                         displayPrice?: number | null;
                       }>(`/api/contracted-rates/applicable?${params.toString()}`);
                       if (!rate.applicable || !rate.rateId || rate.contractedCost == null) {
-                        toast({ title: rate.message || NO_VALID_RATE, variant: "destructive" });
+                        toast({
+                          title: rate.message || NO_VALID_RATE,
+                          description: `${item.name} needs an active contracted rate covering ${travelDate}. Add one under Contracted Rates, or use Add self-booked.`,
+                          variant: "destructive",
+                        });
                         return;
                       }
                       onPick(item, { rateId: rate.rateId, validFrom: rate.validFrom || "", validTo: rate.validTo || "", contractedCost: rate.contractedCost, displayPrice: rate.displayPrice });

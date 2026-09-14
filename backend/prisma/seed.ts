@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { ROLE_USERS } from "../src/lib/mock-data";
+import { backfillMissingContractedRates } from "../src/lib/ensure-product-rates";
 
 const prisma = new PrismaClient();
 
@@ -653,6 +654,9 @@ async function main() {
 
   console.log("✅ Database seeding completed!");
   console.log("");
+
+  const rateFill = await backfillMissingContractedRates();
+  console.log(`Contracted rates backfill: created ${rateFill.created}, skipped ${rateFill.skipped}`);
 
   const counts = {
     agencies: await prisma.agency.count(),
