@@ -63,7 +63,7 @@ export type QuotationPdfPackage = {
     documentsRequired?: string;
     appointmentRequired?: boolean;
     appointmentNote?: string;
-    remarks?: string;
+    notes?: string;
     feeLabel?: string;
   } | null;
   insurance?: {
@@ -73,7 +73,7 @@ export type QuotationPdfPackage = {
     coverage?: string;
     validity?: string;
     policyNumber?: string;
-    remarks?: string;
+    notes?: string;
     premiumLabel?: string;
   } | null;
   itinerary: Array<{
@@ -334,7 +334,7 @@ function mapVisa(raw: unknown): QuotationPdfPackage["visa"] {
     documentsRequired: str(visa.documentsRequired) || undefined,
     appointmentRequired: Boolean(visa.appointmentRequired),
     appointmentNote: str(visa.appointmentNote) || undefined,
-    remarks: str(visa.remarks || visa.notes || visa.description) || undefined,
+    notes: str(visa.notes || visa.remarks || visa.description) || undefined,
     feeLabel: fee > 0 ? `${currency} ${fee.toLocaleString("en-IN")}` : undefined,
   };
 }
@@ -351,7 +351,7 @@ function mapInsurance(raw: unknown): QuotationPdfPackage["insurance"] {
     coverage: str(insurance.coverage) || undefined,
     validity: str(insurance.validity) || undefined,
     policyNumber: str(insurance.policyNumber) || undefined,
-    remarks: str(insurance.remarks || insurance.notes || insurance.description) || undefined,
+    notes: str(insurance.notes || insurance.remarks || insurance.description) || undefined,
     premiumLabel: premium > 0 ? `${currency} ${premium.toLocaleString("en-IN")}` : undefined,
   };
 }

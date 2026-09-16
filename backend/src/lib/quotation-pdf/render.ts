@@ -315,7 +315,7 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
         visaRows.push(["Appointment", pkg.visa.appointmentNote || "Required"]);
       }
       if (pkg.visa.documentsRequired) visaRows.push(["Required documents", pkg.visa.documentsRequired]);
-      if (pkg.visa.remarks) visaRows.push(["Remarks", pkg.visa.remarks]);
+      if (pkg.visa.notes) visaRows.push(["Notes", pkg.visa.notes]);
       if (visaRows.length) kvTable(doc, visaRows, onNewPage);
       else body(doc, "Visa assistance included as discussed.", { width: contentWidth() });
     }
@@ -331,7 +331,7 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
       if (pkg.insurance.validity) insRows.push(["Validity", pkg.insurance.validity]);
       if (pkg.insurance.policyNumber) insRows.push(["Policy number", pkg.insurance.policyNumber]);
       if (pkg.insurance.premiumLabel) insRows.push(["Premium", pkg.insurance.premiumLabel]);
-      if (pkg.insurance.remarks) insRows.push(["Remarks", pkg.insurance.remarks]);
+      if (pkg.insurance.notes) insRows.push(["Notes", pkg.insurance.notes]);
       if (insRows.length) kvTable(doc, insRows, onNewPage);
       else body(doc, "Travel insurance included as discussed.", { width: contentWidth() });
     }

@@ -152,6 +152,20 @@ describe("phase 5 quotation pdf", () => {
     expect(visibilityAllows("customer", "CUSTOMER")).toBe(true);
   });
 
+  it("visa/insurance customer notes do not trip the sensitive-field guard", () => {
+    const quote = {
+      ...baseQuote,
+      packages: [{
+        ...baseQuote.packages[0],
+        visa: { enabled: true, visaType: "Tourist", remarks: "Carry originals" },
+        insurance: { enabled: true, planName: "Travel Guard", remarks: "Covers medical" },
+      }],
+    };
+    const model = buildQuotationPdfModel({ quote, mode: "customer", audience: "customer" });
+    expect(model.packages[0].visa?.notes).toContain("Carry originals");
+    expect(assertCustomerSafeModel(model)).toEqual([]);
+  });
+
   it("multi-package pricing stays independent in the model", () => {
     const model = buildQuotationPdfModel({ quote: baseQuote, mode: "customer", audience: "customer" });
     expect(model.packages).toHaveLength(2);
