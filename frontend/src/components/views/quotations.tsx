@@ -617,6 +617,13 @@ function pendingApprovalStage(q: Quotation): "Team Lead" | "Finance" | null {
   return null;
 }
 
+/** True once Executive Prep has been submitted (Team Lead row exists or status moved). */
+function approvalAlreadySubmitted(q: Quotation): boolean {
+  if (q.status === "Pending Approval") return true;
+  if (latestStage(q, "Executive Prep")?.status === "Approved") return true;
+  return Boolean(latestStage(q, "Team Lead"));
+}
+
 function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
@@ -1130,7 +1137,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             {display.status === "Expired" && (
               <p className="text-xs text-destructive w-full">This quotation has expired. Extend validity and re-approve before sending or converting.</p>
             )}
-            {!isAgent && ["Draft", "In Progress"].includes(display.status) && (
+            {!isAgent && ["Draft", "In Progress"].includes(display.status) && !approvalAlreadySubmitted(display) && (
               <div className="flex flex-wrap items-center gap-2 w-full">
                 <label className="flex items-center gap-2 text-xs text-muted-foreground mr-auto">
                   <input
@@ -1153,7 +1160,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 </Button>
               </div>
             )}
-            {!isAgent && display.status === "Pending Approval" && canApprovePending && pendingStage && (
+            {!isAgent && canApprovePending && pendingStage && (
               <Button size="sm" className="ml-auto" onClick={async () => {
                 try {
                   const res = await api.approveQuotation(display.id, { stage: pendingStage });

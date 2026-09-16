@@ -554,9 +554,11 @@ export function QuotationWizardDialog({
         });
         quotation = mapApiQuotation(submitted.quotation);
       }
+      let approveReady = false;
       if (approveNow && quotation.id) {
-        const approved = await api.approveQuotation(quotation.id, { readyToSend: true, stage: "Team Lead" });
+        const approved = await api.approveQuotation(quotation.id, { stage: "Team Lead" });
         quotation = mapApiQuotation(approved.quotation);
+        approveReady = Boolean(approved.readyToSend) || quotation.approvalStatus === "Approved";
       }
       upsertQuotation(quotation);
       if (quotation.packages?.length) setPackages(quotation.packages);
@@ -568,8 +570,15 @@ export function QuotationWizardDialog({
           ? " · Discount approved"
           : "";
       toast({
-        title: approveNow ? "Approved & ready to send" : submitApproval ? "Submitted for approval" : "Draft saved",
-        description: `${quotation.quoteNo}${discountNote}`,
+        title: approveNow
+          ? (approveReady ? "Approved & ready to send" : "Approval incomplete")
+          : submitApproval
+            ? "Submitted for approval"
+            : "Draft saved",
+        description: approveNow && !approveReady
+          ? `${quotation.quoteNo} — complete Team Lead / Finance approval or fix discount before sending.`
+          : `${quotation.quoteNo}${discountNote}`,
+        variant: approveNow && !approveReady ? "destructive" : "default",
       });
       return quotation;
     } catch (e) {

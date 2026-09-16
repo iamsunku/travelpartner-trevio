@@ -665,7 +665,7 @@ export const api = {
   approveQuotation: (id: string, body?: Record<string, unknown>) =>
     apiFetch<{ quotation: ApiQuotation; readyToSend?: boolean; message?: string }>(`/api/quotations/${id}/approve`, {
       method: "POST",
-      body: JSON.stringify(body || { readyToSend: true }),
+      body: JSON.stringify(body || { stage: "Team Lead" }),
     }),
 
   rejectQuotationApproval: (id: string, body?: Record<string, unknown>) =>

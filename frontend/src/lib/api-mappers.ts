@@ -250,7 +250,7 @@ export function mapApiQuotation(q: ApiQuotation): Quotation {
     versions: (q as { versions?: Quotation["versions"] }).versions,
     approvals: (q as { approvals?: Quotation["approvals"] }).approvals,
     documents: Array.isArray((q as { documents?: Quotation["documents"] }).documents)
-      ? (q as { documents: Quotation["documents"] }).documents
+      ? (q as unknown as { documents: Quotation["documents"] }).documents
       : undefined,
   };
 }
