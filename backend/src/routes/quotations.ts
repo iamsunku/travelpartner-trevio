@@ -1479,17 +1479,26 @@ export function mountQuotationRoutes(
         where: { id: existing.id },
         data: {
           approvalStatus: ready ? "Approved" : "Pending",
-          status: existing.status === "Pending Approval" || existing.status === "In Progress" ? "Pending Approval" : existing.status,
+          // Keep Pending Approval until the quote is actually sent — UI maps Approved → "Ready to Send".
+          status: existing.status === "Pending Approval" || existing.status === "In Progress"
+            ? "Pending Approval"
+            : existing.status,
         },
         include: QUOTE_INCLUDE,
       });
-      await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Approved", details: stage, updatedValue: { stage, comments: req.body?.comments, approver: req.auth?.email } });
+      await writeQuoteAudit({ req, agencyId: existing.agencyId, quotationId: existing.id, action: "Approved", details: stage, updatedValue: { stage, comments: req.body?.comments, approver: req.auth?.email, ready } });
       await notifyQuote({
         agencyId: existing.agencyId,
         title: ready ? "Ready to send" : "Approval approved",
         message: ready ? `${existing.quoteNo} is ready to send` : `${existing.quoteNo} approved (${stage})`,
       });
-      res.json({ quotation });
+      res.json({
+        quotation,
+        readyToSend: ready,
+        message: ready
+          ? "Approved and ready to send. Download PDF or Email/WhatsApp the customer."
+          : `${stage} approved.`,
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });

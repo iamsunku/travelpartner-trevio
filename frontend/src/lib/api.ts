@@ -129,6 +129,7 @@ export async function apiFetchBlob(path: string): Promise<Blob> {
     } catch {
       /* ignore */
     }
+    if (res.status === 401) message = "Your session has expired. Please sign in again.";
     throw new ApiError(message, res.status);
   }
 
@@ -662,7 +663,7 @@ export const api = {
     }),
 
   approveQuotation: (id: string, body?: Record<string, unknown>) =>
-    apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/approve`, {
+    apiFetch<{ quotation: ApiQuotation; readyToSend?: boolean; message?: string }>(`/api/quotations/${id}/approve`, {
       method: "POST",
       body: JSON.stringify(body || { readyToSend: true }),
     }),

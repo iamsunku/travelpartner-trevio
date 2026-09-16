@@ -76,6 +76,12 @@ const STATUS_STYLES: Record<string, string> = {
   Medium: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400",
   High: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
   Urgent: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
+  "Pending Approval": "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
+  "Ready to Send": "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
+  "Sent to Agent": "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400",
+  "Customer Reviewing": "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-400",
+  "Revision Requested": "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-400",
+  "Converted to Booking": "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400",
 };
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {

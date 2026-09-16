@@ -53,6 +53,7 @@ import {
 } from "@/lib/quotation-actions";
 import { resolveQuotationCosting, toCalendarDate } from "@/lib/quote-costing";
 import { canApproveDiscount, latestDiscountApproval } from "@/lib/quote-discount";
+import { isQuoteReadyToSend, quoteDisplayStatus } from "@/lib/quote-status";
 import { QuotePriceBreakdown } from "@/components/shared/quote-price-breakdown";
 import type { Lead } from "@/types";
 
@@ -149,20 +150,48 @@ function useQuoteActions() {
 
   async function pdf(quote: Quotation) {
     const full = await loadFull(quote);
+    const ready = full.approvalStatus === "Approved"
+      || ["Sent to Agent", "Sent", "Customer Reviewing", "Accepted", "Converted to Booking"].includes(full.status);
     try {
-      const ok = await downloadQuotationPdf(full);
+      // Customer PDF requires full approval; staff can always pull an internal preview.
+      const ok = await downloadQuotationPdf(full, undefined, { mode: ready ? "customer" : "preview" });
       toast({
-        title: ok ? "Client PDF ready" : "PDF failed",
+        title: ok ? (ready ? "Client PDF ready" : "Preview PDF ready") : "PDF failed",
         description: ok
-          ? "A real PDF was generated and downloaded. It uses customer-facing pricing only."
+          ? (ready
+            ? "Customer-facing PDF downloaded."
+            : "Internal preview downloaded. Complete approval to generate the final client PDF.")
           : "Could not generate the quotation PDF.",
         variant: ok ? "default" : "destructive",
       });
       return ok;
     } catch (e) {
+      // If customer PDF is blocked (approval incomplete), fall back to staff preview once.
+      if (e instanceof ApiError && e.status === 403 && ready === false) {
+        try {
+          const ok = await downloadQuotationPdf(full, undefined, { mode: "preview" });
+          toast({
+            title: ok ? "Preview PDF ready" : "PDF failed",
+            description: ok
+              ? "Approval is still pending — downloaded an internal preview instead."
+              : "Could not generate the quotation PDF.",
+            variant: ok ? "default" : "destructive",
+          });
+          return ok;
+        } catch (previewErr) {
+          toast({
+            title: "PDF blocked",
+            description: previewErr instanceof ApiError ? previewErr.message : "Could not generate the quotation PDF",
+            variant: "destructive",
+          });
+          return false;
+        }
+      }
       toast({
-        title: "PDF blocked",
-        description: e instanceof ApiError ? e.message : "Could not generate the quotation PDF",
+        title: e instanceof ApiError && e.status === 401 ? "Session expired" : "PDF blocked",
+        description: e instanceof ApiError
+          ? (e.status === 401 ? "Please sign in again, then retry Download PDF." : e.message)
+          : "Could not generate the quotation PDF",
         variant: "destructive",
       });
       return false;
@@ -686,7 +715,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             <div className="min-w-0">
               <DialogTitle className="flex flex-wrap items-center gap-2">
                 {display.quoteNo}
-                <StatusBadge status={display.status} />
+                <StatusBadge status={quoteDisplayStatus(display)} />
                 {discountApproval?.status === "Pending" && (
                   <Badge variant="outline" className="border-amber-300 text-amber-800 bg-amber-50">Discount pending</Badge>
                 )}
@@ -1127,9 +1156,17 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
             {!isAgent && display.status === "Pending Approval" && canApprovePending && pendingStage && (
               <Button size="sm" className="ml-auto" onClick={async () => {
                 try {
-                  await api.approveQuotation(display.id, { stage: pendingStage });
-                  await refresh();
-                  toast({ title: pendingStage === "Finance" ? "Finance approved · Ready to send" : "Team Lead approved" });
+                  const res = await api.approveQuotation(display.id, { stage: pendingStage });
+                  const mapped = mapApiQuotation(res.quotation);
+                  setFull(mapped);
+                  upsertQuotation(mapped);
+                  const ready = Boolean((res as { readyToSend?: boolean }).readyToSend) || mapped.approvalStatus === "Approved";
+                  toast({
+                    title: ready ? "Approved & ready to send" : `${pendingStage} approved`,
+                    description: ready
+                      ? "Badge will show Ready to Send. You can Download PDF or Email/WhatsApp now."
+                      : "Waiting for the next approval stage.",
+                  });
                 } catch (e) {
                   toast({ title: "Approve failed", description: e instanceof ApiError ? e.message : "Error", variant: "destructive" });
                 }
@@ -1137,7 +1174,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
                 Approve {pendingStage}
               </Button>
             )}
-            {!isAgent && display.approvalStatus === "Approved" && latestStage(display, "Ready to Send")?.status === "Approved" && (
+            {!isAgent && isQuoteReadyToSend(display) && (
               <Badge variant="outline" className="border-emerald-300 text-emerald-800 bg-emerald-50">Ready to Send</Badge>
             )}
           </div>
@@ -1550,7 +1587,7 @@ export function QuotationsView() {
                     <TableCell className="text-right text-xs">{formatFullINR(q.amount)}</TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">{formatFullINR(q.gst)}</TableCell>
                     <TableCell className="text-right text-xs font-semibold">{formatFullINR(q.total)}</TableCell>
-                    <TableCell><StatusBadge status={q.status} /></TableCell>
+                    <TableCell><StatusBadge status={quoteDisplayStatus(q)} /></TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(q.validTill).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}</TableCell>
                     <TableCell className="text-xs">{q.createdBy}</TableCell>
                     <TableCell className="text-right sticky right-0 bg-card" onClick={(e) => e.stopPropagation()}>
