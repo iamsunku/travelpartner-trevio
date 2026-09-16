@@ -14,8 +14,81 @@ import {
   type ProductKind,
 } from "../lib/product-rate-approval.js";
 import { checkCatalogueHotelInventory } from "../lib/hotel-inventory.js";
+import {
+  findApplicableContractedRate,
+  isIsoDate,
+  toWindow,
+  type RateWindow,
+} from "../lib/contracted-rates.js";
 
 type ScopeFn = (req: AuthRequest) => Record<string, unknown>;
+
+/** Parse city=checkIn pairs: "Phuket:2026-10-18,Krabi:2026-10-21" */
+function parseCityStayCheckIns(raw: unknown): Map<string, string> {
+  const map = new Map<string, string>();
+  const text = typeof raw === "string" ? raw.trim() : "";
+  if (!text) return map;
+  for (const part of text.split(",")) {
+    const [cityRaw, dateRaw] = part.split(":");
+    const city = String(cityRaw || "").trim().toLowerCase();
+    const date = String(dateRaw || "").trim();
+    if (city && isIsoDate(date)) map.set(city, date);
+  }
+  return map;
+}
+
+function hotelCityNeedle(item: { city?: string | null; address?: string | null; destination?: { name?: string | null } | null }): string {
+  return String(item.city || item.destination?.name || "").trim().toLowerCase();
+}
+
+/**
+ * Annotate catalogue hotels with server-side contracted-rate eligibility for Recommended.
+ * Does not expose contractedCost. Stars / isFeatured are irrelevant.
+ */
+async function annotateHotelsContractedApplicable<T extends {
+  id: string;
+  city?: string | null;
+  address?: string | null;
+  destination?: { name?: string | null } | null;
+}>(
+  items: T[],
+  opts: {
+    travelDate?: string;
+    cityStayCheckIns: Map<string, string>;
+    scope: Record<string, unknown>;
+  },
+): Promise<Array<T & { hasApplicableContractedRate: boolean }>> {
+  if (!items.length) return [];
+  const fallbackDate = opts.travelDate && isIsoDate(opts.travelDate) ? opts.travelDate : null;
+  if (!fallbackDate && opts.cityStayCheckIns.size === 0) {
+    return items.map((item) => ({ ...item, hasApplicableContractedRate: false }));
+  }
+
+  const ids = items.map((i) => i.id);
+  const rateRows = await db.contractedRate.findMany({
+    where: {
+      productType: "HOTEL",
+      productId: { in: ids },
+      active: true,
+      ...opts.scope,
+    },
+  });
+  const byProduct = new Map<string, RateWindow[]>();
+  for (const row of rateRows) {
+    const list = byProduct.get(row.productId) || [];
+    list.push(toWindow(row));
+    byProduct.set(row.productId, list);
+  }
+
+  return items.map((item) => {
+    const city = hotelCityNeedle(item);
+    const stayDate = (city && opts.cityStayCheckIns.get(city)) || fallbackDate;
+    if (!stayDate) return { ...item, hasApplicableContractedRate: false };
+    const rates = byProduct.get(item.id) || [];
+    const result = findApplicableContractedRate(rates, stayDate);
+    return { ...item, hasApplicableContractedRate: result.status === "OK" };
+  });
+}
 
 function parseListQuery(req: AuthRequest) {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
@@ -163,14 +236,23 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
       const where: Record<string, unknown> = { ...agencyScope(req) };
       applyProductListFilters(where, query);
       const city = (req.query.city as string)?.trim();
-      if (city) {
+      const citiesRaw = (req.query.cities as string)?.trim();
+      const cityList = [
+        ...new Set(
+          (citiesRaw ? citiesRaw.split(",") : city ? [city] : [])
+            .map((c) => c.trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (cityList.length) {
         where.AND = [
           ...((where.AND as unknown[]) || []),
           {
-            OR: [
-              { city: { contains: city, mode: "insensitive" } },
-              { destination: { name: { contains: city, mode: "insensitive" } } },
-            ],
+            OR: cityList.flatMap((c) => [
+              { city: { contains: c, mode: "insensitive" } },
+              { address: { contains: c, mode: "insensitive" } },
+              { destination: { name: { contains: c, mode: "insensitive" } } },
+            ]),
           },
         ];
       }
@@ -197,9 +279,20 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
         db.hotelProduct.findMany({ where, include: PRODUCT_RELATIONS, orderBy: { [query.sort]: query.order }, skip: query.skip, take: query.pageSize }),
         db.hotelProduct.count({ where }),
       ]);
+      const travelDate = String(req.query.travelDate || "").trim();
+      const cityStayCheckIns = parseCityStayCheckIns(req.query.cityStayDates);
+      const annotated = await annotateHotelsContractedApplicable(items, {
+        travelDate,
+        cityStayCheckIns,
+        scope: agencyScope(req),
+      });
+      const recommendedOnly = req.query.recommendedOnly === "true";
+      const filtered = recommendedOnly
+        ? annotated.filter((item) => item.hasApplicableContractedRate)
+        : annotated;
       res.json({
-        items: items.map((item) => stripCatalogForRole(item, req.auth?.role)),
-        total,
+        items: filtered.map((item) => stripCatalogForRole(item, req.auth?.role)),
+        total: recommendedOnly ? filtered.length : total,
         page: query.page,
         pageSize: query.pageSize,
       });
@@ -224,7 +317,9 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
         checkIn: String(req.query.checkIn || ""),
         checkOut: String(req.query.checkOut || ""),
         roomType: req.query.roomType ? String(req.query.roomType) : null,
-        rooms: req.query.rooms ? Number(req.query.rooms) : 1,
+        rooms: req.query.rooms != null && String(req.query.rooms).trim() !== ""
+          ? Math.max(1, Math.round(Number(req.query.rooms)) || 1)
+          : 1,
       });
       res.json({
         source: result.source,

@@ -26,6 +26,7 @@ const HolidayView = lazy(() => import("@/components/views/holiday"), "HolidayVie
 const CrmView = lazy(() => import("@/components/views/crm"), "CrmView");
 const CustomersView = lazy(() => import("@/components/views/customers"), "CustomersView");
 const QuotationsView = lazy(() => import("@/components/views/quotations"), "QuotationsView");
+const QuotationWizardView = lazy(() => import("@/components/views/quotation-wizard"), "QuotationWizardView");
 const BookingsView = lazy(() => import("@/components/views/bookings"), "BookingsView");
 const PaymentsView = lazy(() => import("@/components/views/payments"), "PaymentsView");
 const WalletView = lazy(() => import("@/components/views/wallet"), "WalletView");
@@ -77,6 +78,7 @@ const VIEW_REGISTRY: Record<ViewKey, React.ComponentType> = {
   branding: BrandingView,
   "quote-templates": QuoteTemplatesView,
   quotations: QuotationsView,
+  "quotation-wizard": QuotationWizardView,
   bookings: BookingsView,
   payments: PaymentsView,
   wallet: WalletView,
@@ -130,7 +132,11 @@ export function AppShell() {
         <Topbar />
         <main
           id="main-content"
-          className="flex-1 w-full mx-auto max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6 md:px-6 lg:px-8 lg:py-8 pb-24 lg:pb-8 animate-fade-in"
+          className={
+            activeView === "quotation-wizard"
+              ? "flex-1 w-full mx-auto max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6 md:px-6 lg:px-8 lg:py-8 pb-24 lg:pb-8 animate-fade-in overflow-hidden"
+              : "flex-1 w-full mx-auto max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6 md:px-6 lg:px-8 lg:py-8 pb-24 lg:pb-8 animate-fade-in"
+          }
           tabIndex={-1}
         >
           <ViewComponent />

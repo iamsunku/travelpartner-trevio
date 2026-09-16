@@ -42,7 +42,6 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { InternationalQuotationDialog } from "@/components/views/international-quotation";
 import { ProductQuoteBuilderDialog } from "@/components/shared/product-quote-builder";
-import { QuotationWizardDialog } from "@/components/views/quotation-wizard";
 import { AgentQuotationDialog } from "@/components/views/agent-quotation-dialog";
 import { AgentTripComposerDialog } from "@/components/views/agent-trip-composer";
 import {
@@ -1248,6 +1247,7 @@ export function QuotationsView() {
   const user = useAuthStore((s) => s.user);
   const quotePrefill = useAppStore((s) => s.quotePrefill);
   const setQuotePrefill = useAppStore((s) => s.setQuotePrefill);
+  const openQuotationWizard = useAppStore((s) => s.openQuotationWizard);
   const setView = useAppStore((s) => s.setView);
   const quotations = useDemoDataStore((s) => s.quotations);
   const leads = useDemoDataStore((s) => s.leads);
@@ -1255,8 +1255,6 @@ export function QuotationsView() {
   const hydrateFromApi = useDemoDataStore((s) => s.hydrateFromApi);
   const [selected, setSelected] = useState<Quotation | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [editWizardId, setEditWizardId] = useState<string | null>(null);
   const [productQuoteOpen, setProductQuoteOpen] = useState(false);
   const [intlQuoteOpen, setIntlQuoteOpen] = useState(false);
   const [quickQuoteOpen, setQuickQuoteOpen] = useState(false);
@@ -1287,18 +1285,16 @@ export function QuotationsView() {
       budget: lead.value,
       enquiryRef: `LEAD-${lead.id.slice(-6)}`,
     });
-    setEditWizardId(null);
     setFromEnquiryOpen(false);
     setEnquiryLeadId("");
-    setWizardOpen(true);
+    openQuotationWizard(null);
     toast({ title: "Opening quotation wizard", description: `Prefilling from ${lead.customerName}` });
   }
 
   useEffect(() => {
     if (!quotePrefill || isAgent) return;
-    setEditWizardId(null);
-    setWizardOpen(true);
-  }, [quotePrefill, isAgent]);
+    openQuotationWizard(null);
+  }, [quotePrefill, isAgent, openQuotationWizard]);
 
   useEffect(() => {
     api.getQuotationAnalytics()
@@ -1385,7 +1381,7 @@ export function QuotationsView() {
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 className="bg-teal-600 hover:bg-teal-700"
-                onClick={() => { setEditWizardId(null); setWizardOpen(true); }}
+                onClick={() => openQuotationWizard(null)}
               >
                 <Plus className="w-4 h-4 mr-1" /> Create quotation
               </Button>
@@ -1401,7 +1397,7 @@ export function QuotationsView() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="flex flex-col items-start gap-0.5 py-2.5 cursor-pointer"
-                    onClick={() => { setEditWizardId(null); setWizardOpen(true); }}
+                    onClick={() => openQuotationWizard(null)}
                   >
                     <span className="font-medium flex items-center gap-1.5">
                       <Plus className="w-3.5 h-3.5" /> Full itinerary (recommended)
@@ -1603,7 +1599,7 @@ export function QuotationsView() {
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
                         {!isAgent && ["Draft", "In Progress", "Revision Requested"].includes(q.status) && (
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit wizard" onClick={() => { setEditWizardId(q.id); setWizardOpen(true); }}>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit wizard" onClick={() => openQuotationWizard(q.id)}>
                             <FileText className="w-3.5 h-3.5" />
                           </Button>
                         )}
@@ -1663,16 +1659,6 @@ export function QuotationsView() {
       </Card>
 
       <QuoteDetailDialog quote={selected} open={detailOpen} onOpenChange={setDetailOpen} />
-      <QuotationWizardDialog
-        open={wizardOpen}
-        onOpenChange={(v) => {
-          setWizardOpen(v);
-          if (!v) setQuotePrefill(null);
-        }}
-        quotationId={editWizardId}
-        prefill={quotePrefill}
-        onSaved={(q) => upsertQuotation(q)}
-      />
       <AgentQuotationDialog
         open={agentQuoteOpen}
         onOpenChange={setAgentQuoteOpen}

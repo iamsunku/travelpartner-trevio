@@ -101,13 +101,94 @@ export function resolveIataCode(input: string): string {
   return raw.slice(0, 3).toUpperCase();
 }
 
+function dateFromIso(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return iso.slice(0, 10) || "";
+}
+
+function travelClassParam(cabin?: string): string | undefined {
+  const c = String(cabin || "").toUpperCase().replace(/\s+/g, "_");
+  if (!c) return undefined;
+  if (c.includes("FIRST")) return "FIRST";
+  if (c.includes("BUSINESS")) return "BUSINESS";
+  if (c.includes("PREMIUM")) return "PREMIUM_ECONOMY";
+  if (c.includes("ECONOMY")) return "ECONOMY";
+  return undefined;
+}
+
+function mapItineraryLeg(opts: {
+  offer: Record<string, unknown>;
+  itin: Record<string, unknown>;
+  offerIndex: number;
+  legIndex: number;
+  carriers: Record<string, string>;
+  aircraftDict: Record<string, string>;
+  fallbackOrigin: string;
+  fallbackDestination: string;
+  direction: Flight["direction"];
+  priceShare: number;
+  currency: string;
+}): Flight {
+  const segments = (opts.itin.segments as Array<Record<string, unknown>>) || [];
+  const first = segments[0] || {};
+  const last = segments[segments.length - 1] || first;
+  const dep = first.departure as { iataCode?: string; at?: string } | undefined;
+  const arr = last.arrival as { iataCode?: string; at?: string } | undefined;
+  const carrier = String(first.carrierCode || "");
+  const traveler = ((opts.offer.travelerPricings as Array<Record<string, unknown>>) || [])[0];
+  const fareDetails = ((traveler?.fareDetailsBySegment as Array<Record<string, unknown>>) || [])[0];
+  const cabin = cabinFromAmadeus(String(fareDetails?.cabin || ""));
+  const aircraftCode = String((first.aircraft as { code?: string } | undefined)?.code || "");
+  const bags = fareDetails?.includedCheckedBags as { quantity?: number; weight?: number; weightUnit?: string } | undefined;
+  let baggage = "";
+  if (bags?.quantity != null && bags.quantity > 0) {
+    baggage = bags.weight
+      ? `${bags.quantity} × ${bags.weight}${bags.weightUnit || "kg"}`
+      : `${bags.quantity} checked bag(s)`;
+  }
+  const journeyId = String(opts.offer.id || `amadeus-fl-${opts.offerIndex + 1}`);
+  return {
+    id: `${journeyId}-${opts.legIndex}`,
+    airline: opts.carriers[carrier] || carrier || "Airline",
+    airlineCode: carrier || "XX",
+    flightNumber: `${carrier}${first.number || opts.offerIndex + 100}`,
+    origin: dep?.iataCode || opts.fallbackOrigin,
+    originCity: dep?.iataCode || opts.fallbackOrigin,
+    destination: arr?.iataCode || opts.fallbackDestination,
+    destinationCity: arr?.iataCode || opts.fallbackDestination,
+    departDate: dateFromIso(dep?.at),
+    arrivalDate: dateFromIso(arr?.at),
+    departTime: timeFromIso(dep?.at),
+    arriveTime: timeFromIso(arr?.at),
+    duration: formatDuration(String(opts.itin.duration || "")),
+    stops: Math.max(0, segments.length - 1),
+    price: opts.priceShare,
+    currency: opts.currency,
+    cabin,
+    seatsLeft: Number(opts.offer.numberOfBookableSeats || 9),
+    refundable: false,
+    aircraft: opts.aircraftDict[aircraftCode] || aircraftCode || "—",
+    baggage,
+    rating: 4.2,
+    direction: opts.direction,
+    segmentIndex: opts.legIndex,
+    journeyId,
+  } satisfies Flight;
+}
+
 export async function searchAmadeusFlights(opts: {
   clientId: string;
   clientSecret: string;
   origin: string;
   destination: string;
   departureDate?: string;
+  returnDate?: string;
   adults?: number;
+  children?: number;
+  infants?: number;
+  cabinClass?: string;
   max?: number;
 }): Promise<Flight[]> {
   const token = await getAccessToken(opts.clientId, opts.clientSecret);
@@ -118,6 +199,8 @@ export async function searchAmadeusFlights(opts: {
     opts.departureDate ||
     new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const adults = Math.max(1, Number(opts.adults || 1));
+  const children = Math.max(0, Number(opts.children || 0));
+  const infants = Math.max(0, Number(opts.infants || 0));
   const max = Math.min(Math.max(1, Number(opts.max || 8)), 20);
 
   const qs = new URLSearchParams({
@@ -128,6 +211,11 @@ export async function searchAmadeusFlights(opts: {
     currencyCode: "INR",
     max: String(max),
   });
+  if (opts.returnDate) qs.set("returnDate", opts.returnDate);
+  if (children > 0) qs.set("children", String(children));
+  if (infants > 0) qs.set("infants", String(infants));
+  const travelClass = travelClassParam(opts.cabinClass);
+  if (travelClass) qs.set("travelClass", travelClass);
 
   const res = await fetch(`${host}/v2/shopping/flight-offers?${qs}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -143,53 +231,36 @@ export async function searchAmadeusFlights(opts: {
   };
   const carriers = json.dictionaries?.carriers || {};
   const aircraftDict = json.dictionaries?.aircraft || {};
+  const out: Flight[] = [];
 
-  return (json.data || []).map((offer, i) => {
+  (json.data || []).forEach((offer, i) => {
     const itineraries = (offer.itineraries as Array<Record<string, unknown>>) || [];
-    const firstItin = itineraries[0] || {};
-    const segments = (firstItin.segments as Array<Record<string, unknown>>) || [];
-    const first = segments[0] || {};
-    const last = segments[segments.length - 1] || first;
-    const dep = first.departure as { iataCode?: string; at?: string } | undefined;
-    const arr = last.arrival as { iataCode?: string; at?: string } | undefined;
-    const carrier = String(first.carrierCode || "");
     const priceObj = offer.price as { total?: string; currency?: string } | undefined;
-    const traveler = ((offer.travelerPricings as Array<Record<string, unknown>>) || [])[0];
-    const fareDetails = ((traveler?.fareDetailsBySegment as Array<Record<string, unknown>>) || [])[0];
-    const cabin = cabinFromAmadeus(String(fareDetails?.cabin || ""));
-    const aircraftCode = String((first.aircraft as { code?: string } | undefined)?.code || "");
-    const price = Math.round(Number(priceObj?.total || 0));
-    const bags = fareDetails?.includedCheckedBags as { quantity?: number; weight?: number; weightUnit?: string } | undefined;
-    let baggage = "";
-    if (bags?.quantity != null && bags.quantity > 0) {
-      baggage = bags.weight
-        ? `${bags.quantity} × ${bags.weight}${bags.weightUnit || "kg"}`
-        : `${bags.quantity} checked bag(s)`;
-    }
+    const totalPrice = Math.round(Number(priceObj?.total || 0));
+    const currency = String(priceObj?.currency || "INR");
+    const legCount = Math.max(1, itineraries.length);
+    const priceShare = Math.round(totalPrice / legCount);
 
-    return {
-      id: String(offer.id || `amadeus-fl-${i + 1}`),
-      airline: carriers[carrier] || carrier || "Airline",
-      airlineCode: carrier || "XX",
-      flightNumber: `${carrier}${first.number || i + 100}`,
-      origin: dep?.iataCode || origin,
-      originCity: dep?.iataCode || origin,
-      destination: arr?.iataCode || destination,
-      destinationCity: arr?.iataCode || destination,
-      departTime: timeFromIso(dep?.at),
-      arriveTime: timeFromIso(arr?.at),
-      duration: formatDuration(String(firstItin.duration || "")),
-      stops: Math.max(0, segments.length - 1),
-      price: price || 0,
-      currency: String(priceObj?.currency || "INR"),
-      cabin,
-      seatsLeft: Number(offer.numberOfBookableSeats || 9),
-      refundable: false,
-      aircraft: aircraftDict[aircraftCode] || aircraftCode || "—",
-      baggage,
-      rating: 4.2,
-    } satisfies Flight;
+    itineraries.forEach((itin, legIndex) => {
+      const direction: Flight["direction"] =
+        legCount > 1 ? (legIndex === 0 ? "outbound" : "return") : "outbound";
+      out.push(mapItineraryLeg({
+        offer,
+        itin,
+        offerIndex: i,
+        legIndex,
+        carriers,
+        aircraftDict,
+        fallbackOrigin: legIndex === 0 ? origin : destination,
+        fallbackDestination: legIndex === 0 ? destination : origin,
+        direction,
+        priceShare,
+        currency,
+      }));
+    });
   });
+
+  return out;
 }
 
 export async function searchAmadeusHotels(opts: {

@@ -6,7 +6,8 @@ import { QUOTE_INCLUDE, sanitizeQuotationForRole, isAgentLike } from "./quotatio
 const QUOTE_MATERIAL_KEYS = [
   "customerName", "destination", "country", "departureCity",
   "travelDates", "travelStartDate", "travelEndDate", "returnDate",
-  "nights", "days", "adults", "children", "infants",
+  "nights", "days", "adults", "children", "infants", "rooms",
+  "nationality", "landOnly", "estimatedBookingDate", "tripCities",
   "currency", "specialRequests",
   "packageIncludes", "packageExcludes",
   "termsAndConditions", "paymentTerms", "cancellationPolicy", "refundPolicy",

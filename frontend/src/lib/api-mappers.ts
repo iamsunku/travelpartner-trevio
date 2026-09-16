@@ -198,10 +198,23 @@ export function mapApiQuotation(q: ApiQuotation): Quotation {
     adults: q.adults ?? undefined,
     children: q.children ?? undefined,
     infants: q.infants ?? undefined,
+    rooms: (q as { rooms?: number | null }).rooms ?? undefined,
     hotelStarPreference: q.hotelStarPreference ?? undefined,
     location: q.location ?? undefined,
     budget: q.budget ?? undefined,
     currency: q.currency ?? undefined,
+    nationality: (q as { nationality?: string | null }).nationality ?? undefined,
+    landOnly: Boolean((q as { landOnly?: boolean | null }).landOnly),
+    estimatedBookingDate: (q as { estimatedBookingDate?: string | null }).estimatedBookingDate ?? undefined,
+    tripCities: Array.isArray((q as { tripCities?: unknown }).tripCities)
+      ? ((q as { tripCities: Quotation["tripCities"] }).tripCities || []).map((c, i) => ({
+          city: String(c.city || ""),
+          nights: Math.max(0, Number(c.nights) || 0),
+          order: Number(c.order) > 0 ? Number(c.order) : i + 1,
+          destinationId: c.destinationId ?? null,
+        })).filter((c) => c.city && c.nights > 0)
+      : undefined,
+    departureCity: (q as { departureCity?: string | null }).departureCity ?? undefined,
     packageIncludes: asStringList(q.packageIncludes),
     packageExcludes: asStringList(q.packageExcludes),
     paymentTerms: q.paymentTerms ?? undefined,

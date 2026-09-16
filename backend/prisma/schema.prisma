@@ -298,9 +298,22 @@ model Quotation {
   adults        Int?
   children      Int?
   infants       Int?
+  /** Quote-level room count (Basic Details). Hotel-line rooms remain independent. */
+  rooms         Int?     @default(1)
   hotelStarPreference String?
   roomTypePreference  String?
   mealPlanPreference  String?
+  /** Guest nationality (not destination country). */
+  nationality   String?
+  /** Explicit land-only flag — not the same as isInternational. Downstream modules may gate flights. */
+  landOnly      Boolean  @default(false)
+  /** Expected booking/closure date for sales follow-up (not validTill / travelStartDate). */
+  estimatedBookingDate String?
+  /**
+   * Trip Plan City Wise: [{ city, nights, order, destinationId? }].
+   * Empty [] for legacy quotes that only have `destination`.
+   */
+  tripCities    Json     @default("[]")
   location      String?
   budget        Int?
   currency      String   @default("INR")

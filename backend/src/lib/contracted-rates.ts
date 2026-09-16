@@ -17,6 +17,7 @@ export const RATE_SOURCES = {
   CONTRACTED_PRODUCT: "CONTRACTED_PRODUCT",
   API: "API",
   AMADEUS_API: "AMADEUS_API",
+  MOCK: "MOCK",
   MANUAL: "MANUAL",
 } as const;
 
@@ -357,7 +358,7 @@ export function mealTransferBadge(inclusion: unknown): "No Transfer" | "Private 
 
 type Scope = Record<string, unknown>;
 
-function toWindow(row: {
+export function toWindow(row: {
   id: string;
   contractedCost: number;
   currency: string;
@@ -449,7 +450,12 @@ async function freezeLine(
   scope: Scope,
 ): Promise<Record<string, unknown>> {
   const source = typeof line.source === "string" ? line.source : "";
-  if (source === RATE_SOURCES.MANUAL || source === RATE_SOURCES.API || source === RATE_SOURCES.AMADEUS_API) {
+  if (
+    source === RATE_SOURCES.MANUAL
+    || source === RATE_SOURCES.API
+    || source === RATE_SOURCES.AMADEUS_API
+    || source === RATE_SOURCES.MOCK
+  ) {
     const manual = { ...line };
     delete manual.contractedCost;
     return manual;

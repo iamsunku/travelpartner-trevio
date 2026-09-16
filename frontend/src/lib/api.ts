@@ -374,6 +374,18 @@ export const api = {
   getAgents: () =>
     apiFetch<{ agents: ApiAgent[] }>("/api/agents"),
 
+  getSalesExecutives: () =>
+    apiFetch<{
+      salesExecutives: Array<{
+        id: string;
+        name: string;
+        email: string;
+        phone?: string | null;
+        role: string;
+        status?: string;
+      }>;
+    }>("/api/sales-executives"),
+
   updateAgentProductAccess: (id: string, body: Record<string, unknown>) =>
     apiFetch<{ agent: ApiAgent }>(`/api/agents/${id}/product-access`, {
       method: "PATCH",
@@ -1566,10 +1578,16 @@ export interface ApiQuotation {
   adults?: number | null;
   children?: number | null;
   infants?: number | null;
+  rooms?: number | null;
   hotelStarPreference?: string | null;
   location?: string | null;
   budget?: number | null;
   currency?: string | null;
+  nationality?: string | null;
+  landOnly?: boolean | null;
+  estimatedBookingDate?: string | null;
+  tripCities?: Array<{ city: string; nights: number; order?: number; destinationId?: string | null }> | null;
+  departureCity?: string | null;
   packageIncludes?: unknown;
   packageExcludes?: unknown;
   paymentTerms?: string | null;

@@ -472,9 +472,15 @@ export interface Quotation {
   adults?: number;
   children?: number;
   infants?: number;
+  rooms?: number;
   hotelStarPreference?: string;
   roomTypePreference?: string;
   mealPlanPreference?: string;
+  nationality?: string;
+  landOnly?: boolean;
+  estimatedBookingDate?: string;
+  /** Trip Plan City Wise — empty for legacy single-destination quotes. */
+  tripCities?: Array<{ city: string; nights: number; order?: number; destinationId?: string | null }>;
   location?: string;
   budget?: number;
   currency?: string;
@@ -578,9 +584,14 @@ export type NewQuotationInput = {
   adults?: number;
   children?: number;
   infants?: number;
+  rooms?: number;
   hotelStarPreference?: string;
   roomTypePreference?: string;
   mealPlanPreference?: string;
+  nationality?: string;
+  landOnly?: boolean;
+  estimatedBookingDate?: string;
+  tripCities?: Array<{ city: string; nights: number; order?: number; destinationId?: string | null }>;
   location?: string;
   budget?: number;
   currency?: string;
@@ -1159,6 +1170,7 @@ export type ViewKey =
   | "quote-templates"
   | "branding"
   | "quotations"
+  | "quotation-wizard"
   | "bookings"
   | "payments"
   | "wallet"

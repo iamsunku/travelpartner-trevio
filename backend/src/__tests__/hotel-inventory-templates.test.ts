@@ -35,6 +35,25 @@ describe("phase 13 HT-04 catalogue hotel inventory", () => {
     expect(result.nights.every((n) => n.status === "untracked")).toBe(true);
   });
 
+  it("I. insufficient rooms rejects when quote rooms exceed availability", () => {
+    const oneRoomOk = checkCatalogueHotelInventory({
+      inventory: [{ roomName: "Deluxe", date: "2026-10-01", available: 1, soldOut: "No", closed: "No" }],
+      checkIn: "2026-10-01",
+      checkOut: "2026-10-02",
+      rooms: 1,
+      roomType: "Deluxe",
+    });
+    const twoRoomsFail = checkCatalogueHotelInventory({
+      inventory: [{ roomName: "Deluxe", date: "2026-10-01", available: 1, soldOut: "No", closed: "No" }],
+      checkIn: "2026-10-01",
+      checkOut: "2026-10-02",
+      rooms: 2,
+      roomType: "Deluxe",
+    });
+    expect(oneRoomOk.ok).toBe(true);
+    expect(twoRoomsFail.ok).toBe(false);
+  });
+
   it("F-G. sold-out / insufficient rooms / blackout rejected", () => {
     const sold = checkCatalogueHotelInventory({
       inventory: [{ roomName: "Deluxe", date: "2026-10-01", available: 2, soldOut: "Yes", closed: "No" }],

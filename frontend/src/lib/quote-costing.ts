@@ -405,16 +405,29 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+function isoNightsPreview(checkIn: unknown, checkOut: unknown): number | null {
+  const a = String(checkIn || "");
+  const b = String(checkOut || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(a) || !/^\d{4}-\d{2}-\d{2}$/.test(b) || b <= a) return null;
+  const ms = new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime();
+  return Math.max(1, Math.round(ms / 86400000));
+}
+
 function previewLineCost(line: Record<string, unknown>, nights: number | null, adults: number, children: number, infants: number): number | null {
   if (line.includedInPlan === true || line.included === true) return 0;
   const snap = asRecord(line.rateSnapshot);
   const unit = typeof snap?.contractedCost === "number" ? Math.round(snap.contractedCost) : typeof line.costPrice === "number" ? Math.round(line.costPrice) : typeof line.fare === "number" ? Math.round(line.fare) : null;
+  if (unit == null && line.selfBooked === true) return 0;
   if (unit == null) return null;
   const rateUnit = String(snap?.rateUnit || "");
   const qty = Math.max(1, Math.round(Number(line.quantity ?? line.qty ?? 1) || 1));
-  if (rateUnit === "PER_ROOM_NIGHT" || (snap && line.productType === "HOTEL")) {
+  if (rateUnit === "PER_ROOM_NIGHT" || (snap && line.productType === "HOTEL") || line.productType === "HOTEL") {
     const rooms = Math.round(Number(line.rooms ?? 0) || 0);
-    const stay = nights && nights > 0 ? nights : Math.round(Number(line.nights) || 0);
+    // Prefer hotel-line stay nights (city window) over quote-level total nights.
+    const lineStay =
+      isoNightsPreview(line.checkIn, line.checkOut)
+      ?? (Math.round(Number(line.nights) || 0) > 0 ? Math.round(Number(line.nights)) : 0);
+    const stay = lineStay > 0 ? lineStay : (nights && nights > 0 ? nights : 0);
     if (rooms <= 0 || stay <= 0) return null;
     const meta = asRecord(snap?.metadata);
     const child = typeof meta?.childCost === "number" ? meta.childCost * children * stay : 0;

@@ -33,6 +33,11 @@ import {
   snapshotVersion,
   summarizeVersionForList,
 } from "../lib/quotation-versions.js";
+import {
+  normalizeTripCities,
+  tripCitiesDestinationLabel,
+  tripCitiesTotalNights,
+} from "../lib/quote-trip-cities.js";
 import { generateQuotationPdf, QuotationPdfError } from "../lib/quotation-pdf/index.js";
 import { publicErrorMessage } from "../lib/http-error.js";
 import { resolveDefaultAgencyId } from "../lib/api-key-config.js";
@@ -299,6 +304,56 @@ function layersFromPackage(priced: ReturnType<typeof pricePackage>) {
     total: priced.finalPrice ?? priced.customerPrice,
     perPersonCost: priced.perAdultPrice,
     amount: priced.customerPrice,
+  };
+}
+
+/** YYYY-MM-DD or null. */
+function optionalDateString(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  const s = String(value).trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const t = Date.parse(`${s}T12:00:00`);
+  if (Number.isNaN(t)) return null;
+  return s;
+}
+
+function resolveTripBasicsFromBody(body: Record<string, unknown>, existing?: {
+  destination?: string | null;
+  nights?: number | null;
+  days?: number | null;
+  travelStartDate?: string | null;
+  travelEndDate?: string | null;
+}) {
+  const tripCities = body.tripCities !== undefined
+    ? normalizeTripCities(body.tripCities)
+    : undefined;
+  const cityNights = tripCities ? tripCitiesTotalNights(tripCities) : 0;
+  const computedNights = nightsBetween(
+    (body.travelStartDate as string) ?? existing?.travelStartDate,
+    (body.travelEndDate as string) ?? existing?.travelEndDate,
+  );
+  let nights = computedNights;
+  if (tripCities && tripCities.length > 0 && cityNights > 0) {
+    nights = cityNights;
+  } else if (nights == null && body.nights != null && Number.isFinite(Number(body.nights))) {
+    nights = toInt(body.nights, 0);
+  } else if (nights == null && existing?.nights != null) {
+    nights = existing.nights;
+  }
+
+  let destination = body.destination !== undefined
+    ? emptyToNull(body.destination)
+    : existing?.destination ?? null;
+  // When Trip Plan City Wise is provided, keep list destination in sync (do not invent cities for legacy []).
+  if (tripCities && tripCities.length > 0) {
+    destination = tripCitiesDestinationLabel(tripCities) || destination;
+  }
+
+  return {
+    tripCities,
+    nights: nights ?? null,
+    days: nights != null ? nights + 1 : (body.days != null && Number.isFinite(Number(body.days)) ? toInt(body.days) : existing?.days ?? null),
+    destination,
   };
 }
 
@@ -670,10 +725,13 @@ export function mountQuotationRoutes(
       const agentId = codes.agentId;
       const agentName = codes.agentName;
       const quoteNo = await nextQuoteNo();
+      const tripBasics = resolveTripBasicsFromBody(body);
       const computedNights = nightsBetween(body.travelStartDate, body.travelEndDate);
-      const nights = computedNights != null
-        ? computedNights
-        : (body.nights != null && Number.isFinite(Number(body.nights)) ? toInt(body.nights, 0) : null);
+      const nights = tripBasics.nights != null
+        ? tripBasics.nights
+        : (computedNights != null
+          ? computedNights
+          : (body.nights != null && Number.isFinite(Number(body.nights)) ? toInt(body.nights, 0) : null));
       const createdById = await existingUserId(req.auth?.userId);
       let leadId = emptyToNull(body.leadId);
       if (leadId) {
@@ -699,7 +757,7 @@ export function mountQuotationRoutes(
           contactPerson: emptyToNull(body.contactPerson),
           contactEmail: emptyToNull(body.contactEmail),
           contactPhone: emptyToNull(body.contactPhone),
-          destination: emptyToNull(body.destination),
+          destination: tripBasics.destination || emptyToNull(body.destination),
           country: emptyToNull(body.country),
           coverImage: emptyToNull(body.coverImage),
           departureCity: emptyToNull(body.departureCity),
@@ -712,6 +770,12 @@ export function mountQuotationRoutes(
           adults: Math.max(1, toInt(body.adults, 2) || 2),
           children: Math.max(0, toInt(body.children, 0)),
           infants: Math.max(0, toInt(body.infants, 0)),
+          rooms: Math.max(1, toInt(body.rooms, 1) || 1),
+          hotelStarPreference: emptyToNull(body.hotelStarPreference),
+          nationality: emptyToNull(body.nationality),
+          landOnly: body.landOnly === true,
+          estimatedBookingDate: optionalDateString(body.estimatedBookingDate),
+          tripCities: (tripBasics.tripCities ?? []) as unknown as Prisma.InputJsonValue,
           currency: body.currency || "INR",
           baseCurrency: body.baseCurrency || body.currency || "INR",
           exchangeRate: toFloat(body.exchangeRate, 1) || 1,
@@ -912,7 +976,8 @@ export function mountQuotationRoutes(
       }
 
       const body = req.body || {};
-      const nights = nightsBetween(body.travelStartDate ?? existing.travelStartDate, body.travelEndDate ?? existing.travelEndDate);
+      const tripBasics = resolveTripBasicsFromBody(body, existing);
+      const nights = tripBasics.nights;
 
       // Over-limit discounts are allowed but require a Discount approval stage (not a hard 400).
       const nextDiscountType = isAgentLike(req.auth?.role)
@@ -932,6 +997,7 @@ export function mountQuotationRoutes(
         "leadId", "termsAndConditions", "paymentTerms", "cancellationPolicy", "refundPolicy",
         "hotelTerms", "flightTerms", "visaTerms", "insuranceTerms", "forceMajeure", "travelDisclaimer",
         "discountType", "hotelStarPreference", "roomTypePreference", "mealPlanPreference",
+        "nationality",
       ] as const;
       for (const k of scalarKeys) {
         if (body[k] !== undefined) data[k] = k === "leadId" ? emptyToNull(body[k]) : body[k];
@@ -943,6 +1009,13 @@ export function mountQuotationRoutes(
       if (body.adults != null) data.adults = Math.max(1, toInt(body.adults, 2) || 2);
       if (body.children != null) data.children = Math.max(0, toInt(body.children, 0));
       if (body.infants != null) data.infants = Math.max(0, toInt(body.infants, 0));
+      if (body.rooms != null) data.rooms = Math.max(1, toInt(body.rooms, 1) || 1);
+      if (body.landOnly != null) data.landOnly = body.landOnly === true;
+      if (body.estimatedBookingDate !== undefined) data.estimatedBookingDate = optionalDateString(body.estimatedBookingDate);
+      if (tripBasics.tripCities !== undefined) {
+        data.tripCities = tripBasics.tripCities as unknown as Prisma.InputJsonValue;
+        if (tripBasics.destination) data.destination = tripBasics.destination;
+      }
       if (body.isInternational != null) data.isInternational = Boolean(body.isInternational);
       if (body.packageIncludes) data.packageIncludes = body.packageIncludes;
       if (body.packageExcludes) data.packageExcludes = body.packageExcludes;
@@ -1716,6 +1789,12 @@ export function mountQuotationRoutes(
           adults: existing.adults,
           children: existing.children,
           infants: existing.infants,
+          rooms: existing.rooms,
+          hotelStarPreference: existing.hotelStarPreference,
+          nationality: existing.nationality,
+          landOnly: existing.landOnly,
+          estimatedBookingDate: existing.estimatedBookingDate,
+          tripCities: existing.tripCities ?? [],
           currency: existing.currency,
           baseCurrency: existing.baseCurrency,
           exchangeRate: existing.exchangeRate,
@@ -2027,6 +2106,26 @@ export function mountQuotationRoutes(
           packageIncludes: (snap.packageIncludes as object) ?? existing.packageIncludes,
           packageExcludes: (snap.packageExcludes as object) ?? existing.packageExcludes,
           termsAndConditions: (snap.termsAndConditions as string) ?? existing.termsAndConditions,
+          customerName: (snap.customerName as string) ?? existing.customerName,
+          destination: (snap.destination as string) ?? existing.destination,
+          country: (snap.country as string) ?? existing.country,
+          departureCity: (snap.departureCity as string) ?? existing.departureCity,
+          travelStartDate: (snap.travelStartDate as string) ?? existing.travelStartDate,
+          travelEndDate: (snap.travelEndDate as string) ?? existing.travelEndDate,
+          travelDates: (snap.travelDates as string) ?? existing.travelDates,
+          nights: snap.nights != null ? Number(snap.nights) : existing.nights,
+          days: snap.days != null ? Number(snap.days) : existing.days,
+          adults: snap.adults != null ? Number(snap.adults) : existing.adults,
+          children: snap.children != null ? Number(snap.children) : existing.children,
+          infants: snap.infants != null ? Number(snap.infants) : existing.infants,
+          rooms: snap.rooms != null ? Number(snap.rooms) : existing.rooms,
+          hotelStarPreference: (snap.hotelStarPreference as string) ?? existing.hotelStarPreference,
+          nationality: (snap.nationality as string) ?? existing.nationality,
+          landOnly: typeof snap.landOnly === "boolean" ? snap.landOnly : existing.landOnly,
+          estimatedBookingDate: (snap.estimatedBookingDate as string) ?? existing.estimatedBookingDate,
+          tripCities: snap.tripCities != null
+            ? (normalizeTripCities(snap.tripCities) as unknown as Prisma.InputJsonValue)
+            : (existing.tripCities as Prisma.InputJsonValue),
         },
         include: QUOTE_INCLUDE,
       });

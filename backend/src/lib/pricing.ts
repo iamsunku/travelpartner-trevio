@@ -168,9 +168,14 @@ export function priceLine(
     if (unitCost == null) {
       return { contractedCost: 0, adultAttributed: 0, childAttributed: 0, shared: 0, unresolved: true, reason: "No valid contracted rate available for selected travel date." };
     }
-  } else if (source === "AMADEUS_API" || source === "API" || source === "MANUAL" || !source) {
+  } else if (source === "AMADEUS_API" || source === "API" || source === "MOCK" || source === "MANUAL" || !source) {
+    // Self-booked hotels/flights are operational lines unless the user supplies an explicit commercial amount.
     if (typeof line.costPrice === "number" && Number.isFinite(line.costPrice)) unitCost = Math.round(line.costPrice);
     else if (typeof line.fare === "number" && Number.isFinite(line.fare)) unitCost = Math.round(line.fare);
+    else if (typeof line.sellingPrice === "number" && Number.isFinite(line.sellingPrice)) unitCost = Math.round(line.sellingPrice);
+    if (unitCost == null && line.selfBooked === true) {
+      return { contractedCost: 0, adultAttributed: 0, childAttributed: 0, shared: 0, unresolved: false };
+    }
     if (unitCost == null) {
       return { contractedCost: 0, adultAttributed: 0, childAttributed: 0, shared: 0, unresolved: true, reason: "No explicit cost or fare for this manual or API item." };
     }

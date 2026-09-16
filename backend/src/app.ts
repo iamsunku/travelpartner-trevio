@@ -1482,25 +1482,176 @@ app.get("/api/reports", requireAuth, requirePermission("reports"), async (req: A
 
 app.get("/api/flights/search", requireAuth, requirePermission("flights"), async (req: AuthRequest, res) => {
   try {
-    const origin = (req.query.origin as string) || "BOM";
-    const destination = (req.query.destination as string) || "DEL";
-    const count = Math.min(parseInt(req.query.count as string) || 8, 20);
+    const tripTypeRaw = String(req.query.tripType || "one_way").toLowerCase().replace(/-/g, "_");
+    const tripType = tripTypeRaw === "round_trip" || tripTypeRaw === "roundtrip"
+      ? "round_trip"
+      : tripTypeRaw === "multi_city" || tripTypeRaw === "multicity"
+        ? "multi_city"
+        : "one_way";
+
+    const origin = String(req.query.origin || "").trim();
+    const destination = String(req.query.destination || "").trim();
+    const count = Math.min(parseInt(String(req.query.count || "8"), 10) || 8, 20);
     const departureDate = (req.query.departureDate as string) || undefined;
+    const returnDate = (req.query.returnDate as string) || undefined;
+    const adults = Math.max(1, parseInt(String(req.query.adults || "1"), 10) || 1);
+    const children = Math.max(0, parseInt(String(req.query.children || "0"), 10) || 0);
+    const infants = Math.max(0, parseInt(String(req.query.infants || "0"), 10) || 0);
+    const cabinClass = String(req.query.cabinClass || req.query.cabin || "").trim() || undefined;
+
+    let segments: Array<{ origin: string; destination: string; date?: string }> = [];
+    if (tripType === "multi_city") {
+      try {
+        const raw = req.query.segments;
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (Array.isArray(parsed)) {
+          segments = parsed
+            .map((s) => ({
+              origin: String((s as { origin?: string }).origin || "").trim(),
+              destination: String((s as { destination?: string }).destination || "").trim(),
+              date: String((s as { date?: string; departureDate?: string }).date
+                || (s as { departureDate?: string }).departureDate || "").trim() || undefined,
+            }))
+            .filter((s) => s.origin && s.destination);
+        }
+      } catch {
+        segments = [];
+      }
+      if (!segments.length) {
+        res.status(400).json({ error: "multi_city requires segments=[{origin,destination,date},…]" });
+        return;
+      }
+    } else {
+      if (!origin || !destination) {
+        res.status(400).json({
+          error: "origin and destination are required (do not rely on hardcoded airport defaults).",
+        });
+        return;
+      }
+      if (tripType === "round_trip" && !returnDate) {
+        res.status(400).json({ error: "returnDate is required for round_trip searches." });
+        return;
+      }
+      segments = [{ origin, destination, date: departureDate }];
+      if (tripType === "round_trip" && returnDate) {
+        segments.push({ origin: destination, destination: origin, date: returnDate });
+      }
+    }
+
     const agencyId = req.auth?.agencyId || (await resolveDefaultAgencyId());
     const keys = await getAgencyApiKeys(agencyId);
     const provider = keys.flightProvider || "mock";
 
-    if (provider === "amadeus" && keys.flightApiKey && keys.flightApiSecret) {
-      const flights = await searchAmadeusFlights({
-        clientId: keys.flightApiKey,
-        clientSecret: keys.flightApiSecret,
-        origin,
-        destination,
-        departureDate,
+    async function runLiveAmadeus(): Promise<ReturnType<typeof searchAmadeusFlights>> {
+      if (tripType === "multi_city") {
+        const all: Awaited<ReturnType<typeof searchAmadeusFlights>> = [];
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i];
+          const leg = await searchAmadeusFlights({
+            clientId: keys.flightApiKey!,
+            clientSecret: keys.flightApiSecret!,
+            origin: seg.origin,
+            destination: seg.destination,
+            departureDate: seg.date,
+            adults,
+            children,
+            infants,
+            cabinClass,
+            max: Math.max(2, Math.ceil(count / segments.length)),
+          });
+          for (const f of leg) {
+            all.push({
+              ...f,
+              direction: "segment",
+              segmentIndex: i,
+              journeyId: f.journeyId || `mc-${i}-${f.id}`,
+              id: `mc-${i}-${f.id}`,
+            });
+          }
+        }
+        return all;
+      }
+      return searchAmadeusFlights({
+        clientId: keys.flightApiKey!,
+        clientSecret: keys.flightApiSecret!,
+        origin: segments[0].origin,
+        destination: segments[0].destination,
+        departureDate: segments[0].date,
+        returnDate: tripType === "round_trip" ? returnDate : undefined,
+        adults,
+        children,
+        infants,
+        cabinClass,
         max: count,
       });
-      const safe = flights.map((f) => publicFlightSearchResult(f as unknown as Record<string, unknown>));
-      const body = { flights: safe, provider: "amadeus", source: "live" as const };
+    }
+
+    function runMock(): ReturnType<typeof generateFlights> {
+      if (tripType === "round_trip" && segments.length >= 2) {
+        const out = generateFlights(segments[0].origin, segments[0].destination, Math.ceil(count / 2), {
+          departureDate: segments[0].date,
+          cabinClass,
+          direction: "outbound",
+          segmentIndex: 0,
+          journeyPrefix: "mock-out",
+        });
+        const ret = generateFlights(segments[1].origin, segments[1].destination, Math.ceil(count / 2), {
+          departureDate: segments[1].date,
+          cabinClass,
+          direction: "return",
+          segmentIndex: 1,
+          journeyPrefix: "mock-ret",
+        });
+        // Pair journey ids for first N offers
+        const n = Math.min(out.length, ret.length);
+        for (let i = 0; i < n; i++) {
+          const jid = `mock-rt-${i + 1}`;
+          out[i] = { ...out[i], journeyId: jid, id: `${jid}-0` };
+          ret[i] = { ...ret[i], journeyId: jid, id: `${jid}-1` };
+        }
+        return [...out, ...ret];
+      }
+      if (tripType === "multi_city") {
+        const all: ReturnType<typeof generateFlights> = [];
+        for (let i = 0; i < segments.length; i++) {
+          const seg = segments[i];
+          const leg = generateFlights(seg.origin, seg.destination, Math.max(2, Math.ceil(count / segments.length)), {
+            departureDate: seg.date,
+            cabinClass,
+            direction: "segment",
+            segmentIndex: i,
+            journeyPrefix: `mock-mc-${i}`,
+          });
+          all.push(...leg);
+        }
+        return all;
+      }
+      return generateFlights(segments[0].origin, segments[0].destination, count, {
+        departureDate: segments[0].date,
+        cabinClass,
+        direction: "outbound",
+        segmentIndex: 0,
+        journeyPrefix: "mock",
+      });
+    }
+
+    if (provider === "amadeus" && keys.flightApiKey && keys.flightApiSecret) {
+      const flights = await runLiveAmadeus();
+      const safe = flights.map((f) =>
+        publicFlightSearchResult({ ...f as unknown as Record<string, unknown>, source: "AMADEUS_API" }),
+      );
+      const body = {
+        flights: safe,
+        provider: "amadeus" as const,
+        source: "live" as const,
+        rateSource: "AMADEUS_API" as const,
+        tripType,
+        adults,
+        children,
+        infants,
+        cabinClass: cabinClass || null,
+        demo: false,
+      };
       if (!assertNoProviderSecrets(body)) {
         res.status(500).json({ error: "Flight search sanitization failed" });
         return;
@@ -1525,10 +1676,22 @@ app.get("/api/flights/search", requireAuth, requirePermission("flights"), async 
       return;
     }
 
-    const safe = generateFlights(origin, destination, count).map((f) =>
-      publicFlightSearchResult(f as unknown as Record<string, unknown>),
+    const safe = runMock().map((f) =>
+      publicFlightSearchResult({ ...f as unknown as Record<string, unknown>, source: "MOCK" }),
     );
-    const body = { flights: safe, provider: "mock" as const, source: "demo" as const };
+    const body = {
+      flights: safe,
+      provider: "mock" as const,
+      source: "demo" as const,
+      rateSource: "MOCK" as const,
+      tripType,
+      adults,
+      children,
+      infants,
+      cabinClass: cabinClass || null,
+      demo: true,
+      message: "Demo flight results (mock provider). Configure Amadeus API keys for live search.",
+    };
     if (!assertNoProviderSecrets(body)) {
       res.status(500).json({ error: "Flight search sanitization failed" });
       return;
@@ -2043,6 +2206,33 @@ app.get("/api/agents", requireAuth, requirePermission("quotations"), async (req:
         productAccess: parseProductAccess(a.productAccess, "travel_agent"),
       })),
     });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/** Sales executives selectable on Create Quote Basic Details. */
+app.get("/api/sales-executives", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res) => {
+  try {
+    const salesExecutives = await db.user.findMany({
+      where: {
+        ...agencyScope(req),
+        status: "Active",
+        role: { in: ["sales_executive", "agency_admin", "branch_manager", "super_admin", "employee"] },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        status: true,
+      },
+      orderBy: { name: "asc" },
+      take: 200,
+    });
+    res.json({ salesExecutives });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });

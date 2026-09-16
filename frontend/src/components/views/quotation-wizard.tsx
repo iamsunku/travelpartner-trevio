@@ -1,14 +1,43 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronLeft, ChevronRight, Copy, FileDown, ImageIcon, Loader2, Mail, MessageCircle, Plus, Printer, Search, Trash2, X } from "lucide-react";
+import {
+  BadgeCheck, Check, ChevronDown, ChevronLeft, ChevronRight, Coffee, Copy, Crosshair, FileDown, Headphones, Home, Hotel,
+  ImageIcon, Loader2, Mail, MapPin, MessageCircle, Plus, Printer, Search, ShieldCheck, Star, Trash2, X,
+} from "lucide-react";
 import { api, apiFetch, ApiError } from "@/lib/api";
 import { mapApiQuotation, mapApiUser } from "@/lib/api-mappers";
 import { useDemoDataStore } from "@/store/demo-data-store";
-import { useAuthStore } from "@/store/app-store";
+import { useAuthStore, useAppStore } from "@/store/app-store";
 import type { ProductRecord, Quotation, QuotationPackage } from "@/types";
 import { formatFullINR } from "@/components/shared/ui-helpers";
 import { calcPackageCosting, resolveQuotationCosting, toCalendarDate } from "@/lib/quote-costing";
+import {
+  buildTripCityStayWindows,
+  encodeCityStayDates,
+  findStayWindowForCity,
+  hotelTransferLocations as buildHotelTransferLocations,
+  syncHotelRowsToTripStays,
+  type HotelTransferLocation,
+  type TripCityStayWindow,
+} from "@/lib/quote-trip-stays";
+import {
+  defaultActivityDateForCity,
+  isDateInCityStay,
+  mergeAutoTransfers,
+  suggestAutoTransfers,
+} from "@/lib/quote-transfers";
+import {
+  applyMealCityChange,
+  defaultMealDateForCity,
+  hotelBreakfastDuplicationWarning,
+  syncMealRowsToTripStays,
+} from "@/lib/quote-meals";
+import {
+  syncPackageItinerary,
+  formatItineraryDate,
+  itemTypeLabel,
+} from "@/lib/quote-itinerary-sync";
 import {
   canApproveDiscount,
   discountRequiresApproval,
@@ -20,21 +49,56 @@ import { QuotePriceBreakdown } from "@/components/shared/quote-price-breakdown";
 import { DESTINATION_QUOTE_PLANS, getDestinationQuotePlan } from "@/lib/destination-quote-plans";
 import { downloadQuotationPdf, deliverQuotationEmail, deliverQuotationWhatsApp } from "@/lib/quotation-actions";
 import { downloadClientQuotationBrochure } from "@/lib/client-quotation-brochure";
-import { DestinationSelect } from "@/components/shared/destination-select";
+import { AirportSelect } from "@/components/shared/airport-select";
+import { CitySelect } from "@/components/shared/city-select";
+import { departureIata } from "@/lib/world-airports";
+import { preloadWorldCities } from "@/lib/world-cities";
+import { COUNTRIES_MASTER } from "@/lib/location-options";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from "@/components/ui/dialog";
-import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import type { QuotePrefill } from "@/store/app-store";
+
+/** Client Create Quote uses demonyms (e.g. Indian), not country names. */
+const NATIONALITY_OPTIONS = [
+  { value: "Indian", label: "Indian" },
+  { value: "Singaporean", label: "Singaporean" },
+  { value: "Emirati", label: "Emirati" },
+  { value: "American", label: "American" },
+  { value: "British", label: "British" },
+  { value: "Australian", label: "Australian" },
+  { value: "Malaysian", label: "Malaysian" },
+  { value: "Thai", label: "Thai" },
+  { value: "Sri Lankan", label: "Sri Lankan" },
+  { value: "Nepali", label: "Nepali" },
+  { value: "Bangladeshi", label: "Bangladeshi" },
+] as const;
+
+function nationalityDisplay(raw: string | undefined | null): string {
+  const v = String(raw || "").trim();
+  if (!v) return "Indian";
+  if (NATIONALITY_OPTIONS.some((o) => o.value === v)) return v;
+  const byCountry = COUNTRIES_MASTER.find((c) => c.name.toLowerCase() === v.toLowerCase());
+  if (byCountry?.code === "IN") return "Indian";
+  if (byCountry?.code === "SG") return "Singaporean";
+  if (byCountry?.code === "AE") return "Emirati";
+  if (byCountry?.code === "US") return "American";
+  if (byCountry?.code === "GB") return "British";
+  if (byCountry?.code === "AU") return "Australian";
+  if (byCountry?.code === "MY") return "Malaysian";
+  if (byCountry?.code === "TH") return "Thai";
+  if (byCountry?.code === "LK") return "Sri Lankan";
+  if (byCountry?.code === "NP") return "Nepali";
+  if (byCountry?.code === "BD") return "Bangladeshi";
+  return v;
+}
 
 const STEPS = [
   { label: "Basic Details", hint: "Customer & trip" },
@@ -120,22 +184,66 @@ function emptyPackage(name: string, selected = false): QuotationPackage {
   };
 }
 
-export function QuotationWizardDialog({
-  open,
-  onOpenChange,
-  quotationId,
-  onSaved,
-  prefill,
-}: {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  quotationId?: string | null;
-  onSaved?: (q: Quotation) => void;
-  prefill?: QuotePrefill | null;
-}) {
+/** True when itinerary is still the default stub (safe to auto-replace after hotel confirm). */
+function isPlaceholderItinerary(days: unknown): boolean {
+  if (!Array.isArray(days) || days.length === 0) return true;
+  if (days.length !== 1) return false;
+  const d = days[0] as Record<string, unknown>;
+  if (d.autoFromHotel === true || d.autoSkeleton === true) return true;
+  const items = Array.isArray(d.items) ? (d.items as Array<Record<string, unknown>>) : [];
+  const first = items[0];
+  return !String(d.city || "").trim()
+    && String(first?.activityName || "").toLowerCase().includes("airport arrival");
+}
+
+/** Safe multi-service itinerary sync (Module 04A) — never wipes manual items. */
+function syncItineraryFromPackage(
+  existing: unknown,
+  pkg: {
+    hotels?: unknown;
+    flights?: unknown;
+    transfers?: unknown;
+    activities?: unknown;
+    meals?: unknown;
+  },
+  opts: {
+    stayWindows?: TripCityStayWindow[];
+    travelStartDate?: string;
+  },
+): Record<string, unknown>[] {
+  return syncPackageItinerary(isPlaceholderItinerary(existing) ? [] : existing, {
+    hotels: Array.isArray(pkg.hotels) ? (pkg.hotels as Record<string, unknown>[]) : [],
+    flights: Array.isArray(pkg.flights) ? (pkg.flights as Record<string, unknown>[]) : [],
+    transfers: Array.isArray(pkg.transfers) ? (pkg.transfers as Record<string, unknown>[]) : [],
+    activities: Array.isArray(pkg.activities) ? (pkg.activities as Record<string, unknown>[]) : [],
+    meals: Array.isArray(pkg.meals) ? (pkg.meals as Record<string, unknown>[]) : [],
+    stayWindows: opts.stayWindows,
+    travelStartDate: opts.travelStartDate,
+  });
+}
+
+export function QuotationWizardView() {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
   const upsertQuotation = useDemoDataStore((s) => s.upsertQuotation);
+  const quotationId = useAppStore((s) => s.wizardQuotationId);
+  const prefill = useAppStore((s) => s.quotePrefill);
+  const setWizardQuotationId = useAppStore((s) => s.setWizardQuotationId);
+  const closeQuotationWizard = useAppStore((s) => s.closeQuotationWizard);
+  const setQuotePrefill = useAppStore((s) => s.setQuotePrefill);
+  const onClose = () => {
+    setQuotePrefill(null);
+    closeQuotationWizard();
+  };
+  const onSaved = (q: Quotation) => {
+    upsertQuotation(q);
+    if (q.id && q.id !== quotationId) setWizardQuotationId(q.id);
+  };
+  // Mounted as a full page — always active while this view is shown.
+  const open = true;
+  const onOpenChange = (v: boolean) => {
+    if (!v) onClose();
+  };
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [requireFinanceApproval, setRequireFinanceApproval] = useState(false);
@@ -151,13 +259,21 @@ export function QuotationWizardDialog({
     agentName: "",
     agentId: "",
     salesExecutiveName: user?.name || user?.email || "",
+    salesExecutiveEmail: user?.email || "",
+    salesExecutivePhone: user?.phone || "",
     destination: "",
     country: "",
+    departureCity: "",
     travelStartDate: "",
     travelEndDate: "",
     adults: 2,
     children: 0,
     infants: 0,
+    rooms: 1,
+    hotelStarPreference: "",
+    nationality: "Indian",
+    landOnly: false,
+    estimatedBookingDate: "",
     currency: "INR",
     validTill: new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
     specialRequests: "",
@@ -185,8 +301,10 @@ export function QuotationWizardDialog({
     agentCode: "",
     agencyCode: "",
   });
+  const [tripCities, setTripCities] = useState<Array<{ city: string; nights: number; order: number; destinationId?: string | null }>>([]);
   const [packages, setPackages] = useState<QuotationPackage[]>([emptyPackage("Standard", true)]);
   const [destinationId, setDestinationId] = useState("");
+  const [departureDestinationId, setDepartureDestinationId] = useState("");
   const [visaHint, setVisaHint] = useState("");
   const [visaRecommendation, setVisaRecommendation] = useState<{
     catalogueDetails: string;
@@ -197,10 +315,24 @@ export function QuotationWizardDialog({
   } | null>(null);
   const [planId, setPlanId] = useState("");
   const [suggestedNights, setSuggestedNights] = useState<number | null>(null);
-  const [agents, setAgents] = useState<Array<{ id: string; name: string; agentCode?: string | null }>>([]);
+  const [agents, setAgents] = useState<Array<{
+    id: string;
+    name: string;
+    agentCode?: string | null;
+    agency?: { code?: string | null } | null;
+  }>>([]);
+  const [salesExecutives, setSalesExecutives] = useState<Array<{
+    id: string;
+    name: string;
+    email: string;
+    phone?: string | null;
+    role: string;
+  }>>([]);
+  const [salesExecutiveId, setSalesExecutiveId] = useState("");
 
   useEffect(() => {
     if (!open) return;
+    preloadWorldCities();
     if (quotationId) {
       setBusy(true);
       api.getQuotationFull(quotationId)
@@ -219,13 +351,21 @@ export function QuotationWizardDialog({
             agentName: q.agentName || "",
             agentId: (q as { agentId?: string }).agentId || "",
             salesExecutiveName: q.salesExecutiveName || f.salesExecutiveName,
+            salesExecutiveEmail: (q as { salesExecutiveEmail?: string }).salesExecutiveEmail || f.salesExecutiveEmail,
+            salesExecutivePhone: (q as { salesExecutivePhone?: string }).salesExecutivePhone || f.salesExecutivePhone,
             destination: q.destination || "",
             country: q.country || "",
+            departureCity: q.departureCity || "",
             travelStartDate: q.travelStartDate || "",
             travelEndDate: q.travelEndDate || q.returnDate || "",
             adults: q.adults ?? 2,
             children: q.children ?? 0,
             infants: q.infants ?? 0,
+            rooms: Math.max(1, Number(q.rooms ?? 1) || 1),
+            hotelStarPreference: q.hotelStarPreference || "",
+            nationality: nationalityDisplay(q.nationality || f.nationality),
+            landOnly: Boolean(q.landOnly),
+            estimatedBookingDate: q.estimatedBookingDate || "",
             currency: q.currency || "INR",
             validTill: q.validTill,
             specialRequests: q.specialRequests || "",
@@ -251,6 +391,19 @@ export function QuotationWizardDialog({
             budget: Number(q.budget || 0),
             service: (q.service as string) || "Holiday",
           }));
+          const cities = Array.isArray(q.tripCities) ? q.tripCities : [];
+          setTripCities(
+            cities.length
+              ? cities
+                  .map((c, i) => ({
+                    city: String(c.city || ""),
+                    nights: Math.max(1, Number(c.nights) || 1),
+                    order: Number(c.order) > 0 ? Number(c.order) : i + 1,
+                    destinationId: c.destinationId ?? null,
+                  }))
+                  .filter((c) => c.city)
+              : [{ city: "", nights: 1, order: 1, destinationId: null }],
+          );
           if (q.packages?.length) setPackages(q.packages as QuotationPackage[]);
         })
         .catch(() => toast({ title: "Failed to load quote", variant: "destructive" }))
@@ -260,7 +413,9 @@ export function QuotationWizardDialog({
       setQuoteNo("");
       setStep(0);
       setPackages([emptyPackage("Standard", true)]);
+      setTripCities([{ city: "", nights: 1, order: 1, destinationId: null }]);
       setDestinationId("");
+      setDepartureDestinationId("");
       setVisaHint("");
       setVisaRecommendation(null);
       setLeadId(prefill?.leadId || null);
@@ -276,8 +431,13 @@ export function QuotationWizardDialog({
         service: prefill?.service || "Holiday",
         destination: prefill?.destination || "",
       }));
+      if (prefill) {
+        // Clear after apply so returning to Quotations does not reopen the wizard.
+        queueMicrotask(() => setQuotePrefill(null));
+      }
     }
-  }, [open, quotationId, prefill, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- apply prefill only when opening / switching quote id
+  }, [open, quotationId, toast, setQuotePrefill]);
 
   useEffect(() => {
     if (!open || !user || quotationId) return;
@@ -288,7 +448,10 @@ export function QuotationWizardDialog({
       agentCode: user.agentCode || f.agentCode || "",
       agencyCode: user.agencyCode || f.agencyCode || "",
       salesExecutiveName: f.salesExecutiveName || user.name || user.email || "",
+      salesExecutiveEmail: f.salesExecutiveEmail || user.email || "",
+      salesExecutivePhone: f.salesExecutivePhone || user.phone || "",
     }));
+    if (user.id) setSalesExecutiveId((id) => id || user.id);
     api.getMe()
       .then(({ user: raw }) => {
         const mapped = mapApiUser(raw);
@@ -306,20 +469,114 @@ export function QuotationWizardDialog({
   useEffect(() => {
     if (!open) return;
     api.getAgents()
-      .then((res) => setAgents(res.agents || []))
+      .then((res) => {
+        const list = res.agents || [];
+        setAgents(list);
+        setForm((f) => {
+          if (f.agencyCode) return f;
+          const fromUser = user?.agencyCode || "";
+          if (fromUser) return { ...f, agencyCode: fromUser };
+          const picked = list.find((a) => a.id === f.agentId);
+          const code = picked?.agency?.code || "";
+          return code ? { ...f, agencyCode: code } : f;
+        });
+      })
       .catch(() => setAgents([]));
+    api.getSalesExecutives()
+      .then((res) => {
+        const list = res.salesExecutives || [];
+        setSalesExecutives(list);
+        setSalesExecutiveId((current) => {
+          if (current) return current;
+          const byEmail = list.find((s) => s.email && s.email === form.salesExecutiveEmail);
+          if (byEmail) return byEmail.id;
+          const byName = list.find((s) => s.name && s.name === form.salesExecutiveName);
+          if (byName) return byName.id;
+          return user?.id || "";
+        });
+      })
+      .catch(() => setSalesExecutives([]));
   }, [open]);
 
   const nights = useMemo(() => {
+    const cityNights = tripCities.reduce((s, c) => s + Math.max(0, Number(c.nights) || 0), 0);
+    if (tripCities.length > 0 && cityNights > 0) return cityNights;
     if (!form.travelStartDate || !form.travelEndDate) return null;
     const a = new Date(form.travelStartDate);
     const b = new Date(form.travelEndDate);
     if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime()) || b < a) return null;
     return Math.round((b.getTime() - a.getTime()) / 86400000);
-  }, [form.travelStartDate, form.travelEndDate]);
+  }, [form.travelStartDate, form.travelEndDate, tripCities]);
   const tripDays = nights != null ? nights + 1 : null;
 
+  // Keep travel end date in sync with Basic Details travel start + trip-city nights.
+  useEffect(() => {
+    const start = form.travelStartDate;
+    if (!start) return;
+    const cityNights = tripCities.reduce((s, c) => s + Math.max(0, Number(c.nights) || 0), 0);
+    if (cityNights <= 0) return;
+    const nextEnd = addDaysYmd(start, cityNights);
+    if (!nextEnd || form.travelEndDate === nextEnd) return;
+    setForm((f) => (f.travelEndDate === nextEnd ? f : { ...f, travelEndDate: nextEnd }));
+  }, [form.travelStartDate, form.travelEndDate, tripCities]);
+
+  const stayWindows = useMemo(
+    () => buildTripCityStayWindows(tripCities, form.travelStartDate || ""),
+    [tripCities, form.travelStartDate],
+  );
+  const stayWindowsKey = stayWindows.map((w) => `${w.city}:${w.checkIn}:${w.checkOut}:${w.nights}`).join("|");
+
+  // Recalculate hotel stay dates + meal stay sync + itinerary when Trip Plan nights/order change.
+  useEffect(() => {
+    if (!stayWindows.length) return;
+    setPackages((prev) =>
+      prev.map((pkg) => {
+        const hotels = Array.isArray(pkg.hotels) ? (pkg.hotels as Record<string, unknown>[]) : [];
+        const nextHotels = hotels.length ? syncHotelRowsToTripStays(hotels, stayWindows) : hotels;
+        const hotelsChanged = nextHotels.some((h, i) => {
+          const prevRow = hotels[i] || {};
+          return (
+            String(h.checkIn || "") !== String(prevRow.checkIn || "")
+            || String(h.checkOut || "") !== String(prevRow.checkOut || "")
+            || String(h.nights ?? "") !== String(prevRow.nights ?? "")
+            || String(h.tripCity || "") !== String(prevRow.tripCity || "")
+          );
+        });
+        const meals = Array.isArray(pkg.meals) ? (pkg.meals as Record<string, unknown>[]) : [];
+        const nextMeals = meals.length ? syncMealRowsToTripStays(meals, stayWindows) : meals;
+        const mealsChanged = nextMeals.some((m, i) => {
+          const prevRow = meals[i] || {};
+          return (
+            String(m.date || "") !== String(prevRow.date || "")
+            || Boolean(m.dateInvalid) !== Boolean(prevRow.dateInvalid)
+            || Boolean(m.cityOrphan) !== Boolean(prevRow.cityOrphan)
+            || String(m.dateInvalidReason || "") !== String(prevRow.dateInvalidReason || "")
+            || String(m.cityOrphanReason || "") !== String(prevRow.cityOrphanReason || "")
+          );
+        });
+        const nextPkg = {
+          ...pkg,
+          ...(hotelsChanged ? { hotels: nextHotels } : {}),
+          ...(mealsChanged ? { meals: nextMeals } : {}),
+        };
+        const itinerary = syncItineraryFromPackage(nextPkg.itinerary, nextPkg, {
+          stayWindows,
+          travelStartDate: form.travelStartDate,
+        });
+        return { ...nextPkg, itinerary };
+      }),
+    );
+  // form.travelStartDate included via stayWindowsKey when start changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stayWindowsKey]);
+
   const selected = packages.find((p) => p.isSelected) || packages[0];
+  const hotelTransferLocations = useMemo(
+    () => buildHotelTransferLocations(selected?.hotels),
+    [selected?.hotels],
+  );
+
+  const tripPaxTotal = Math.max(1, Number(form.adults || 0) + Number(form.children || 0) || 1);
 
   const liveCosting = useMemo(
     () =>
@@ -487,18 +744,21 @@ export function QuotationWizardDialog({
       let end = f.travelEndDate;
       if (!v) end = "";
       else if (end && end < v) end = "";
-      else if (v && !end && suggestedNights) {
-        const d = new Date(v);
-        d.setDate(d.getDate() + suggestedNights);
-        end = d.toISOString().slice(0, 10);
+      else {
+        const cityNights = tripCities.reduce((s, c) => s + Math.max(0, Number(c.nights) || 0), 0);
+        const nightsToUse = cityNights > 0 ? cityNights : (suggestedNights || 0);
+        if (v && !end && nightsToUse > 0) {
+          end = addDaysYmd(v, nightsToUse);
+        }
       }
       return { ...f, travelStartDate: v, travelEndDate: end };
     });
   }
 
   async function persist(nextStep = step, opts?: { submitApproval?: boolean; approveNow?: boolean; financeApprovalRequired?: boolean }) {
-    if (!form.customerName.trim() || !form.destination.trim()) {
-      toast({ title: "Customer and destination are required", variant: "destructive" });
+    const hasTripPlan = tripCities.some((c) => c.city.trim() && Number(c.nights) > 0);
+    if (!form.customerName.trim() || (!form.destination.trim() && !hasTripPlan)) {
+      toast({ title: "Customer and destination (or trip cities) are required", variant: "destructive" });
       return null;
     }
     if (form.travelEndDate && form.travelStartDate && nights == null) {
@@ -510,14 +770,32 @@ export function QuotationWizardDialog({
     setBusy(true);
     setSaveError(null);
     try {
+      const normalizedTripCities = tripCities
+        .filter((c) => c.city.trim() && Number(c.nights) > 0)
+        .map((c, i) => ({
+          city: c.city.trim(),
+          nights: Math.max(1, Number(c.nights) || 1),
+          order: i + 1,
+          destinationId: c.destinationId || null,
+        }));
       const payload = {
         ...form,
         adults: Number(form.adults) || 2,
         children: Number(form.children) || 0,
         infants: Number(form.infants) || 0,
+        rooms: Math.max(1, Number(form.rooms) || 1),
+        hotelStarPreference: form.hotelStarPreference || undefined,
+        nationality: form.nationality || undefined,
+        landOnly: Boolean(form.landOnly),
+        estimatedBookingDate: form.estimatedBookingDate || null,
+        departureCity: form.departureCity || undefined,
+        tripCities: normalizedTripCities,
         nights: nights ?? undefined,
         days: tripDays ?? undefined,
         travelDates: form.travelStartDate,
+        destination: normalizedTripCities.length
+          ? normalizedTripCities.map((c) => c.city).join(" · ")
+          : form.destination,
         wizardStep: nextStep + 1,
         packages: !id && !packages.some((p) =>
           [p.hotels, p.flights, p.transfers, p.activities, p.meals].some((rows) => Array.isArray(rows) && rows.length > 0)
@@ -537,6 +815,7 @@ export function QuotationWizardDialog({
         quotation = mapApiQuotation(created.quotation);
         setId(quotation.id);
         setQuoteNo(quotation.quoteNo);
+        setWizardQuotationId(quotation.id);
       } else {
         const saved = await api.saveQuotationWizard(id, payload);
         quotation = mapApiQuotation(saved.quotation);
@@ -562,7 +841,19 @@ export function QuotationWizardDialog({
       }
       upsertQuotation(quotation);
       if (quotation.packages?.length) setPackages(quotation.packages);
-      onSaved?.(quotation);
+      if (Array.isArray(quotation.tripCities)) {
+        setTripCities(
+          quotation.tripCities
+            .map((c, i) => ({
+              city: String(c.city || ""),
+              nights: Math.max(1, Number(c.nights) || 1),
+              order: Number(c.order) > 0 ? Number(c.order) : i + 1,
+              destinationId: c.destinationId ?? null,
+            }))
+            .filter((c) => c.city),
+        );
+      }
+      onSaved(quotation);
       const disc = latestDiscountApproval(quotation.approvals);
       const discountNote = disc?.status === "Pending"
         ? " · Discount approval requested"
@@ -596,13 +887,17 @@ export function QuotationWizardDialog({
   }
 
   async function next() {
-    const q = await persist(Math.min(step + 1, STEPS.length - 1));
-    if (q) setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    let target = Math.min(step + 1, STEPS.length - 1);
+    if (form.landOnly && target === 2) target = 3;
+    const q = await persist(target);
+    if (q) setStep(target);
   }
 
   async function back() {
-    await persist(Math.max(step - 1, 0));
-    setStep((s) => Math.max(s - 1, 0));
+    let target = Math.max(step - 1, 0);
+    if (form.landOnly && target === 2) target = 1;
+    await persist(target);
+    setStep(target);
   }
 
   function buildReviewQuote(quoteId?: string | null): Quotation {
@@ -655,8 +950,9 @@ export function QuotationWizardDialog({
   }
 
   async function ensureSavedForDelivery(): Promise<Quotation | null> {
-    if (!form.customerName.trim() || !form.destination.trim()) {
-      toast({ title: "Customer and destination are required", variant: "destructive" });
+    const hasTripPlan = tripCities.some((c) => c.city.trim() && Number(c.nights) > 0);
+    if (!form.customerName.trim() || (!form.destination.trim() && !hasTripPlan)) {
+      toast({ title: "Customer and destination (or trip cities) are required", variant: "destructive" });
       return null;
     }
     const saved = await persist(step);
@@ -667,32 +963,41 @@ export function QuotationWizardDialog({
     return { ...buildReviewQuote(saved.id), ...saved, id: saved.id, quoteNo: saved.quoteNo || quoteNo || "DRAFT" };
   }
 
+  const hotelTripCities = useMemo(
+    () => tripCities.map((c) => c.city.trim()).filter(Boolean),
+    [tripCities],
+  );
+
   const progressPct = Math.round(((step + 1) / STEPS.length) * 100);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        showCloseButton
-        className="sm:max-w-5xl lg:max-w-6xl w-[calc(100%-1.5rem)] p-0 gap-0 max-h-[92vh] overflow-hidden flex flex-col"
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
-      >
-        <DialogHeader className="px-5 pt-5 pb-3 border-b shrink-0 space-y-3 text-left">
-          <div className="flex flex-wrap items-start justify-between gap-2 pr-8">
-            <div>
-              <DialogTitle className="text-lg">
-                {quoteNo || "New quotation"}
-              </DialogTitle>
-              <DialogDescription className="mt-1">
-                {STEPS[step].label}
-                {nights != null ? ` · ${nights}N / ${tripDays}D` : ""}
-                {" · "}
-                Step {step + 1} of {STEPS.length}
-              </DialogDescription>
+    <div className="-mx-4 sm:-mx-6 lg:-mx-8 -mt-4 sm:-mt-6 lg:-mt-8 mb-[-1.5rem] sm:mb-[-2rem] lg:mb-[-2rem] min-h-[calc(100vh-3.5rem)] flex flex-col bg-background border-y border-border/60">
+        <header className="px-4 sm:px-6 lg:px-8 pt-4 pb-3 border-b shrink-0 space-y-3 bg-card">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex items-start gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 mt-0.5"
+                onClick={onClose}
+              >
+                <ChevronLeft className="w-4 h-4 mr-0.5" /> Quotations
+              </Button>
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-xl font-semibold tracking-tight">
+                  {quoteNo || "New quotation"}
+                </h1>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {STEPS[step].label}
+                  {nights != null ? ` · ${nights}N / ${tripDays}D` : ""}
+                  {" · "}
+                  Step {step + 1} of {STEPS.length}
+                </p>
+              </div>
             </div>
-            <div className="text-right text-xs text-muted-foreground hidden sm:block">
-              <p className="font-medium text-foreground tabular-nums">{formatFullINR(liveCosting.total)}</p>
+            <div className="text-right text-xs text-muted-foreground">
+              <p className="font-medium text-foreground tabular-nums text-sm">{formatFullINR(liveCosting.total)}</p>
               <p>Live total · {liveCosting.profitMargin}% margin</p>
             </div>
           </div>
@@ -702,10 +1007,10 @@ export function QuotationWizardDialog({
               style={{ width: `${progressPct}%` }}
             />
           </div>
-        </DialogHeader>
+        </header>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          <nav className="hidden md:flex w-52 shrink-0 flex-col gap-4 border-r bg-muted/20 p-3 overflow-y-auto">
+          <nav className="hidden md:flex w-56 shrink-0 flex-col gap-4 border-r bg-muted/20 p-3 overflow-y-auto">
             {STEP_GROUPS.map((group) => (
               <div key={group.title} className="space-y-1">
                 <p className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -719,12 +1024,22 @@ export function QuotationWizardDialog({
                     <button
                       key={s.label}
                       type="button"
-                      onClick={() => setStep(i)}
+                      onClick={() => {
+                        if (form.landOnly && i === 2) {
+                          toast({
+                            title: "Land-only package",
+                            description: "Flights step is skipped. Change Basic Details to Air + Land to edit flights.",
+                          });
+                          return;
+                        }
+                        setStep(i);
+                      }}
                       className={cn(
                         "w-full flex items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
                         active && "bg-teal-600 text-white shadow-sm",
                         done && !active && "text-teal-800 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/40",
                         !done && !active && "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        form.landOnly && i === 2 && "opacity-50",
                       )}
                     >
                       <span
@@ -757,10 +1072,20 @@ export function QuotationWizardDialog({
                   <button
                     key={s.label}
                     type="button"
-                    onClick={() => setStep(i)}
+                    onClick={() => {
+                      if (form.landOnly && i === 2) {
+                        toast({
+                          title: "Land-only package",
+                          description: "Flights step is skipped. Change Basic Details to Air + Land to edit flights.",
+                        });
+                        return;
+                      }
+                      setStep(i);
+                    }}
                     className={cn(
                       "shrink-0 rounded-full px-2.5 py-1 text-xs whitespace-nowrap",
                       i === step ? "bg-teal-600 text-white" : i < step ? "bg-teal-100 text-teal-800" : "bg-muted text-muted-foreground",
+                      form.landOnly && i === 2 && "opacity-50",
                     )}
                   >
                     {i + 1}. {s.label}
@@ -769,209 +1094,300 @@ export function QuotationWizardDialog({
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
+            <div
+              className={cn(
+                "flex-1 min-h-0 px-4 sm:px-6 lg:px-8",
+                step === 1
+                  ? "overflow-y-auto py-3"
+                  : "overflow-y-auto py-5 space-y-4",
+              )}
+            >
         {step === 0 && (
-          <div className="space-y-4">
-            <FormSection
-              title="Start from a plan (optional)"
-              description="Sets destination + suggested duration only. Does not fill hotels, flights, or full itinerary unless you load the sample."
-            >
-              <div className="sm:col-span-2 flex flex-col sm:flex-row gap-2">
-                <Select value={planId || undefined} onValueChange={applyDestinationBasics}>
-                  <SelectTrigger className="h-10 flex-1"><SelectValue placeholder="Choose a destination plan…" /></SelectTrigger>
-                  <SelectContent>
-                    {DESTINATION_QUOTE_PLANS.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Button type="button" variant="outline" className="h-10 shrink-0" disabled={!planId} onClick={loadFullSamplePackage}>
-                  Load full sample
-                </Button>
-              </div>
-            </FormSection>
+          <div className="space-y-4 max-w-3xl">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Field label="Name" value={form.customerName} onChange={(v) => setForm({ ...form, customerName: v, contactPerson: form.contactPerson || v })} />
+                <Field label="Email" value={form.contactEmail} onChange={(v) => setForm({ ...form, contactEmail: v })} />
 
-            <FormSection
-              title="Apply quote template (optional)"
-              description="Uses Active Quote Templates. Default mode fills empty fields only — existing hotels, itinerary, and terms are preserved. Save the draft first."
-            >
-              <div className="sm:col-span-2">
-                <QuoteTemplateApplyButton
-                  quotationId={id}
-                  disabled={busy}
-                  onApplied={(q) => {
-                    setPackages(q.packages?.length ? q.packages : packages);
-                    setForm((f) => ({
-                      ...f,
-                      termsAndConditions: q.termsAndConditions || f.termsAndConditions,
-                      paymentTerms: q.paymentTerms || f.paymentTerms,
-                      cancellationPolicy: q.cancellationPolicy || f.cancellationPolicy,
-                      refundPolicy: q.refundPolicy || f.refundPolicy,
-                      specialRequests: q.specialRequests || f.specialRequests,
-                    }));
-                    upsertQuotation(q);
-                  }}
-                />
-              </div>
-            </FormSection>
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Leaving Airport</Label>
+                  <AirportSelect
+                    value={form.departureCity}
+                    onChange={(v) => {
+                      setDepartureDestinationId("");
+                      setForm((f) => ({ ...f, departureCity: v }));
+                    }}
+                    placeholder="Select leaving airport…"
+                    className="h-10 w-full"
+                  />
+                </div>
+                <Field label="Travel Date" type="date" value={form.travelStartDate} onChange={onStartDateChange} />
 
-            <FormSection title="Customer & agent codes" description="Agency and agent codes are system-generated.">
-              <Field label="Customer *" value={form.customerName} onChange={(v) => setForm({ ...form, customerName: v })} />
-              <Field label="Contact person" value={form.contactPerson} onChange={(v) => setForm({ ...form, contactPerson: v })} />
-              <Field label="Email" value={form.contactEmail} onChange={(v) => setForm({ ...form, contactEmail: v })} />
-              <Field label="Phone" value={form.contactPhone} onChange={(v) => setForm({ ...form, contactPhone: v })} />
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Travel agent</Label>
-                {agents.length ? (
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Rooms / travellers</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button type="button" variant="outline" className="h-10 w-full justify-between font-normal">
+                        <span className="truncate uppercase tracking-wide text-xs sm:text-sm">
+                          {form.rooms} ROOM{form.rooms === 1 ? "" : "S"}, {form.adults} ADULT{form.adults === 1 ? "" : "S"}, {form.children} CHILD{form.children === 1 ? "" : "REN"}
+                        </span>
+                        <ChevronDown className="w-4 h-4 opacity-50 shrink-0" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 space-y-3" align="start" side="bottom" avoidCollisions={false}>
+                      {[
+                        { key: "rooms" as const, label: "Rooms", min: 1 },
+                        { key: "adults" as const, label: "Adults", min: 1 },
+                        { key: "children" as const, label: "Children", min: 0 },
+                      ].map((row) => (
+                        <div key={row.key} className="flex items-center justify-between gap-3">
+                          <span className="text-sm">{row.label}</span>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8"
+                              onClick={() => setForm((f) => ({
+                                ...f,
+                                [row.key]: Math.max(row.min, Number(f[row.key]) - 1),
+                              }))}
+                            >
+                              −
+                            </Button>
+                            <span className="w-6 text-center text-sm font-medium">{form[row.key]}</span>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8"
+                              onClick={() => setForm((f) => ({
+                                ...f,
+                                [row.key]: Math.max(row.min, Number(f[row.key]) + 1),
+                              }))}
+                            >
+                              +
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Hotel Star Rating</Label>
                   <Select
-                    value={!form.agentId || form.agentId === user?.id ? "self" : form.agentId}
-                    onValueChange={(v) => {
-                      if (v === "self") {
+                    value={form.hotelStarPreference || "all"}
+                    onValueChange={(v) => setForm({ ...form, hotelStarPreference: v === "all" ? "" : v })}
+                  >
+                    <SelectTrigger className="h-10 w-full"><SelectValue placeholder="---Select All---" /></SelectTrigger>
+                    <SelectContent side="bottom" avoidCollisions={false}>
+                      <SelectItem value="all">---Select All---</SelectItem>
+                      <SelectItem value="3">3</SelectItem>
+                      <SelectItem value="4">4</SelectItem>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="7">7</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <p className="text-sm font-semibold">Trip Plan City Wise</p>
+                <div className="grid grid-cols-[1fr_100px_36px] gap-2 text-xs text-muted-foreground px-0.5">
+                  <span>City</span>
+                  <span>Night</span>
+                  <span />
+                </div>
+                {tripCities.map((row, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_100px_36px] gap-2 items-start">
+                    <CitySelect
+                      value={row.city}
+                      onChange={(cityName, city) => {
+                        setTripCities((prev) => {
+                          const next = prev.map((c, i) => (
+                            i === idx
+                              ? { ...c, city: cityName, destinationId: null }
+                              : c
+                          ));
+                          const label = next.map((c) => c.city.trim()).filter(Boolean).join(" · ");
+                          setForm((f) => ({
+                            ...f,
+                            destination: label || f.destination,
+                            country: city?.country || f.country,
+                            isInternational: city?.country
+                              ? !["india"].includes(city.country.trim().toLowerCase())
+                              : f.isInternational,
+                          }));
+                          return next;
+                        });
+                      }}
+                      placeholder="Select City"
+                    />
+                    <Input
+                      className="h-10"
+                      type="number"
+                      min={1}
+                      value={row.nights}
+                      onChange={(e) => setTripCities((prev) => prev.map((c, i) => (
+                        i === idx ? { ...c, nights: Math.max(1, Number(e.target.value) || 1) } : c
+                      )))}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-9"
+                      disabled={tripCities.length <= 1}
+                      onClick={() => setTripCities((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  className="text-sm text-sky-600 hover:text-sky-700 font-medium"
+                  onClick={() => setTripCities((prev) => [...prev, { city: "", nights: 1, order: prev.length + 1, destinationId: null }])}
+                >
+                  + Add new city
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Nationality</Label>
+                  <Select
+                    value={nationalityDisplay(form.nationality)}
+                    onValueChange={(v) => setForm({ ...form, nationality: v })}
+                  >
+                    <SelectTrigger className="h-10 w-full"><SelectValue placeholder="Nationality" /></SelectTrigger>
+                    <SelectContent side="bottom" avoidCollisions={false}>
+                      {NATIONALITY_OPTIONS.map((n) => (
+                        <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Land Only</Label>
+                  <div className="flex items-center gap-5 h-10">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="radio"
+                        name="landOnly"
+                        checked={form.landOnly === true}
+                        onChange={() => setForm({ ...form, landOnly: true })}
+                      />
+                      Yes
+                    </label>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="radio"
+                        name="landOnly"
+                        checked={form.landOnly === false}
+                        onChange={() => setForm({ ...form, landOnly: false })}
+                      />
+                      No
+                    </label>
+                  </div>
+                </div>
+                <Field
+                  label="Estimated Booking Date"
+                  type="date"
+                  value={form.estimatedBookingDate}
+                  onChange={(v) => setForm({ ...form, estimatedBookingDate: v })}
+                />
+
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Travel agent</Label>
+                  {agents.length ? (
+                    <Select
+                      value={!form.agentId || form.agentId === user?.id ? "self" : form.agentId}
+                      onValueChange={(v) => {
+                        if (v === "self") {
+                          setForm({
+                            ...form,
+                            agentId: user?.id || "",
+                            agentName: user?.name || user?.email || form.agentName,
+                            agentCode: user?.agentCode || form.agentCode,
+                            agencyCode: user?.agencyCode || form.agencyCode,
+                          });
+                          return;
+                        }
+                        const picked = agents.find((a) => a.id === v);
                         setForm({
                           ...form,
-                          agentId: user?.id || "",
-                          agentName: user?.name || user?.email || form.agentName,
-                          agentCode: user?.agentCode || form.agentCode,
+                          agentId: v,
+                          agentName: picked?.name || "",
+                          agentCode: picked?.agentCode || "",
+                          agencyCode: picked?.agency?.code || user?.agencyCode || form.agencyCode,
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="h-10 w-full">
+                        <SelectValue placeholder="Select travel agent" className="truncate" />
+                      </SelectTrigger>
+                      <SelectContent side="bottom" avoidCollisions={false}>
+                        <SelectItem value="self">{user?.name || "Current user"}{user?.agentCode ? ` · ${user.agentCode}` : ""}</SelectItem>
+                        {agents.filter((a) => a.id !== user?.id).map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}{a.agentCode ? ` · ${a.agentCode}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input className="h-10 w-full" value={form.agentName} onChange={(e) => setForm({ ...form, agentName: e.target.value })} />
+                  )}
+                </div>
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Sales executive</Label>
+                  <Select
+                    value={!salesExecutiveId || salesExecutiveId === user?.id ? "self" : salesExecutiveId}
+                    onValueChange={(v) => {
+                      if (v === "self") {
+                        setSalesExecutiveId(user?.id || "");
+                        setForm({
+                          ...form,
+                          salesExecutiveName: user?.name || user?.email || form.salesExecutiveName,
+                          salesExecutiveEmail: user?.email || form.salesExecutiveEmail,
+                          salesExecutivePhone: user?.phone || form.salesExecutivePhone,
                         });
                         return;
                       }
-                      const picked = agents.find((a) => a.id === v);
+                      const picked = salesExecutives.find((s) => s.id === v);
+                      setSalesExecutiveId(v);
                       setForm({
                         ...form,
-                        agentId: v,
-                        agentName: picked?.name || "",
-                        agentCode: picked?.agentCode || "",
+                        salesExecutiveName: picked?.name || "",
+                        salesExecutiveEmail: picked?.email || "",
+                        salesExecutivePhone: picked?.phone || "",
                       });
                     }}
                   >
-                    <SelectTrigger className="h-10"><SelectValue placeholder="Select travel agent" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="self">{user?.name || "Current user"}{user?.agentCode ? ` · ${user.agentCode}` : ""}</SelectItem>
-                      {agents.filter((a) => a.id !== user?.id).map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}{a.agentCode ? ` · ${a.agentCode}` : ""}
+                    <SelectTrigger className="h-10 w-full">
+                      <SelectValue placeholder="Select sales executive" className="truncate" />
+                    </SelectTrigger>
+                    <SelectContent side="bottom" avoidCollisions={false}>
+                      <SelectItem value="self">{user?.name || "Current user"}</SelectItem>
+                      {salesExecutives.filter((s) => s.id !== user?.id).map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}{s.email ? ` · ${s.email}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                ) : (
-                  <Input className="h-10" value={form.agentName} onChange={(e) => setForm({ ...form, agentName: e.target.value })} />
-                )}
-              </div>
-              <Field label="Sales executive" value={form.salesExecutiveName} onChange={(v) => setForm({ ...form, salesExecutiveName: v })} />
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Agency code</Label>
-                <Input className="h-10 bg-muted/40 font-mono" value={form.agencyCode || "—"} readOnly />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">Agent code</Label>
-                <Input className="h-10 bg-muted/40 font-mono" value={form.agentCode || "—"} readOnly />
-                {!form.agentCode && (
-                  <p className="text-[11px] text-muted-foreground">Issued on save as a code like ADCI-AGT-0001 for this agent.</p>
-                )}
-              </div>
-            </FormSection>
-
-            <FormSection title="Destination" description="City for the trip and cover image for the customer PDF.">
-              {!form.destination.trim() ? (
-                <div className="sm:col-span-2 space-y-1.5">
-                  <Label className="text-sm font-medium">Search destination master</Label>
-                  <DestinationSelect
-                    value={destinationId}
-                    onChange={(id) => {
-                      setDestinationId(id);
-                      apiFetch<{ item: { name: string; country?: string; heroImage?: string | null; bannerImage?: string | null; thumbnail?: string | null; galleryImages?: string[] } }>(`/api/destinations/${id}`)
-                        .then((data) => {
-                          const hero = data.item.heroImage || data.item.bannerImage || data.item.thumbnail || data.item.galleryImages?.[0] || "";
-                          const country = data.item.country || "";
-                          const intl = Boolean(country && !["india", "in", "bharat"].includes(country.trim().toLowerCase()));
-                          setForm((f) => ({
-                            ...f,
-                            destination: data.item.name || f.destination,
-                            country: country || f.country,
-                            coverImage: f.coverImage || hero,
-                            isInternational: intl,
-                          }));
-                        })
-                        .catch(() => undefined);
-                    }}
-                    placeholder="Search destinations…"
-                  />
                 </div>
-              ) : null}
-              <Field label="Destination city *" value={form.destination} onChange={(v) => setForm({ ...form, destination: v })} />
-              <Field
-                label="Country"
-                value={form.country}
-                onChange={(v) => {
-                  const intl = Boolean(v && !["india", "in", "bharat"].includes(v.trim().toLowerCase()));
-                  setForm({ ...form, country: v, isInternational: intl });
-                }}
-              />
-              <div className="sm:col-span-2 space-y-1.5">
-                <Label className="text-sm font-medium">Cover image URL</Label>
-                <p className="text-xs text-muted-foreground">Paste a photo link for the brochure cover. Destination search can auto-fill this.</p>
-                <ImageUrlField
-                  value={form.coverImage}
-                  onChange={(v) => setForm({ ...form, coverImage: v })}
-                  placeholder="https://… destination photo"
-                />
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Agency code</Label>
+                  <Input className="h-10 w-full bg-muted/40 font-mono" value={form.agencyCode || "—"} readOnly />
+                </div>
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Agent code</Label>
+                  <Input className="h-10 w-full bg-muted/40 font-mono" value={form.agentCode || "—"} readOnly />
+                </div>
               </div>
-            </FormSection>
-
-            <FormSection title="Travel dates & guests" description="Set start date first. End date unlocks after that. Nights / days are calculated automatically.">
-              <Field label="Start date" type="date" value={form.travelStartDate} onChange={onStartDateChange} />
-              <div className="space-y-1.5">
-                <Label className="text-sm font-medium">End date</Label>
-                <Input
-                  type="date"
-                  className="h-10"
-                  value={form.travelEndDate}
-                  min={form.travelStartDate || undefined}
-                  disabled={!form.travelStartDate}
-                  onChange={(e) => setForm({ ...form, travelEndDate: e.target.value })}
-                />
-                {!form.travelStartDate && (
-                  <p className="text-[11px] text-muted-foreground">Choose a start date before selecting the end date.</p>
-                )}
-              </div>
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Nights</p>
-                <p className="text-lg font-semibold">{nights != null ? nights : "—"}</p>
-              </div>
-              <div className="rounded-lg border bg-muted/30 p-3">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Days</p>
-                <p className="text-lg font-semibold">{tripDays != null ? tripDays : "—"}</p>
-              </div>
-              {suggestedNights != null && nights == null && (
-                <p className="sm:col-span-2 text-xs text-muted-foreground">
-                  Suggested duration from plan: {suggestedNights} nights / {suggestedNights + 1} days
-                  {form.travelStartDate ? " (end date can auto-fill from start)." : "."}
-                </p>
-              )}
-              <Field label="Adults" type="number" value={String(form.adults)} onChange={(v) => setForm({ ...form, adults: Math.max(0, Number(v) || 0) })} />
-              <Field label="Children" type="number" value={String(form.children)} onChange={(v) => setForm({ ...form, children: Math.max(0, Number(v) || 0) })} />
-              <Field label="Infants" type="number" value={String(form.infants)} onChange={(v) => setForm({ ...form, infants: Math.max(0, Number(v) || 0) })} />
-              <Field label="Valid until" type="date" value={form.validTill} onChange={(v) => setForm({ ...form, validTill: v })} />
-              <Field label="Enquiry ref" value={form.enquiryRef} onChange={(v) => setForm({ ...form, enquiryRef: v })} />
-              <div className="flex items-center gap-2.5 pt-7">
-                <Checkbox checked={form.isInternational} onCheckedChange={(v) => setForm({ ...form, isInternational: Boolean(v) })} id="intl" />
-                <Label htmlFor="intl" className="text-sm font-medium cursor-pointer">International booking</Label>
-              </div>
-            </FormSection>
-
-            <FormSection title="Notes">
-              <div className="sm:col-span-2 space-y-1.5">
-                <Label className="text-sm font-medium">Special requests</Label>
-                <p className="text-xs text-muted-foreground">Shown to the customer on the quote.</p>
-                <Textarea className="min-h-[72px]" value={form.specialRequests} onChange={(e) => setForm({ ...form, specialRequests: e.target.value })} />
-              </div>
-              <div className="sm:col-span-2 space-y-1.5">
-                <Label className="text-sm font-medium text-amber-800 dark:text-amber-400">Internal notes</Label>
-                <p className="text-xs text-muted-foreground">Team only — never on PDF or agent portal.</p>
-                <Textarea className="min-h-[72px]" value={form.internalNotes} onChange={(e) => setForm({ ...form, internalNotes: e.target.value })} />
-              </div>
-            </FormSection>
           </div>
         )}
 
@@ -980,61 +1396,136 @@ export function QuotationWizardDialog({
             title="Hotels"
             rows={(selected?.hotels || []) as Record<string, unknown>[]}
             fields={["hotelName", "starCategory", "roomType", "mealPlan", "checkIn", "checkOut", "nights", "rooms", "address", "city", "supplier", "confirmationNo", "contactPerson", "contactPhone", "contactEmail", "costPrice", "sellingPrice", "markup", "remarks", "imageUrl"]}
-            onChange={(rows) => patchSelected({ hotels: rows })}
+            selfBookedFields={["hotelName", "address", "city"]}
+            onChange={(rows) => patchSelected({
+              hotels: rows,
+              itinerary: syncItineraryFromPackage(selected?.itinerary, { ...selected, hotels: rows }, {
+                stayWindows,
+                travelStartDate: form.travelStartDate,
+              }),
+            })}
+            onHotelAdded={(hotels) => {
+              const patch: Partial<QuotationPackage> = { hotels };
+              patch.itinerary = syncItineraryFromPackage(selected?.itinerary, {
+                ...selected,
+                hotels,
+              }, {
+                stayWindows,
+                travelStartDate: form.travelStartDate,
+              });
+              patchSelected(patch);
+              setStep(3); // Day-wise Itinerary
+              toast({
+                title: "Hotel added",
+                description: "Itinerary days were synchronized from your hotel stay. Manual notes were preserved.",
+              });
+            }}
             template={{
+              lineId: "",
               hotelName: "",
-              starCategory: "4",
-              roomType: "Deluxe",
-              mealPlan: "Breakfast",
-              checkIn: form.travelStartDate || "",
-              checkOut: form.travelEndDate || "",
+              address: "",
+              city: stayWindows[0]?.city || tripCities[0]?.city || form.destination || "",
+              tripCity: stayWindows[0]?.city || tripCities[0]?.city || "",
+              checkIn: stayWindows[0]?.checkIn || form.travelStartDate || "",
+              checkOut: stayWindows[0]?.checkOut || form.travelEndDate || "",
               checkInTime: "14:00",
               checkOutTime: "11:00",
-              nights: nights ?? "",
-              rooms: 1,
-              address: "",
-              city: form.destination || "",
-              supplier: "",
-              confirmationNo: "",
-              contactPerson: "",
-              contactPhone: "",
-              contactEmail: "",
-              imageUrl: "",
-              costPrice: 8000,
-              sellingPrice: 10000,
-              markup: 2000,
+              nights: stayWindows[0]?.nights ?? nights ?? "",
+              rooms: Math.max(1, form.rooms || 1),
               remarks: "",
               source: "MANUAL",
+              selfBooked: true,
+              productType: "HOTEL",
               hotelDocuments: [],
             }}
             catalogKind="hotels"
             travelDate={form.travelStartDate}
-            travelEndDate={form.travelEndDate}
-            destinationId={destinationId}
-            destination={form.destination}
-            catalogToRow={(item) => hotelFromCatalog(item)}
+            travelEndDate={
+              form.travelEndDate
+              || (form.travelStartDate && nights != null && nights > 0
+                ? addDaysYmd(form.travelStartDate, nights)
+                : "")
+            }
+            destinationId={destinationId || tripCities[0]?.destinationId || ""}
+            destination={tripCities[0]?.city || form.destination}
+            tripCities={hotelTripCities}
+            stayWindows={stayWindows}
+            initialStar={form.hotelStarPreference || undefined}
+            defaultRooms={Math.max(1, form.rooms || 1)}
+            catalogToRow={(item, room) => hotelFromCatalog(item, Math.max(1, form.rooms || 1), room)}
           />
         )}
 
-        {step === 2 && (
+        {step === 2 && !form.landOnly && (
           <ServiceEditor
             title="Flights"
             rows={(selected?.flights || []) as Record<string, unknown>[]}
-            fields={["airline", "flightNumber", "from", "to", "date", "depTime", "arrTime", "duration", "baggage", "cabinClass", "currency", "pnr", "remarks", "costPrice", "sellingPrice", "fare"]}
-            onChange={(rows) => patchSelected({ flights: rows })}
-            template={{ airline: "", flightNumber: "", from: "", to: "", cabinClass: "Economy", currency: form.currency || "INR", duration: "", baggage: "", remarks: "", pnr: "", costPrice: 12000, sellingPrice: 15000, fare: 15000, source: "MANUAL", flightDocuments: [] }}
+            fields={[
+              "airline", "airlineCode", "flightNumber", "from", "to", "date", "arrivalDate",
+              "depTime", "arrTime", "duration", "stops", "baggage", "cabinClass", "currency",
+              "pnr", "remarks", "costPrice", "sellingPrice", "fare",
+            ]}
+            onChange={(rows) => {
+              const withMeta = rows.map((row, i) => ({
+                ...row,
+                segmentIndex: row.segmentIndex != null ? row.segmentIndex : i,
+                adults: row.adults != null ? row.adults : form.adults,
+                children: row.children != null ? row.children : form.children,
+                infants: row.infants != null ? row.infants : form.infants,
+              }));
+              patchSelected({
+                flights: withMeta,
+                itinerary: syncItineraryFromPackage(selected?.itinerary, {
+                  ...selected,
+                  flights: withMeta,
+                }, {
+                  stayWindows,
+                  travelStartDate: form.travelStartDate,
+                }),
+              });
+            }}
+            template={{
+              airline: "",
+              airlineCode: "",
+              flightNumber: "",
+              from: departureIata(form.departureCity) || "",
+              to: "",
+              date: "",
+              arrivalDate: "",
+              cabinClass: "Economy",
+              currency: form.currency || "INR",
+              duration: "",
+              stops: 0,
+              baggage: "",
+              remarks: "",
+              pnr: "",
+              source: "MANUAL",
+              selfBooked: true,
+              flightDocuments: [],
+              adults: form.adults,
+              children: form.children,
+              infants: form.infants,
+            }}
             catalogKind="flights"
             travelDate={form.travelStartDate}
+            travelEndDate={form.travelEndDate}
             destinationId={destinationId}
             destination={form.destination}
+            defaultFlightFrom={departureIata(form.departureCity) || undefined}
+            defaultFlightTo={departureIata(form.destination) || undefined}
+            flightAdults={form.adults}
+            flightChildren={form.children}
+            flightInfants={form.infants}
+            tripCities={hotelTripCities}
             quotationId={id}
             catalogToRow={(item) => ({
               productId: item.id,
               productType: "FLIGHT",
               source: "CONTRACTED_PRODUCT",
               airline: String(item.airline || item.name || ""),
+              airlineCode: String(item.airlineCode || ""),
               flightNumber: String(item.flightNumber || ""),
-              from: String(item.origin || ""),
+              from: String(item.origin || departureIata(form.departureCity) || ""),
               to: String(item.destinationAirport || ""),
               cabinClass: String(item.cabinClass || "Economy"),
               depTime: String(item.departureTime || ""),
@@ -1042,32 +1533,101 @@ export function QuotationWizardDialog({
               duration: String(item.duration || ""),
               baggage: String(item.baggage || ""),
               currency: String(item.currency || form.currency || "INR"),
-              date: form.travelStartDate,
+              // Segment date left blank — user sets intended flight date (not forced to trip start).
+              date: "",
+              arrivalDate: "",
+              stops: Number(item.stops || 0),
               flightDocuments: [],
+              adults: form.adults,
+              children: form.children,
+              infants: form.infants,
             })}
           />
+        )}
+        {step === 2 && form.landOnly && (
+          <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-10 text-center space-y-2">
+            <p className="text-sm font-semibold">Land-only package</p>
+            <p className="text-xs text-muted-foreground max-w-md mx-auto">
+              Flights are skipped because this quotation is marked land-only in Basic Details.
+              Switch to Air + Land to add catalogue, API, or self-booked flights.
+            </p>
+          </div>
         )}
 
         {step === 3 && (
           <div className="space-y-3">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-start gap-3 flex-wrap">
               <div>
                 <p className="text-sm font-semibold">Day-wise Itinerary</p>
-                <p className="text-[11px] text-muted-foreground">Add a cover photo and extra place images per day so the customer PDF showcases the trip.</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Days sync from hotels, flights, transfers, activities, and meals. Manual notes and days are preserved when services change.
+                </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => {
+                    const itinerary = syncItineraryFromPackage(selected?.itinerary, selected || {}, {
+                      stayWindows,
+                      travelStartDate: form.travelStartDate,
+                    });
+                    patchSelected({ itinerary });
+                    toast({ title: "Itinerary regenerated", description: "Auto services refreshed. Manual items kept." });
+                  }}
+                >
+                  Regenerate itinerary
+                </Button>
                 <Button size="sm" variant="outline" disabled={!selected?.itinerary?.length} onClick={() => {
                   const days = [...(selected?.itinerary || [])] as Array<Record<string, unknown>>;
                   if (!days.length) return;
                   const prev = JSON.parse(JSON.stringify(days[days.length - 1])) as Record<string, unknown>;
-                  days.push({ ...prev, day: days.length + 1, title: `Day ${days.length + 1}` });
+                  const copiedItems = (Array.isArray(prev.items) ? prev.items as Record<string, unknown>[] : []).map((it) => {
+                    const next = { ...it };
+                    delete next.autoFromHotel;
+                    delete next.autoFromFlight;
+                    delete next.autoFromTransfer;
+                    delete next.autoFromActivity;
+                    delete next.autoFromMeal;
+                    delete next.sourceKey;
+                    delete next.hotelLineId;
+                    delete next.flightLineId;
+                    delete next.transferLineId;
+                    delete next.activityLineId;
+                    delete next.mealLineId;
+                    next.itemType = "MANUAL";
+                    return next;
+                  });
+                  days.push({
+                    ...prev,
+                    day: days.length + 1,
+                    title: `Day ${days.length + 1}`,
+                    manualDay: true,
+                    autoSkeleton: false,
+                    autoFromHotel: false,
+                    autoFromFlightDay: false,
+                    titleLocked: true,
+                    items: copiedItems,
+                  });
                   patchSelected({ itinerary: days });
                 }}>
                   <Copy className="w-3.5 h-3.5 mr-1" /> Copy previous day
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => {
                   const days = [...(selected?.itinerary || [])] as Array<Record<string, unknown>>;
-                  days.push({ day: days.length + 1, title: `Day ${days.length + 1}`, city: "", mealPlan: "", coverImage: "", gallery: [], items: [{ activityName: "Leisure", description: "" }] });
+                  days.push({
+                    day: days.length + 1,
+                    title: `Day ${days.length + 1}`,
+                    city: "",
+                    date: "",
+                    mealPlan: "",
+                    coverImage: "",
+                    gallery: [],
+                    manualDay: true,
+                    titleLocked: true,
+                    items: [{ activityName: "Leisure", description: "", itemType: "MANUAL" }],
+                  });
                   patchSelected({ itinerary: days });
                 }}>
                   <Plus className="w-3.5 h-3.5 mr-1" /> Add Day
@@ -1076,16 +1636,23 @@ export function QuotationWizardDialog({
             </div>
             {((selected?.itinerary || []) as Array<Record<string, unknown>>).map((day, di) => (
               <div key={di} className="border rounded-lg p-3 space-y-2">
-                <div className="flex gap-2 items-center">
-                  <Input
-                    className="h-8"
-                    value={String(day.title || `Day ${di + 1}`)}
-                    onChange={(e) => {
-                      const days = [...(selected?.itinerary || [])] as Array<Record<string, unknown>>;
-                      days[di] = { ...days[di], title: e.target.value, day: di + 1 };
-                      patchSelected({ itinerary: days });
-                    }}
-                  />
+                <div className="flex gap-2 items-center flex-wrap">
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Day {di + 1}
+                      {day.date ? ` · ${formatItineraryDate(String(day.date))}` : ""}
+                      {day.city ? ` · ${String(day.city)}` : ""}
+                    </p>
+                    <Input
+                      className="h-8"
+                      value={String(day.title || `Day ${di + 1}`)}
+                      onChange={(e) => {
+                        const days = [...(selected?.itinerary || [])] as Array<Record<string, unknown>>;
+                        days[di] = { ...days[di], title: e.target.value, day: di + 1, titleLocked: true };
+                        patchSelected({ itinerary: days });
+                      }}
+                    />
+                  </div>
                   <Button size="sm" variant="ghost" onClick={() => {
                     const days = ((selected?.itinerary || []) as Array<Record<string, unknown>>).filter((_, i) => i !== di);
                     patchSelected({ itinerary: days });
@@ -1093,13 +1660,23 @@ export function QuotationWizardDialog({
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  <Field
+                    label="Date"
+                    type="date"
+                    value={toCalendarDate(String(day.date || "")) || ""}
+                    onChange={(v) => {
+                      const days = [...(selected?.itinerary || [])] as Array<Record<string, unknown>>;
+                      days[di] = { ...days[di], date: toCalendarDate(v) || v, titleLocked: true };
+                      patchSelected({ itinerary: days });
+                    }}
+                  />
                   <Field
                     label="City / place"
                     value={String(day.city || "")}
                     onChange={(v) => {
                       const days = [...(selected?.itinerary || [])] as Array<Record<string, unknown>>;
-                      days[di] = { ...days[di], city: v };
+                      days[di] = { ...days[di], city: v, titleLocked: true };
                       patchSelected({ itinerary: days });
                     }}
                   />
@@ -1137,7 +1714,7 @@ export function QuotationWizardDialog({
                 />
                 <Textarea
                   className="text-xs"
-                  placeholder="Activities (one per line — advanced fields below preserve pickup/duration/vehicle/guide/voucher)"
+                  placeholder="Item names (one per line — operational fields below)"
                   value={Array.isArray(day.items) ? (day.items as Array<{ activityName?: string }>).map((i) => i.activityName || "").join("\n") : ""}
                   onChange={(e) => {
                     const days = [...(selected?.itinerary || [])] as Array<Record<string, unknown>>;
@@ -1145,18 +1722,33 @@ export function QuotationWizardDialog({
                     const lines = e.target.value.split("\n").filter(Boolean);
                     days[di] = {
                       ...days[di],
-                      items: lines.map((line, li) => ({
-                        ...(prevItems[li] || {}),
-                        activityName: line,
-                        description: String((prevItems[li] as { description?: string } | undefined)?.description || line),
-                      })),
+                      items: lines.map((line, li) => {
+                        const prev = prevItems[li] || {};
+                        const isAuto = Boolean(
+                          prev.autoFromHotel || prev.autoFromFlight || prev.autoFromTransfer
+                          || prev.autoFromActivity || prev.autoFromMeal,
+                        );
+                        return {
+                          ...prev,
+                          activityName: line,
+                          description: String(prev.description || line),
+                          ...(isAuto ? {} : { itemType: prev.itemType || "MANUAL" }),
+                        };
+                      }),
                     };
                     patchSelected({ itinerary: days });
                   }}
                 />
-                {Array.isArray(day.items) && (day.items as Array<Record<string, unknown>>).slice(0, 4).map((item, ii) => (
+                {Array.isArray(day.items) && (day.items as Array<Record<string, unknown>>).map((item, ii) => (
                   <div key={ii} className="grid grid-cols-2 md:grid-cols-3 gap-2 rounded-md border bg-muted/20 p-2">
-                    <p className="col-span-2 md:col-span-3 text-[10px] font-medium text-muted-foreground">{String(item.activityName || `Item ${ii + 1}`)}</p>
+                    <div className="col-span-2 md:col-span-3 flex items-center gap-2 flex-wrap">
+                      <span className="rounded bg-teal-50 text-teal-800 dark:bg-teal-950/40 dark:text-teal-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                        {itemTypeLabel(item.itemType)}
+                      </span>
+                      <p className="text-[10px] font-medium text-muted-foreground truncate">
+                        {String(item.activityName || `Item ${ii + 1}`)}
+                      </p>
+                    </div>
                     {(["pickupTime", "duration", "vehicle", "guide", "voucher", "remarks"] as const).map((f) => (
                       <Field
                         key={f}
@@ -1180,52 +1772,146 @@ export function QuotationWizardDialog({
 
         {step === 4 && (
           <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  const suggestions = suggestAutoTransfers({
+                    stayWindows,
+                    hotels: selected?.hotels,
+                    pax: tripPaxTotal,
+                    currency: form.currency || undefined,
+                  });
+                  if (!suggestions.length) {
+                    toast({
+                      title: "No transfer routes suggested",
+                      description: "Add hotels for each trip city first. Airport ends stay blank until you fill them.",
+                    });
+                    return;
+                  }
+                  const merged = mergeAutoTransfers(
+                    (selected?.transfers || []) as Record<string, unknown>[],
+                    suggestions,
+                  );
+                  const added = merged.length - ((selected?.transfers || []) as unknown[]).length;
+                  patchSelected({
+                    transfers: merged,
+                    itinerary: syncItineraryFromPackage(selected?.itinerary, { ...selected, transfers: merged }, {
+                      stayWindows,
+                      travelStartDate: form.travelStartDate,
+                    }),
+                  });
+                  toast({
+                    title: added > 0 ? `Added ${added} transfer route(s)` : "Routes already present",
+                    description: "Arrival, intercity, and departure suggestions use hotel endpoints only. No prices invented.",
+                  });
+                }}
+              >
+                Suggest transfer routes
+              </Button>
+            </div>
             <ServiceEditor
               title="Transfers"
               rows={(selected?.transfers || []) as Record<string, unknown>[]}
-              fields={["transferType", "date", "pickup", "drop", "vehicleType", "costPrice", "sellingPrice", "supplier"]}
-              onChange={(rows) => patchSelected({ transfers: rows })}
-              template={{ transferType: "Airport Pickup", vehicleType: "Sedan", pickup: "", drop: "", date: form.travelStartDate || "", costPrice: 1500, sellingPrice: 2200, supplier: "", source: "MANUAL" }}
+              fields={[
+                "transferType", "date", "pickupTime", "pickup", "drop", "vehicleType", "pax", "duration",
+                "currency", "voucher", "remarks", "supplier", "costPrice", "sellingPrice",
+              ]}
+              onChange={(rows) => patchSelected({
+                transfers: rows,
+                itinerary: syncItineraryFromPackage(selected?.itinerary, { ...selected, transfers: rows }, {
+                  stayWindows,
+                  travelStartDate: form.travelStartDate,
+                }),
+              })}
+              template={{
+                transferType: "Airport Pickup",
+                vehicleType: "Sedan",
+                pickup: "",
+                drop: "",
+                date: stayWindows[0]?.checkIn || "",
+                pickupTime: "",
+                pax: tripPaxTotal,
+                duration: "",
+                currency: form.currency || "",
+                voucher: "",
+                remarks: "",
+                supplier: "",
+                source: "MANUAL",
+                selfBooked: true,
+              }}
               catalogKind="transfers"
               travelDate={form.travelStartDate}
               destinationId={destinationId}
               destination={form.destination}
               quotationId={id}
-              catalogToRow={(item) => ({
-                productId: item.id,
-                productType: "TRANSFER",
-                source: "CONTRACTED_PRODUCT",
-                transferType: String(item.transferType || item.name || "Airport Pickup"),
-                vehicleType: String(item.vehicleType || "Sedan"),
-                pickup: String(item.pickupLocation || ""),
-                drop: String(item.dropLocation || ""),
-                date: form.travelStartDate || "",
-                sellingPrice: Number(item.privatePrice ?? item.sharedPrice ?? 0),
-                costPrice: 0,
-                supplier: item.supplier?.name || "",
-              })}
+              tripCities={hotelTripCities}
+              stayWindows={stayWindows}
+              flightAdults={form.adults}
+              flightChildren={form.children}
+              hotelTransferLocations={hotelTransferLocations}
+              catalogToRow={(item) => {
+                const city = stayWindows.length === 1 ? stayWindows[0].city : "";
+                const date = stayWindows.length === 1 ? stayWindows[0].checkIn : "";
+                return {
+                  productId: item.id,
+                  productType: "TRANSFER",
+                  source: "CONTRACTED_PRODUCT",
+                  selfBooked: false,
+                  transferType: String(item.transferType || item.name || "Airport Pickup"),
+                  vehicleType: String(item.vehicleType || "Sedan"),
+                  pickup: String(item.pickupLocation || ""),
+                  drop: String(item.dropLocation || ""),
+                  date,
+                  city,
+                  pickupTime: String((item as ProductRecord & { pickupTime?: string }).pickupTime || ""),
+                  pax: tripPaxTotal,
+                  duration: String((item as ProductRecord & { duration?: string }).duration || ""),
+                  currency: form.currency || "",
+                  voucher: "",
+                  remarks: "",
+                  sellingPrice: Number(item.privatePrice ?? item.sharedPrice ?? 0),
+                  costPrice: 0,
+                  supplier: item.supplier?.name || "",
+                };
+              }}
             />
             <ServiceEditor
               title="Activities"
               rows={(selected?.activities || []) as Record<string, unknown>[]}
-              fields={["activityCategory", "activityName", "description", "date", "timeSlot", "ticketType", "adultRate", "childRate", "adults", "children", "supplier", "imageUrl", "costPrice", "sellingPrice"]}
-              onChange={(rows) => patchSelected({ activities: rows })}
+              fields={[
+                "activityCategory", "activityName", "city", "description", "date", "duration", "timeSlot",
+                "ticketType", "adultRate", "childRate", "adults", "children", "voucher", "remarks",
+                "supplier", "imageUrl", "costPrice", "sellingPrice",
+              ]}
+              onChange={(rows) => patchSelected({
+                activities: rows,
+                itinerary: syncItineraryFromPackage(selected?.itinerary, { ...selected, activities: rows }, {
+                  stayWindows,
+                  travelStartDate: form.travelStartDate,
+                }),
+              })}
               template={{
                 activityCategory: "Attraction",
                 activityName: "",
                 description: "",
-                date: form.travelStartDate || "",
+                city: stayWindows.length === 1 ? stayWindows[0].city : "",
+                date: stayWindows.length === 1
+                  ? defaultActivityDateForCity(stayWindows, stayWindows[0].city)
+                  : "",
                 timeSlot: "",
+                duration: "",
                 ticketType: "Standard",
-                adultRate: 2500,
-                childRate: 1500,
                 adults: form.adults,
                 children: form.children,
                 supplier: "",
                 imageUrl: "",
-                costPrice: 2000,
-                sellingPrice: 2500,
+                voucher: "",
+                remarks: "",
                 source: "MANUAL",
+                selfBooked: true,
                 activityDocuments: [],
               }}
               catalogKind="activities"
@@ -1233,31 +1919,48 @@ export function QuotationWizardDialog({
               destinationId={destinationId}
               destination={form.destination}
               quotationId={id}
+              tripCities={hotelTripCities}
+              stayWindows={stayWindows}
+              flightAdults={form.adults}
+              flightChildren={form.children}
               catalogToRow={(item) => {
                 const extra = item as ProductRecord & Record<string, unknown>;
+                const productCity = String(extra.city || item.destination?.name || "").trim();
+                const stay = productCity
+                  ? findStayWindowForCity(stayWindows, productCity)
+                  : (stayWindows.length === 1 ? stayWindows[0] : null);
+                const city = stay?.city || (stayWindows.length === 1 ? stayWindows[0].city : productCity);
+                const date = city
+                  ? defaultActivityDateForCity(stayWindows, city)
+                  : "";
                 return {
-                productId: item.id,
-                productType: "ACTIVITY",
-                source: "CONTRACTED_PRODUCT",
-                activityCategory: String(extra.category || extra.activityType || "Attraction"),
-                activityName: item.name,
-                description: String(item.shortDescription || item.description || ""),
-                date: form.travelStartDate || "",
-                timeSlot: String(extra.startTime || ""),
-                ticketType: String(extra.ticketType || "Standard"),
-                startTime: String(extra.startTime || ""),
-                closingTime: String(extra.closingTime || ""),
-                duration: String(extra.duration || ""),
-                adults: form.adults,
-                children: form.children,
-                adultRate: Number(extra.adultPrice || 0),
-                childRate: Number(extra.childPrice || 0),
-                imageUrl: firstProductImage(item),
-                sellingPrice: Number(extra.adultPrice || 0),
-                costPrice: 0,
-                supplier: item.supplier?.name || "",
-                activityDocuments: [],
-              };
+                  productId: item.id,
+                  productType: "ACTIVITY",
+                  source: "CONTRACTED_PRODUCT",
+                  selfBooked: false,
+                  activityCategory: String(extra.category || extra.activityType || "Attraction"),
+                  activityName: item.name,
+                  description: String(item.shortDescription || item.description || ""),
+                  city,
+                  date,
+                  timeSlot: String(extra.startTime || ""),
+                  ticketType: String(extra.ticketType || "Standard"),
+                  startTime: String(extra.startTime || ""),
+                  closingTime: String(extra.closingTime || ""),
+                  duration: String(extra.duration || ""),
+                  adults: form.adults,
+                  children: form.children,
+                  adultRate: Number(extra.adultPrice || 0),
+                  childRate: Number(extra.childPrice || 0),
+                  imageUrl: firstProductImage(item),
+                  sellingPrice: Number(extra.adultPrice || 0),
+                  costPrice: 0,
+                  currency: form.currency || "",
+                  voucher: "",
+                  remarks: "",
+                  supplier: item.supplier?.name || "",
+                  activityDocuments: [],
+                };
               }}
             />
           </div>
@@ -1267,31 +1970,87 @@ export function QuotationWizardDialog({
           <ServiceEditor
             title="Meals"
             rows={(selected?.meals || []) as Record<string, unknown>[]}
-            fields={["restaurant", "cuisine", "mealType", "dietary", "date", "adults", "children", "adultRate", "childRate", "costPrice", "sellingPrice"]}
-            onChange={(rows) => patchSelected({ meals: rows })}
-            template={{ mealType: "Dinner", restaurant: "", cuisine: "Local", dietary: "", date: form.travelStartDate || "", adults: form.adults, children: form.children, adultRate: 1200, childRate: 800, costPrice: 900, sellingPrice: 1200, source: "MANUAL" }}
+            fields={[
+              "mealType", "city", "restaurant", "location", "cuisine", "description", "dietary",
+              "date", "time", "duration", "adults", "children", "infants",
+              "currency", "voucher", "remarks", "adultRate", "childRate", "costPrice", "sellingPrice",
+            ]}
+            onChange={(rows) => patchSelected({
+              meals: rows,
+              itinerary: syncItineraryFromPackage(selected?.itinerary, { ...selected, meals: rows }, {
+                stayWindows,
+                travelStartDate: form.travelStartDate,
+              }),
+            })}
+            template={{
+              mealType: "Dinner",
+              restaurant: "",
+              location: "",
+              cuisine: "",
+              description: "",
+              dietary: "",
+              city: stayWindows.length === 1 ? stayWindows[0].city : "",
+              date: stayWindows.length === 1
+                ? defaultMealDateForCity(stayWindows, stayWindows[0].city)
+                : "",
+              dateSource: "AUTO",
+              time: "",
+              duration: "",
+              adults: form.adults,
+              children: form.children,
+              infants: form.infants,
+              currency: form.currency || "",
+              voucher: "",
+              remarks: "",
+              source: "MANUAL",
+              selfBooked: true,
+            }}
             catalogKind="meals"
             travelDate={form.travelStartDate}
             destinationId={destinationId}
             destination={form.destination}
             quotationId={id}
+            tripCities={hotelTripCities}
+            stayWindows={stayWindows}
+            flightAdults={form.adults}
+            flightChildren={form.children}
+            flightInfants={form.infants}
+            packageHotels={(selected?.hotels || []) as Record<string, unknown>[]}
             catalogToRow={(item) => {
               const extra = item as ProductRecord & Record<string, unknown>;
+              const productCity = String(extra.city || item.destination?.name || "").trim();
+              const stay = productCity
+                ? findStayWindowForCity(stayWindows, productCity)
+                : (stayWindows.length === 1 ? stayWindows[0] : null);
+              const city = stay?.city || (stayWindows.length === 1 ? stayWindows[0].city : productCity);
+              const date = city ? defaultMealDateForCity(stayWindows, city) : "";
               return {
-              productId: item.id,
-              productType: "MEAL",
-              source: "CONTRACTED_PRODUCT",
-              restaurant: String(extra.restaurant || item.name || ""),
-              mealType: String(extra.mealType || "Dinner"),
-              cuisine: String(extra.cuisine || item.city || ""),
-              dietary: "",
-              date: form.travelStartDate || "",
-              description: String(item.description || ""),
-              transferBadge: item.transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer",
-              adults: form.adults,
-              children: form.children,
-              sellingPrice: Number(extra.adultPrice || 0),
-            };
+                productId: item.id,
+                productType: "MEAL",
+                source: "CONTRACTED_PRODUCT",
+                selfBooked: false,
+                restaurant: String(extra.restaurant || item.name || ""),
+                mealType: String(extra.mealType || "Dinner"),
+                cuisine: String(extra.cuisine || ""),
+                city,
+                location: "",
+                dietary: "",
+                date,
+                dateSource: "AUTO",
+                time: "",
+                duration: String(extra.duration || ""),
+                description: String(item.description || ""),
+                transferBadge: item.transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer",
+                adults: form.adults,
+                children: form.children,
+                infants: form.infants,
+                currency: String(extra.currency || form.currency || ""),
+                voucher: "",
+                remarks: "",
+                sellingPrice: Number(extra.adultPrice || 0),
+                costPrice: 0,
+                supplier: item.supplier?.name || "",
+              };
             }}
           />
         )}
@@ -1997,7 +2756,7 @@ export function QuotationWizardDialog({
                 <div className="flex gap-2">
                   {step < STEPS.length - 1 ? (
                     <Button disabled={busy} onClick={next} className="bg-teal-600 hover:bg-teal-700">
-                      Save & continue <ChevronRight className="w-4 h-4 ml-0.5" />
+                      {step === 0 && !id ? "Create" : "Save & continue"} <ChevronRight className="w-4 h-4 ml-0.5" />
                     </Button>
                   ) : (
                     <>
@@ -2042,8 +2801,7 @@ export function QuotationWizardDialog({
             </div>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }
 
@@ -2053,9 +2811,9 @@ function Field({
   label: string; value: string; onChange: (v: string) => void; type?: string;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 min-w-0">
       <Label className="text-sm font-medium">{label}</Label>
-      <Input className="h-10" type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input className="h-10 w-full" type={type} value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   );
 }
@@ -2220,31 +2978,49 @@ function QuoteTemplateApplyButton({
   );
 }
 
-function hotelFromCatalog(item: ProductRecord): Record<string, unknown> {
+function hotelFromCatalog(
+  item: ProductRecord,
+  defaultRooms = 1,
+  room?: Record<string, unknown> | null,
+): Record<string, unknown> {
   const rooms = Array.isArray(item.roomCategories) ? (item.roomCategories as Array<Record<string, unknown>>) : [];
-  const first = rooms[0];
-  const pricing = (first?.pricing as Record<string, number>) || {};
+  const selected = room || rooms[0];
+  const pricing = (selected?.pricing as Record<string, number>) || {};
   const selling = Number(pricing.double ?? pricing.single ?? 0);
+  const cancellation = String(
+    selected?.cancellationPolicy
+    || item.cancellationPolicy
+    || item.cancellation
+    || "",
+  ).trim();
+  const roomImage = Array.isArray(selected?.images) && selected.images[0]
+    ? String(selected.images[0])
+    : firstProductImage(item);
   return {
     productId: item.id,
     hotelName: item.name,
     starCategory: String(item.starCategory || ""),
-    roomType: String(first?.name || "Deluxe"),
-    mealPlan: String(first?.mealPlan || "Breakfast"),
+    roomType: String(selected?.name || "Deluxe"),
+    mealPlan: String(selected?.mealPlan || "Breakfast"),
     address: String(item.address || ""),
     city: String(item.city || item.destination?.name || ""),
+    tripCity: String(item.city || item.destination?.name || ""),
     checkInTime: String(item.checkInTime || "14:00"),
     checkOutTime: String(item.checkOutTime || "11:00"),
     contactPerson: String(item.contactPerson || ""),
     contactPhone: String(item.contactPhone || ""),
     contactEmail: String(item.contactEmail || ""),
-    imageUrl: firstProductImage(item),
+    imageUrl: roomImage,
     sellingPrice: selling,
+    rooms: Math.max(1, defaultRooms || 1),
     supplier: item.supplier?.name,
     confirmationNo: "",
     remarks: "",
+    cancellationPolicy: cancellation || undefined,
+    refundable: selected?.refundable === true || undefined,
     hotelDocuments: [],
     source: "CONTRACTED_PRODUCT",
+    selfBooked: false,
     productType: "HOTEL",
   };
 }
@@ -2287,7 +3063,7 @@ const ACTIVITY_CATEGORIES = [
   "Local Tour",
 ] as const;
 
-const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner"] as const;
+const MEAL_TYPES = ["Breakfast", "Lunch", "Dinner", "Snacks", "Other"] as const;
 
 function normalizeVisaType(value: string): "Tourist Visa" | "Business Visa" {
   const v = value.trim().toLowerCase();
@@ -2309,9 +3085,9 @@ const FIELD_SELECT_OPTIONS: Record<string, readonly string[]> = {
 };
 
 function fieldInputType(field: string): string {
-  if (field === "checkIn" || field === "checkOut" || field === "date") return "date";
-  if (field === "checkInTime" || field === "checkOutTime" || field === "depTime" || field === "arrTime" || field === "timeSlot") return "time";
-  if (["costPrice", "sellingPrice", "fare", "rooms", "quantity", "adultRate", "childRate", "adults", "children", "nights", "markup", "starCategory"].includes(field)) {
+  if (field === "checkIn" || field === "checkOut" || field === "date" || field === "arrivalDate") return "date";
+  if (field === "checkInTime" || field === "checkOutTime" || field === "depTime" || field === "arrTime" || field === "timeSlot" || field === "pickupTime" || field === "time") return "time";
+  if (["costPrice", "sellingPrice", "fare", "rooms", "quantity", "adultRate", "childRate", "adults", "children", "infants", "nights", "markup", "starCategory", "stops", "pax"].includes(field)) {
     return "number";
   }
   return "text";
@@ -2331,8 +3107,18 @@ function fieldLabel(field: string): string {
   if (field === "starCategory") return "Star category";
   if (field === "costPrice") return "Cost price";
   if (field === "sellingPrice") return "Selling price";
+  if (field === "arrivalDate") return "Arrival date";
+  if (field === "airlineCode") return "Airline code";
+  if (field === "stops") return "Stops";
+  if (field === "depTime") return "Departure time";
+  if (field === "arrTime") return "Arrival time";
+  if (field === "cabinClass") return "Cabin class";
+  if (field === "flightNumber") return "Flight number";
   if (field === "transferType") return "Transfer type";
   if (field === "vehicleType") return "Vehicle type";
+  if (field === "pickupTime") return "Pickup time";
+  if (field === "pax") return "Passengers (pax)";
+  if (field === "voucher") return "Voucher / reference";
   if (field === "activityCategory") return "Activity category";
   if (field === "timeSlot") return "Time slot";
   if (field === "ticketType") return "Ticket type";
@@ -2340,6 +3126,9 @@ function fieldLabel(field: string): string {
   if (field === "childRate") return "Child rate";
   if (field === "mealType") return "Meal type";
   if (field === "dietary") return "Special dietary requirements";
+  if (field === "location") return "Location";
+  if (field === "time") return "Time";
+  if (field === "infants") return "Infants";
   return field.replace(/([A-Z])/g, " $1");
 }
 
@@ -2349,6 +3138,18 @@ function stayNights(checkIn?: string, checkOut?: string): number | null {
   if (!a || !b || b <= a) return null;
   const ms = new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime();
   return Math.max(1, Math.round(ms / 86400000));
+}
+
+/** Add calendar days to a YYYY-MM-DD string (noon local) without UTC day-shift. */
+function addDaysYmd(ymd: string, days: number): string {
+  const base = toCalendarDate(ymd);
+  if (!base) return "";
+  const dt = new Date(`${base}T12:00:00`);
+  dt.setDate(dt.getDate() + days);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, "0");
+  const d = String(dt.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function hotelDisplayPrice(item: ProductRecord): number {
@@ -2593,58 +3394,284 @@ function AddOnsEditor({
   );
 }
 
+function newHotelLineId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `hotel-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 function ServiceEditor({
-  title, rows, fields, onChange, template, catalogKind, catalogToRow, travelDate, travelEndDate, quotationId, destinationId, destination,
+  title, rows, fields, selfBookedFields, onChange, onHotelAdded, template, catalogKind, catalogToRow, travelDate, travelEndDate, quotationId, destinationId, destination,
+  tripCities, stayWindows, initialStar, defaultRooms, defaultFlightFrom, defaultFlightTo, flightAdults, flightChildren, flightInfants, hotelTransferLocations, packageHotels,
 }: {
   title: string;
   rows: Record<string, unknown>[];
   fields: string[];
+  /** When set, self-booked hotel rows only show these fields (name + address focused). */
+  selfBookedFields?: string[];
   onChange: (rows: Record<string, unknown>[]) => void;
+  /** Fired after a hotel is confirmed/added (catalogue or self-booked). */
+  onHotelAdded?: (hotels: Record<string, unknown>[]) => void;
   template: Record<string, unknown>;
   catalogKind?: keyof typeof CATALOG_TYPE;
-  catalogToRow?: (item: ProductRecord) => Record<string, unknown>;
+  catalogToRow?: (item: ProductRecord, room?: Record<string, unknown> | null) => Record<string, unknown>;
   travelDate?: string;
   travelEndDate?: string;
   quotationId?: string | null;
   destinationId?: string;
   destination?: string;
+  /** Cities from Basic Details trip plan — hotels are recommended/filtered by these. */
+  tripCities?: string[];
+  stayWindows?: TripCityStayWindow[];
+  initialStar?: string;
+  defaultRooms?: number;
+  defaultFlightFrom?: string;
+  defaultFlightTo?: string;
+  flightAdults?: number;
+  flightChildren?: number;
+  flightInfants?: number;
+  hotelTransferLocations?: HotelTransferLocation[];
+  /** Hotels from the selected package — used for meal breakfast awareness. */
+  packageHotels?: Record<string, unknown>[];
 }) {
+  const user = useAuthStore((s) => s.user);
+  const hideInternalCost = user?.role === "travel_agent" || user?.role === "customer";
+  const visibleFields = hideInternalCost
+    ? fields.filter((f) => !["costPrice", "markup", "supplier", "quotedCostPrice", "contractedCost"].includes(f))
+    : fields;
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const windows = stayWindows || [];
+  const hotelPickLock = useRef(false);
 
-  function addSelfBooked() {
+  useEffect(() => {
+    if (catalogOpen) hotelPickLock.current = false;
+  }, [catalogOpen]);
+
+  function resolveHotelStay(preferredCity?: string): TripCityStayWindow | null {
+    if (preferredCity) {
+      const hit = findStayWindowForCity(windows, preferredCity);
+      if (hit) return hit;
+    }
+    if (windows.length === 1) return windows[0];
+    return null;
+  }
+
+  function isDuplicateHotelRow(candidate: Record<string, unknown>): boolean {
+    return rows.some((r) => {
+      if (String(r.productId || "") && String(candidate.productId || "")
+        && String(r.productId) === String(candidate.productId)
+        && String(r.roomType || "") === String(candidate.roomType || "")
+        && String(r.tripCity || r.city || "") === String(candidate.tripCity || candidate.city || "")
+        && String(r.checkIn || "") === String(candidate.checkIn || "")) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  function appendHotelPick(
+    item: ProductRecord,
+    rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null },
+    stayCity?: string,
+    room?: Record<string, unknown> | null,
+  ) {
+    if (hotelPickLock.current) return;
+    hotelPickLock.current = true;
+    const next = buildHotelPickRow(item, rate, stayCity, room);
+    if (isDuplicateHotelRow(next)) {
+      setCatalogOpen(false);
+      return;
+    }
+    const hotels = [...rows, next];
+    onChange(hotels);
+    setCatalogOpen(false);
+    onHotelAdded?.(hotels);
+  }
+
+  function buildHotelPickRow(
+    item: ProductRecord,
+    rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null },
+    stayCity?: string,
+    room?: Record<string, unknown> | null,
+  ): Record<string, unknown> {
+    const base = catalogToRow!(item, room);
+    const selling = Number(base.sellingPrice || rate.displayPrice || 0);
+    const hasInternalCost = rate.contractedCost != null && Number.isFinite(Number(rate.contractedCost));
+    const cost = hasInternalCost ? Number(rate.contractedCost) : undefined;
+    const productCity = String(base.city || item.city || item.destination?.name || stayCity || "").trim();
+    const stay = resolveHotelStay(stayCity || productCity);
+    const cin = stay?.checkIn || travelDate || String(base.checkIn || "");
+    const cout = stay?.checkOut || travelEndDate || String(base.checkOut || "");
+    const tripCity = stay?.city || productCity;
+    const row: Record<string, unknown> = {
+      ...base,
+      lineId: newHotelLineId(),
+      checkIn: cin,
+      checkOut: cout,
+      checkInTime: String(base.checkInTime || "14:00"),
+      checkOutTime: String(base.checkOutTime || "11:00"),
+      nights: stay?.nights ?? stayNights(cin, cout) ?? "",
+      rooms: Math.max(1, Number(base.rooms || defaultRooms || 1)),
+      city: tripCity,
+      tripCity,
+      stayDatesLocked: false,
+      selfBooked: false,
+      hotelDocuments: Array.isArray(base.hotelDocuments) ? base.hotelDocuments : [],
+      source: "CONTRACTED_PRODUCT",
+      productType: CATALOG_TYPE.hotels,
+      rateId: rate.rateId,
+      rateValidFrom: rate.validFrom,
+      rateValidTo: rate.validTo,
+      rateSelectedAt: new Date().toISOString(),
+      rateTravelDate: cin || travelDate,
+      rateUnresolved: false,
+      sellingPrice: selling || (cost ?? 0),
+      markup: hasInternalCost ? Math.round((selling || cost || 0) - (cost || 0)) : undefined,
+      cancellationPolicy: base.cancellationPolicy || undefined,
+    };
+    if (hasInternalCost) row.costPrice = cost;
+    return row;
+  }
+
+  function addSelfBooked(preferredCity?: string) {
     setCatalogOpen(false);
     const row = { ...template };
     if (catalogKind === "hotels") {
-      row.checkIn = toCalendarDate(String(row.checkIn || "")) || travelDate || "";
-      row.checkOut = toCalendarDate(String(row.checkOut || "")) || travelEndDate || "";
+      const stay = resolveHotelStay(preferredCity || String(row.tripCity || row.city || ""));
+      row.lineId = newHotelLineId();
+      row.selfBooked = true;
+      row.source = "MANUAL";
+      row.productType = "HOTEL";
+      if (stay) {
+        row.checkIn = stay.checkIn;
+        row.checkOut = stay.checkOut;
+        row.nights = stay.nights;
+        row.city = stay.city;
+        row.tripCity = stay.city;
+      } else {
+        row.checkIn = toCalendarDate(String(row.checkIn || "")) || travelDate || "";
+        row.checkOut = toCalendarDate(String(row.checkOut || "")) || travelEndDate || "";
+        const n = stayNights(String(row.checkIn || ""), String(row.checkOut || ""));
+        row.nights = n ?? "";
+        if (!row.city && destination) row.city = destination;
+        if (!row.tripCity) row.tripCity = row.city;
+      }
       if (!row.checkInTime) row.checkInTime = "14:00";
       if (!row.checkOutTime) row.checkOutTime = "11:00";
-      if (!row.city && destination) row.city = destination;
-      const n = stayNights(String(row.checkIn || ""), String(row.checkOut || ""));
-      row.nights = n ?? "";
-      const cost = Number(row.costPrice || 0);
-      const sell = Number(row.sellingPrice || 0);
-      row.markup = Math.round(sell - cost);
+      if (row.rooms == null) row.rooms = Math.max(1, defaultRooms || 1);
+      delete row.costPrice;
+      delete row.sellingPrice;
+      delete row.markup;
+      row.stayDatesLocked = false;
       if (!Array.isArray(row.hotelDocuments)) row.hotelDocuments = [];
     }
-    if (catalogKind === "flights" && !Array.isArray(row.flightDocuments)) {
-      row.flightDocuments = [];
+    if (catalogKind === "flights") {
+      if (!row.from && defaultFlightFrom) row.from = defaultFlightFrom;
+      if (!row.to && defaultFlightTo) row.to = defaultFlightTo;
+      if (!Array.isArray(row.flightDocuments)) row.flightDocuments = [];
+      row.source = "MANUAL";
+      row.selfBooked = true;
+      delete row.costPrice;
+      delete row.sellingPrice;
+      delete row.fare;
+      delete row.markup;
+      if (row.adults == null && flightAdults != null) row.adults = flightAdults;
+      if (row.children == null && flightChildren != null) row.children = flightChildren;
+      if (row.infants == null && flightInfants != null) row.infants = flightInfants;
+      row.segmentIndex = rows.length;
     }
-    if (catalogKind === "activities" && !Array.isArray(row.activityDocuments)) {
-      row.activityDocuments = [];
+    if (catalogKind === "transfers") {
+      row.source = "MANUAL";
+      row.selfBooked = true;
+      delete row.costPrice;
+      delete row.sellingPrice;
+      delete row.markup;
+      if (!row.date) {
+        row.date = windows.length === 1 ? windows[0].checkIn : "";
+      }
+      if (row.city == null && windows.length === 1) row.city = windows[0].city;
+      if (row.pax == null && flightAdults != null) {
+        row.pax = Math.max(1, Number(flightAdults || 0) + Number(flightChildren || 0) || 1);
+      }
     }
-    onChange([...rows, row]);
+    if (catalogKind === "activities") {
+      row.source = "MANUAL";
+      row.selfBooked = true;
+      delete row.costPrice;
+      delete row.sellingPrice;
+      delete row.adultRate;
+      delete row.childRate;
+      delete row.markup;
+      if (!Array.isArray(row.activityDocuments)) row.activityDocuments = [];
+      if (row.adults == null && flightAdults != null) row.adults = flightAdults;
+      if (row.children == null && flightChildren != null) row.children = flightChildren;
+      if (!row.city) {
+        row.city = windows.length === 1 ? windows[0].city : "";
+      }
+      if (!row.date && row.city) {
+        row.date = defaultActivityDateForCity(windows, String(row.city));
+      } else if (!row.date) {
+        row.date = "";
+      }
+    }
+    if (catalogKind === "meals") {
+      row.source = "MANUAL";
+      row.selfBooked = true;
+      delete row.costPrice;
+      delete row.sellingPrice;
+      delete row.adultRate;
+      delete row.childRate;
+      delete row.markup;
+      if (row.adults == null && flightAdults != null) row.adults = flightAdults;
+      if (row.children == null && flightChildren != null) row.children = flightChildren;
+      if (row.infants == null && flightInfants != null) row.infants = flightInfants;
+      if (!row.city) {
+        row.city = windows.length === 1 ? windows[0].city : "";
+      }
+      if (!row.date && row.city) {
+        row.date = defaultMealDateForCity(windows, String(row.city));
+        row.dateSource = "AUTO";
+      } else if (!row.date) {
+        row.date = "";
+        row.dateSource = "AUTO";
+      }
+    }
+    const nextRows = [...rows, row];
+    onChange(nextRows);
+    if (catalogKind === "hotels") onHotelAdded?.(nextRows);
   }
 
   return (
-    <div className="space-y-3">
+    <div className={cn("space-y-3", catalogKind === "hotels" && catalogOpen && "h-full min-h-0")}>
+      {catalogKind === "hotels" && catalogOpen && catalogToRow ? (
+        <CatalogPicker
+          kind="hotels"
+          travelDate={travelDate}
+          travelEndDate={travelEndDate}
+          destinationId={destinationId}
+          destination={destination}
+          tripCities={tripCities}
+          stayWindows={windows}
+          initialStar={initialStar}
+          defaultRooms={defaultRooms}
+          open={catalogOpen}
+          onOpenChange={setCatalogOpen}
+          variant="inline"
+          onAddSelfBooked={(city) => addSelfBooked(city)}
+          onPick={(item, rate, stayCity, room) => {
+            appendHotelPick(item, rate, stayCity, room);
+          }}
+        />
+      ) : (
+        <>
       <div className="flex justify-between items-start gap-3 flex-wrap">
         <div>
           <p className="text-sm font-semibold">{title}</p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {destination
-              ? `Add from ${destination} catalog or enter self-booked details.`
-              : "Add from catalog or enter self-booked details."}
+            {catalogKind === "hotels"
+              ? "Pick a catalogue hotel (room options) or add a self-booked stay with name and address."
+              : destination
+                ? `Add from ${destination} catalog or enter self-booked details.`
+                : "Add from catalog or enter self-booked details."}
           </p>
         </div>
         <div className="flex gap-2">
@@ -2655,30 +3682,32 @@ function ServiceEditor({
               travelEndDate={travelEndDate}
               destinationId={destinationId}
               destination={destination}
+              tripCities={catalogKind === "hotels" ? tripCities : undefined}
+              stayWindows={catalogKind === "hotels" ? windows : undefined}
+              initialStar={catalogKind === "hotels" ? initialStar : undefined}
+              defaultRooms={catalogKind === "hotels" ? defaultRooms : undefined}
               open={catalogOpen}
               onOpenChange={setCatalogOpen}
-              onAddSelfBooked={addSelfBooked}
-              onPick={(item, rate) => {
+              onAddSelfBooked={(city) => addSelfBooked(city)}
+              onPick={(item, rate, stayCity, room) => {
+                if (catalogKind === "hotels") {
+                  appendHotelPick(item, rate, stayCity, room);
+                  return;
+                }
                 const base = catalogToRow(item);
                 const selling = Number(base.sellingPrice || rate.displayPrice || 0);
-                const cost = Number(rate.contractedCost || 0);
-                const cin = travelDate || String(base.checkIn || "");
-                const cout = travelEndDate || String(base.checkOut || "");
+                const hasInternalCost = rate.contractedCost != null && Number.isFinite(Number(rate.contractedCost));
+                const cost = hasInternalCost ? Number(rate.contractedCost) : 0;
                 onChange([...rows, {
                   ...base,
-                  ...(catalogKind === "hotels" ? {
-                    checkIn: cin,
-                    checkOut: cout,
-                    checkInTime: String(base.checkInTime || "14:00"),
-                    checkOutTime: String(base.checkOutTime || "11:00"),
-                    nights: stayNights(cin, cout) ?? "",
-                    rooms: Number(base.rooms || 1),
-                    city: String(base.city || destination || ""),
-                    markup: Math.round((selling || cost) - cost),
-                    hotelDocuments: Array.isArray(base.hotelDocuments) ? base.hotelDocuments : [],
-                  } : {}),
                   ...(catalogKind === "flights" ? {
                     flightDocuments: Array.isArray(base.flightDocuments) ? base.flightDocuments : [],
+                    segmentIndex: rows.length,
+                    adults: base.adults != null ? base.adults : flightAdults,
+                    children: base.children != null ? base.children : flightChildren,
+                    infants: base.infants != null ? base.infants : flightInfants,
+                    // Keep blank date unless catalogue row already had one — never force trip start.
+                    date: String(base.date || ""),
                   } : {}),
                   ...(catalogKind === "activities" ? {
                     activityDocuments: Array.isArray(base.activityDocuments) ? base.activityDocuments : [],
@@ -2691,7 +3720,7 @@ function ServiceEditor({
                   rateSelectedAt: new Date().toISOString(),
                   rateTravelDate: travelDate,
                   rateUnresolved: false,
-                  costPrice: cost,
+                  ...(hasInternalCost ? { costPrice: cost } : {}),
                   sellingPrice: selling || cost,
                 }]);
                 setCatalogOpen(false);
@@ -2701,17 +3730,34 @@ function ServiceEditor({
           {catalogKind === "flights" && (
             <FlightApiSearch
               travelDate={travelDate}
-              onPick={(row) => onChange([...rows, row])}
+              travelEndDate={travelEndDate}
+              defaultFrom={defaultFlightFrom}
+              defaultTo={defaultFlightTo}
+              adults={flightAdults ?? 1}
+              children={flightChildren ?? 0}
+              infants={flightInfants ?? 0}
+              destinationLabel={destination}
+              tripCities={tripCities}
+              onPick={(row) => {
+                const next = {
+                  ...row,
+                  segmentIndex: row.segmentIndex != null ? row.segmentIndex : rows.length,
+                  adults: row.adults != null ? row.adults : flightAdults,
+                  children: row.children != null ? row.children : flightChildren,
+                  infants: row.infants != null ? row.infants : flightInfants,
+                };
+                onChange([...rows, next]);
+              }}
             />
           )}
-          <Button size="sm" variant="outline" type="button" onClick={addSelfBooked}>
-            <Plus className="w-3.5 h-3.5 mr-1" /> Add self-booked
+          <Button size="sm" variant="outline" type="button" onClick={() => addSelfBooked()}>
+            <Plus className="w-3.5 h-3.5 mr-1" /> {catalogKind === "hotels" ? "Add self-booked (name & address)" : "Add self-booked"}
           </Button>
         </div>
       </div>
       {rows.length === 0 && (
         <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-          No {title.toLowerCase()} yet — pick from catalog or add self-booked.
+          No {title.toLowerCase()} yet — pick from catalog or enter self-booked details.
         </div>
       )}
       {rows.map((row, i) => {
@@ -2720,8 +3766,11 @@ function ServiceEditor({
         const dateError = catalogKind === "hotels" && checkIn && checkOut && checkOut <= checkIn
           ? "Check-out date must be after check-in date."
           : null;
+        const rowFields = row.selfBooked === true && selfBookedFields?.length
+          ? selfBookedFields
+          : visibleFields;
         return (
-          <div key={i} className="rounded-xl border bg-card p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 relative">
+          <div key={String(row.lineId || i)} className="rounded-xl border bg-card p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 relative">
             <Button
               size="sm"
               variant="ghost"
@@ -2730,6 +3779,58 @@ function ServiceEditor({
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
+            {row.selfBooked === true && (
+              <div className="sm:col-span-2 md:col-span-3 space-y-1 pr-8">
+                <p className="text-[11px] uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                  {catalogKind === "hotels"
+                    ? "Self-booked — name and address for land pickup/drop"
+                    : catalogKind === "transfers" || catalogKind === "activities" || catalogKind === "meals"
+                      ? "Self-booked — enter operational details; prices only if you set them"
+                      : "Self-booked"}
+                </p>
+                {(row.tripCity || row.city || checkIn) && (
+                  <p className="text-xs text-muted-foreground">
+                    {[
+                      row.tripCity || row.city,
+                      checkIn && checkOut ? `${checkIn} → ${checkOut}` : null,
+                      row.nights != null && row.nights !== "" ? `${row.nights} nights` : null,
+                    ].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </div>
+            )}
+            {catalogKind === "meals" && (() => {
+              const breakfastWarn = hotelBreakfastDuplicationWarning({
+                mealType: row.mealType,
+                mealCity: row.city,
+                mealDate: row.date,
+                hotels: packageHotels || [],
+              });
+              const msgs = [
+                row.cityOrphanReason ? String(row.cityOrphanReason) : "",
+                row.dateInvalidReason ? String(row.dateInvalidReason) : "",
+                breakfastWarn || "",
+              ].filter(Boolean);
+              if (!msgs.length) return null;
+              return (
+                <div className="sm:col-span-2 md:col-span-3 space-y-1 pr-8">
+                  {msgs.map((msg) => (
+                    <p key={msg} className="text-[11px] text-amber-700 dark:text-amber-400">
+                      {msg}
+                    </p>
+                  ))}
+                </div>
+              );
+            })()}
+            {row.selfBooked !== true && Boolean(row.rateValidFrom) && Boolean(row.rateValidTo) ? (
+              <p className="sm:col-span-2 md:col-span-3 text-[11px] text-muted-foreground">
+                Rate validity {String(row.rateValidFrom)} → {String(row.rateValidTo)}
+                {row.roomType || row.mealPlan
+                  ? ` · ${[row.roomType, row.mealPlan].filter(Boolean).join(" · ")}`
+                  : ""}
+                {row.cancellationPolicy ? ` · Cancellation: ${String(row.cancellationPolicy)}` : ""}
+              </p>
+            ) : null}
             {row.rateUnresolved === true && (
               <p className="sm:col-span-2 md:col-span-3 text-xs text-destructive">{NO_VALID_RATE}</p>
             )}
@@ -2739,10 +3840,7 @@ function ServiceEditor({
             {Boolean(row.transferBadge) && (
               <p className="sm:col-span-2 md:col-span-3 text-[11px] uppercase tracking-wide text-muted-foreground">{String(row.transferBadge)}</p>
             )}
-            {Boolean(row.source) && (
-              <p className="sm:col-span-2 md:col-span-3 text-[10px] text-muted-foreground">Source: {String(row.source)}</p>
-            )}
-            {fields.map((f) => {
+            {rowFields.map((f) => {
               const inputType = fieldInputType(f);
               const raw = String(row[f] ?? "");
               const value = inputType === "date" ? (toCalendarDate(raw) || "") : raw;
@@ -2760,9 +3858,21 @@ function ServiceEditor({
                   : [...selectOptions])
                 : [];
               return (
-                <div key={f} className={cn("space-y-1.5", isImageField(f) || isStayDate ? "sm:col-span-2 md:col-span-3 pr-8" : "")}>
+                <div
+                  key={f}
+                  className={cn(
+                    "space-y-1.5",
+                    isImageField(f) || isStayDate || (row.selfBooked === true && (f === "hotelName" || f === "address"))
+                      ? "sm:col-span-2 md:col-span-3 pr-8"
+                      : "",
+                  )}
+                >
                   <Label className="text-xs font-medium capitalize text-muted-foreground">
-                    {fieldLabel(f)}
+                    {f === "hotelName" && row.selfBooked === true
+                      ? "Hotel name"
+                      : f === "address" && row.selfBooked === true
+                        ? "Address / location (for pickup & drop)"
+                        : fieldLabel(f)}
                   </Label>
                   {isImageField(f) ? (
                     <ImageUrlField
@@ -2789,6 +3899,7 @@ function ServiceEditor({
                             ...next[i],
                             [f]: dateVal,
                             [timeKey]: existingTime || timeFallback,
+                            stayDatesLocked: true,
                           };
                           const cin = toCalendarDate(String(f === "checkIn" ? dateVal : patch.checkIn || ""));
                           const cout = toCalendarDate(String(f === "checkOut" ? dateVal : patch.checkOut || ""));
@@ -2811,6 +3922,92 @@ function ServiceEditor({
                           onChange(next);
                         }}
                       />
+                    </div>
+                  ) : (f === "pickup" || f === "drop") && hotelTransferLocations && hotelTransferLocations.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <Select
+                        value={
+                          hotelTransferLocations.some((loc) => loc.location === value)
+                            ? value
+                            : "__custom__"
+                        }
+                        onValueChange={(v) => {
+                          const next = [...rows];
+                          if (v === "__custom__") {
+                            next[i] = {
+                              ...next[i],
+                              [f]: value && !hotelTransferLocations.some((loc) => loc.location === value) ? value : "",
+                              [`${f}HotelLineId`]: "",
+                            };
+                          } else {
+                            const loc = hotelTransferLocations.find((l) => l.location === v);
+                            next[i] = {
+                              ...next[i],
+                              [f]: v,
+                              [`${f}HotelLineId`]: loc?.lineId || "",
+                            };
+                          }
+                          onChange(next);
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Hotel or custom location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {hotelTransferLocations.map((loc) => (
+                            <SelectItem key={`${f}-${loc.lineId}`} value={loc.location}>
+                              {loc.label}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="__custom__">Custom location…</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {(!value || !hotelTransferLocations.some((loc) => loc.location === value)) && (
+                        <Input
+                          className="h-9"
+                          value={value}
+                          placeholder="Type pickup/drop location"
+                          onChange={(e) => {
+                            const next = [...rows];
+                            next[i] = { ...next[i], [f]: e.target.value, [`${f}HotelLineId`]: "" };
+                            onChange(next);
+                          }}
+                        />
+                      )}
+                    </div>
+                  ) : f === "city" && tripCities && tripCities.length > 0 ? (
+                    <div className="space-y-1">
+                      <Select
+                        value={value || undefined}
+                        onValueChange={(v) => {
+                          const next = [...rows];
+                          if (catalogKind === "meals") {
+                            next[i] = applyMealCityChange(next[i], v, windows);
+                          } else {
+                            const patch: Record<string, unknown> = { ...next[i], city: v, tripCity: v };
+                            const currentDate = String(patch.date || "");
+                            if (!currentDate || !isDateInCityStay(windows, v, currentDate)) {
+                              patch.date = defaultActivityDateForCity(windows, v);
+                            }
+                            next[i] = patch;
+                          }
+                          onChange(next);
+                        }}
+                      >
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Select trip city" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {tripCities.map((c) => (
+                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {value && String(row.date || "") && !isDateInCityStay(windows, value, String(row.date)) && (
+                        <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                          Date is outside this city&apos;s stay window — override allowed.
+                        </p>
+                      )}
                     </div>
                   ) : selectOptions ? (
                     <Select
@@ -2854,6 +4051,18 @@ function ServiceEditor({
                           const cost = Number(f === "costPrice" ? nextVal : patch.costPrice || 0);
                           const sell = Number(f === "sellingPrice" ? nextVal : patch.sellingPrice || 0);
                           patch.markup = Math.round(sell - cost);
+                        }
+                        if (catalogKind === "meals" && f === "date") {
+                          patch.dateSource = "MANUAL";
+                          const city = String(patch.city || "");
+                          const dateStr = String(nextVal || "");
+                          if (city && dateStr && !isDateInCityStay(windows, city, dateStr)) {
+                            patch.dateInvalid = true;
+                            patch.dateInvalidReason = `Date ${dateStr} is outside the ${city} stay window.`;
+                          } else {
+                            delete patch.dateInvalid;
+                            delete patch.dateInvalidReason;
+                          }
                         }
                         next[i] = patch;
                         onChange(next);
@@ -2918,6 +4127,8 @@ function ServiceEditor({
           </div>
         );
       })}
+        </>
+      )}
     </div>
   );
 }
@@ -3345,73 +4556,372 @@ function VisaDocumentAttach({
   );
 }
 
+function mapSearchResultToFlightLine(
+  item: Record<string, unknown>,
+  opts: {
+    rateSource: "AMADEUS_API" | "MOCK";
+    adults: number;
+    children: number;
+    infants: number;
+    fallbackDate?: string;
+  },
+): Record<string, unknown> {
+  const departDate = String(item.departDate || item.departureDate || item.date || opts.fallbackDate || "");
+  const arriveDate = String(item.arriveDate || item.arrivalDate || "");
+  return {
+    source: opts.rateSource,
+    provider: opts.rateSource,
+    airline: String(item.airline || ""),
+    airlineCode: String(item.airlineCode || ""),
+    flightNumber: String(item.flightNumber || ""),
+    from: String(item.origin || item.from || ""),
+    to: String(item.destination || item.to || ""),
+    date: departDate,
+    arrivalDate: arriveDate,
+    depTime: String(item.departTime || item.depTime || ""),
+    arrTime: String(item.arriveTime || item.arrTime || ""),
+    duration: String(item.duration || ""),
+    stops: Number(item.stops || 0),
+    baggage: String(item.baggage || ""),
+    cabinClass: String(item.cabin || item.cabinClass || "Economy"),
+    currency: String(item.currency || "INR"),
+    seatsLeft: Number(item.seatsLeft ?? 0),
+    refundable: Boolean(item.refundable),
+    aircraft: String(item.aircraft || ""),
+    sellingPrice: Math.round(Number(item.price || 0)),
+    fare: Math.round(Number(item.price || 0)),
+    remarks: "",
+    pnr: "",
+    flightDocuments: [],
+    direction: item.direction ? String(item.direction) : undefined,
+    segmentIndex: item.segmentIndex != null ? Number(item.segmentIndex) : 0,
+    journeyId: item.journeyId ? String(item.journeyId) : String(item.id || ""),
+    adults: opts.adults,
+    children: opts.children,
+    infants: opts.infants,
+  };
+}
+
+type FlightSearchSegment = { origin: string; destination: string; date: string };
+
 function FlightApiSearch({
   travelDate,
+  travelEndDate,
+  defaultFrom,
+  defaultTo,
+  adults,
+  children,
+  infants,
+  destinationLabel,
+  tripCities,
   onPick,
 }: {
   travelDate?: string;
+  travelEndDate?: string;
+  defaultFrom?: string;
+  defaultTo?: string;
+  adults: number;
+  children: number;
+  infants: number;
+  destinationLabel?: string;
+  tripCities?: string[];
   onPick: (row: Record<string, unknown>) => void;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
-  const [from, setFrom] = useState("BOM");
-  const [to, setTo] = useState("DEL");
+  const [tripType, setTripType] = useState<"one_way" | "round_trip" | "multi_city">("one_way");
+  const [from, setFrom] = useState(defaultFrom?.trim() || "");
+  const [to, setTo] = useState(defaultTo?.trim() || "");
+  const [depDate, setDepDate] = useState(travelDate || "");
+  const [retDate, setRetDate] = useState(travelEndDate || "");
+  const [paxAdults, setPaxAdults] = useState(Math.max(1, adults || 1));
+  const [paxChildren, setPaxChildren] = useState(Math.max(0, children || 0));
+  const [paxInfants, setPaxInfants] = useState(Math.max(0, infants || 0));
+  const [cabinClass, setCabinClass] = useState("Economy");
+  const [segments, setSegments] = useState<FlightSearchSegment[]>([
+    { origin: defaultFrom?.trim() || "", destination: defaultTo?.trim() || "", date: travelDate || "" },
+    { origin: defaultTo?.trim() || "", destination: "", date: travelEndDate || travelDate || "" },
+  ]);
   const [items, setItems] = useState<Array<Record<string, unknown>>>([]);
+  const [meta, setMeta] = useState<{ provider?: string; source?: string; demo?: boolean; message?: string; rateSource?: string }>({});
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (defaultFrom?.trim()) setFrom(defaultFrom.trim());
+    if (defaultTo?.trim()) setTo(defaultTo.trim());
+    if (travelDate) setDepDate(travelDate);
+    if (travelEndDate) setRetDate(travelEndDate);
+    setPaxAdults(Math.max(1, adults || 1));
+    setPaxChildren(Math.max(0, children || 0));
+    setPaxInfants(Math.max(0, infants || 0));
+    setSegments((prev) => {
+      const next = [...prev];
+      if (next[0]) {
+        next[0] = {
+          ...next[0],
+          origin: defaultFrom?.trim() || next[0].origin,
+          destination: defaultTo?.trim() || next[0].destination,
+          date: travelDate || next[0].date,
+        };
+      }
+      return next;
+    });
+  }, [open, defaultFrom, defaultTo, travelDate, travelEndDate, adults, children, infants]);
 
   async function search() {
     try {
-      const data = await apiFetch<{ flights: Array<Record<string, unknown>> }>(
-        `/api/flights/search?origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&departureDate=${encodeURIComponent(travelDate || "")}&count=6`,
-      );
+      setSearching(true);
+      const params = new URLSearchParams({
+        tripType,
+        adults: String(paxAdults),
+        children: String(paxChildren),
+        infants: String(paxInfants),
+        cabinClass,
+        count: "8",
+      });
+
+      if (tripType === "multi_city") {
+        const cleaned = segments
+          .map((s) => ({
+            origin: s.origin.trim().toUpperCase(),
+            destination: s.destination.trim().toUpperCase(),
+            date: s.date.trim(),
+          }))
+          .filter((s) => s.origin && s.destination);
+        if (cleaned.length < 2) {
+          toast({ title: "Add at least two multi-city segments with From / To", variant: "destructive" });
+          return;
+        }
+        if (cleaned.some((s) => !s.date)) {
+          toast({ title: "Each multi-city segment needs a departure date", variant: "destructive" });
+          return;
+        }
+        params.set("segments", JSON.stringify(cleaned));
+      } else {
+        const origin = from.trim().toUpperCase();
+        const destination = to.trim().toUpperCase();
+        if (!origin) {
+          toast({ title: "Origin airport is required", variant: "destructive" });
+          return;
+        }
+        if (!destination) {
+          toast({
+            title: "Destination airport is required",
+            description: destinationLabel || (tripCities && tripCities.length > 1)
+              ? "Multi-city quotes need an explicit destination airport — nothing is hardcoded."
+              : "Enter a destination IATA code (e.g. HKT).",
+            variant: "destructive",
+          });
+          return;
+        }
+        if (!depDate) {
+          toast({ title: "Departure date is required", variant: "destructive" });
+          return;
+        }
+        params.set("origin", origin);
+        params.set("destination", destination);
+        params.set("departureDate", depDate);
+        if (tripType === "round_trip") {
+          if (!retDate) {
+            toast({ title: "Return date is required for round trip", variant: "destructive" });
+            return;
+          }
+          params.set("returnDate", retDate);
+        }
+      }
+
+      const data = await apiFetch<{
+        flights: Array<Record<string, unknown>>;
+        provider?: string;
+        source?: string;
+        demo?: boolean;
+        message?: string;
+        rateSource?: string;
+      }>(`/api/flights/search?${params.toString()}`);
       setItems(data.flights || []);
-      if (!data.flights?.length) toast({ title: "No API flights returned" });
+      setMeta({
+        provider: data.provider,
+        source: data.source,
+        demo: data.demo,
+        message: data.message,
+        rateSource: data.rateSource,
+      });
+      if (!data.flights?.length) toast({ title: "No flights returned" });
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "Flight search failed", variant: "destructive" });
+    } finally {
+      setSearching(false);
     }
   }
+
+  const rateSource: "AMADEUS_API" | "MOCK" =
+    meta.rateSource === "AMADEUS_API" || (meta.provider === "amadeus" && meta.source === "live")
+      ? "AMADEUS_API"
+      : "MOCK";
 
   return (
     <div className="relative">
       <Button size="sm" variant="outline" type="button" onClick={() => setOpen((v) => !v)}>API search</Button>
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-80 rounded-md border bg-popover p-2 shadow-md space-y-2">
+        <div className="absolute right-0 z-20 mt-1 w-[22rem] max-h-[28rem] overflow-y-auto rounded-md border bg-popover p-2 shadow-md space-y-2">
           <div className="flex gap-1">
-            <Input className="h-8 text-xs" value={from} onChange={(e) => setFrom(e.target.value.toUpperCase())} placeholder="From" />
-            <Input className="h-8 text-xs" value={to} onChange={(e) => setTo(e.target.value.toUpperCase())} placeholder="To" />
-            <Button size="sm" type="button" onClick={() => void search()}>Search</Button>
+            {([
+              ["one_way", "One way"],
+              ["round_trip", "Round trip"],
+              ["multi_city", "Multi-city"],
+            ] as const).map(([value, label]) => (
+              <Button
+                key={value}
+                size="sm"
+                type="button"
+                variant={tripType === value ? "default" : "outline"}
+                className="h-7 text-[10px] px-2"
+                onClick={() => setTripType(value)}
+              >
+                {label}
+              </Button>
+            ))}
           </div>
+
+          {tripType !== "multi_city" ? (
+            <>
+              <div className="flex gap-1">
+                <Input className="h-8 text-xs" value={from} onChange={(e) => setFrom(e.target.value.toUpperCase())} placeholder="From (IATA)" />
+                <Input className="h-8 text-xs" value={to} onChange={(e) => setTo(e.target.value.toUpperCase())} placeholder="To (IATA)" />
+              </div>
+              <div className="flex gap-1">
+                <Input className="h-8 text-xs" type="date" value={depDate} onChange={(e) => setDepDate(e.target.value)} />
+                {tripType === "round_trip" && (
+                  <Input className="h-8 text-xs" type="date" value={retDate} onChange={(e) => setRetDate(e.target.value)} />
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-1.5">
+              {segments.map((seg, i) => (
+                <div key={i} className="space-y-1 rounded border p-1.5">
+                  <p className="text-[10px] font-semibold text-muted-foreground">Segment {i + 1}</p>
+                  <div className="flex gap-1">
+                    <Input
+                      className="h-7 text-xs"
+                      value={seg.origin}
+                      onChange={(e) => {
+                        const next = [...segments];
+                        next[i] = { ...next[i], origin: e.target.value.toUpperCase() };
+                        setSegments(next);
+                      }}
+                      placeholder="From"
+                    />
+                    <Input
+                      className="h-7 text-xs"
+                      value={seg.destination}
+                      onChange={(e) => {
+                        const next = [...segments];
+                        next[i] = { ...next[i], destination: e.target.value.toUpperCase() };
+                        setSegments(next);
+                      }}
+                      placeholder="To"
+                    />
+                  </div>
+                  <Input
+                    className="h-7 text-xs"
+                    type="date"
+                    value={seg.date}
+                    onChange={(e) => {
+                      const next = [...segments];
+                      next[i] = { ...next[i], date: e.target.value };
+                      setSegments(next);
+                    }}
+                  />
+                </div>
+              ))}
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  className="h-7 text-[10px]"
+                  onClick={() => setSegments((s) => [...s, { origin: "", destination: "", date: "" }])}
+                >
+                  Add segment
+                </Button>
+                {segments.length > 2 && (
+                  <Button
+                    size="sm"
+                    type="button"
+                    variant="ghost"
+                    className="h-7 text-[10px]"
+                    onClick={() => setSegments((s) => s.slice(0, -1))}
+                  >
+                    Remove last
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-1">
+            <div>
+              <Label className="text-[9px] text-muted-foreground">Adults</Label>
+              <Input className="h-7 text-xs" type="number" min={1} value={paxAdults} onChange={(e) => setPaxAdults(Math.max(1, Number(e.target.value) || 1))} />
+            </div>
+            <div>
+              <Label className="text-[9px] text-muted-foreground">Children</Label>
+              <Input className="h-7 text-xs" type="number" min={0} value={paxChildren} onChange={(e) => setPaxChildren(Math.max(0, Number(e.target.value) || 0))} />
+            </div>
+            <div>
+              <Label className="text-[9px] text-muted-foreground">Infants</Label>
+              <Input className="h-7 text-xs" type="number" min={0} value={paxInfants} onChange={(e) => setPaxInfants(Math.max(0, Number(e.target.value) || 0))} />
+            </div>
+          </div>
+          <Select value={cabinClass} onValueChange={setCabinClass}>
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue placeholder="Cabin" />
+            </SelectTrigger>
+            <SelectContent>
+              {["Economy", "Premium Economy", "Business", "First"].map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" type="button" className="w-full" disabled={searching} onClick={() => void search()}>
+            {searching ? "Searching…" : "Search"}
+          </Button>
+
+          {(meta.demo || meta.provider === "mock") && (
+            <p className="text-[10px] rounded bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200 px-2 py-1">
+              Demo / mock results — not live Amadeus inventory.
+              {meta.message ? ` ${meta.message}` : ""}
+            </p>
+          )}
+          {meta.provider === "amadeus" && meta.source === "live" && (
+            <p className="text-[10px] rounded bg-teal-50 text-teal-900 dark:bg-teal-950/40 dark:text-teal-200 px-2 py-1">
+              Live Amadeus results
+            </p>
+          )}
+
           {items.map((item) => (
             <button
               key={String(item.id)}
               type="button"
               className="w-full text-left text-xs rounded px-2 py-1.5 hover:bg-muted"
               onClick={() => {
-                onPick({
-                  source: "AMADEUS_API",
-                  airline: item.airline,
-                  flightNumber: item.flightNumber,
-                  from: item.origin,
-                  to: item.destination,
-                  depTime: item.departTime,
-                  arrTime: item.arriveTime,
-                  duration: item.duration || "",
-                  baggage: item.baggage || "",
-                  cabinClass: item.cabin,
-                  currency: item.currency || "INR",
-                  date: travelDate || "",
-                  seatsLeft: item.seatsLeft,
-                  sellingPrice: Number(item.price || 0),
-                  fare: Number(item.price || 0),
-                  costPrice: 0,
-                  remarks: "",
-                  pnr: "",
-                  flightDocuments: [],
-                });
+                onPick(mapSearchResultToFlightLine(item, {
+                  rateSource,
+                  adults: paxAdults,
+                  children: paxChildren,
+                  infants: paxInfants,
+                  fallbackDate: depDate || travelDate,
+                }));
                 setOpen(false);
               }}
             >
+              {item.direction ? `[${String(item.direction)}] ` : ""}
               {String(item.airline)} {String(item.flightNumber)} · {String(item.origin)} → {String(item.destination)}
+              {item.departDate ? ` · ${String(item.departDate)}` : ""}
               {item.duration ? ` · ${String(item.duration)}` : ""}
+              {item.stops != null ? ` · ${Number(item.stops)} stop(s)` : ""}
               {item.baggage ? ` · ${String(item.baggage)}` : ""}
               {item.price != null ? ` · ${formatFullINR(Number(item.price))}` : ""}
             </button>
@@ -3422,26 +4932,425 @@ function FlightApiSearch({
   );
 }
 
+function hotelStarNumber(item: ProductRecord): number {
+  const n = Number(item.starCategory);
+  return Number.isFinite(n) && n > 0 ? Math.min(7, Math.round(n)) : 0;
+}
+
+function hotelMatchesTripCity(item: ProductRecord, city: string): boolean {
+  const needle = city.trim().toLowerCase();
+  if (!needle) return false;
+  const hay = [
+    item.city,
+    item.address,
+    item.location,
+    item.destination?.name,
+    item.country,
+  ]
+    .map((v) => String(v || "").toLowerCase())
+    .join(" ");
+  return hay.includes(needle);
+}
+
+function mealPlanKey(raw: unknown): string {
+  return String(raw || "").trim().toLowerCase();
+}
+
+function isRoomOnlyMeal(meal: string): boolean {
+  if (!meal) return true;
+  return /room\s*only|^ro$|none|european|^ep\b/.test(meal);
+}
+
+function isBreakfastMeal(meal: string): boolean {
+  return /breakfast|bb\b|bed\s*&?\s*breakfast|continental|^cp\b/.test(meal);
+}
+
+function roomIsRefundable(room: Record<string, unknown>, hotel: ProductRecord): boolean {
+  if (room.refundable === true) return true;
+  const text = [
+    room.cancellationPolicy,
+    room.bookingPolicy,
+    hotel.cancellationPolicy,
+    hotel.cancellation,
+  ].map((v) => String(v || "").toLowerCase()).join(" ");
+  return /free\s*cancel|fully\s*refundable|\brefundable\b/.test(text) && !/non[-\s]?refundable/.test(text);
+}
+
+function roomNightUnitPrice(room: Record<string, unknown>): number {
+  const pricing = (room.pricing as Record<string, number>) || {};
+  return Number(pricing.double ?? pricing.single ?? 0) || 0;
+}
+
+function roomThumb(room: Record<string, unknown>, hotel: ProductRecord): string {
+  if (Array.isArray(room.images) && room.images[0]) return String(room.images[0]);
+  return firstProductImage(hotel);
+}
+
+function formatStayLabel(checkIn?: string, checkOut?: string, nights?: number | null): string {
+  const a = checkIn || "";
+  const b = checkOut || "";
+  const n = nights != null && nights > 0 ? nights : stayNights(a, b);
+  if (!a || !b) return n ? `${n} night${n === 1 ? "" : "s"}` : "";
+  return `${a} → ${b}${n ? ` · ${n} night${n === 1 ? "" : "s"}` : ""}`;
+}
+
+type RoomSelectConfirm = {
+  room: Record<string, unknown>;
+  rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null };
+  stayCity?: string;
+};
+
+function HotelRoomSelectionPanel({
+  hotel,
+  stay,
+  quoteRooms,
+  onBack,
+  onConfirm,
+  confirming,
+}: {
+  hotel: ProductRecord;
+  stay: { checkIn: string; checkOut: string; nights: number | null; city?: string };
+  quoteRooms: number;
+  onBack: () => void;
+  onConfirm: (payload: RoomSelectConfirm) => void | Promise<void>;
+  confirming: boolean;
+}) {
+  const { toast } = useToast();
+  const roomsRaw = Array.isArray(hotel.roomCategories)
+    ? (hotel.roomCategories as Array<Record<string, unknown>>)
+    : [];
+  const rooms = roomsRaw.length
+    ? roomsRaw
+    : [{ name: "Standard Room", mealPlan: "Breakfast", pricing: {} }];
+  const [filter, setFilter] = useState<"all" | "room_only" | "breakfast" | "free_cancel">("all");
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
+  const hero = firstProductImage(hotel);
+  const stars = hotelStarNumber(hotel);
+  const address = String(hotel.address || hotel.location || "");
+  const nights = stay.nights && stay.nights > 0
+    ? stay.nights
+    : stayNights(stay.checkIn, stay.checkOut);
+  const busy = confirming || submitting;
+
+  const filtered = useMemo(() => {
+    return rooms.filter((room) => {
+      const meal = mealPlanKey(room.mealPlan);
+      if (filter === "room_only") return isRoomOnlyMeal(meal);
+      if (filter === "breakfast") return isBreakfastMeal(meal);
+      if (filter === "free_cancel") return roomIsRefundable(room, hotel);
+      return true;
+    });
+  }, [rooms, filter, hotel]);
+
+  useEffect(() => {
+    setSelectedIdx(0);
+  }, [filter, hotel.id]);
+
+  const selected = filtered[selectedIdx] || filtered[0] || rooms[0] || null;
+
+  async function confirm() {
+    if (submitLock.current || busy) return;
+    if (!selected) {
+      toast({ title: "No room options available for this hotel", variant: "destructive" });
+      return;
+    }
+    if (!stay.checkIn || !stay.checkOut) {
+      toast({
+        title: "Travel dates missing",
+        description: "Set Travel Date and trip-city nights in Basic Details, then try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    submitLock.current = true;
+    setSubmitting(true);
+    try {
+      const availParams = new URLSearchParams({
+        checkIn: stay.checkIn,
+        checkOut: stay.checkOut,
+        rooms: String(quoteRooms),
+      });
+      if (selected.name) availParams.set("roomType", String(selected.name));
+      const avail = await apiFetch<{ ok: boolean; message?: string | null }>(
+        `/api/products/hotels/${hotel.id}/catalogue-availability?${availParams.toString()}`,
+      );
+      if (!avail.ok) {
+        toast({
+          title: avail.message || "Hotel catalogue inventory unavailable for these dates",
+          description: "Catalogue availability only — not a live supplier confirmation.",
+          variant: "destructive",
+        });
+        submitLock.current = false;
+        setSubmitting(false);
+        return;
+      }
+      const params = new URLSearchParams({
+        productType: "HOTEL",
+        productId: hotel.id,
+        travelDate: stay.checkIn,
+      });
+      if (selected.name) params.set("roomType", String(selected.name));
+      if (selected.mealPlan) params.set("mealPlan", String(selected.mealPlan));
+      const rate = await apiFetch<{
+        applicable: boolean;
+        message?: string;
+        rateId?: string;
+        validFrom?: string;
+        validTo?: string;
+        contractedCost?: number;
+        displayPrice?: number | null;
+      }>(`/api/contracted-rates/applicable?${params.toString()}`);
+      if (!rate.applicable || !rate.rateId) {
+        toast({
+          title: rate.message || NO_VALID_RATE,
+          description: `${hotel.name} needs an active contracted rate covering ${stay.checkIn}.`,
+          variant: "destructive",
+        });
+        submitLock.current = false;
+        setSubmitting(false);
+        return;
+      }
+      await onConfirm({
+        room: selected,
+        rate: {
+          rateId: rate.rateId,
+          validFrom: rate.validFrom || "",
+          validTo: rate.validTo || "",
+          contractedCost: rate.contractedCost,
+          displayPrice: rate.displayPrice,
+        },
+        stayCity: stay.city,
+      });
+      // Keep lock held after success — panel unmounts; prevents a late second confirm.
+    } catch {
+      toast({ title: NO_VALID_RATE, variant: "destructive" });
+      submitLock.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  const filters: Array<{ key: typeof filter; label: string }> = [
+    { key: "all", label: "All" },
+    { key: "room_only", label: "Room Only" },
+    { key: "breakfast", label: "Breakfast Included" },
+    { key: "free_cancel", label: "Free Cancellation" },
+  ];
+
+  return (
+    <div className="rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col min-h-[min(70vh,720px)] max-h-[min(75vh,780px)]">
+      <div className="px-4 py-3 border-b bg-muted/20 shrink-0 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Room selection</p>
+          <p className="text-base sm:text-lg font-semibold text-foreground mt-0.5 truncate">
+            {hotel.name}{hotel.city ? `, ${hotel.city}` : hotel.destination?.name ? `, ${hotel.destination.name}` : ""}
+          </p>
+        </div>
+        <Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 shrink-0" onClick={onBack}>
+          <X className="w-4 h-4" />
+        </Button>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="relative h-36 sm:h-44 bg-muted">
+          {hero ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={hero} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-teal-100 to-primary/20">
+              <Hotel className="w-12 h-12 text-teal-600/70" />
+            </div>
+          )}
+        </div>
+        <div className="px-4 py-3 space-y-2 border-b">
+          <div className="flex items-center gap-2 flex-wrap">
+            {stars > 0 && (
+              <span className="flex items-center gap-0.5">
+                {Array.from({ length: Math.min(stars, 5) }).map((_, i) => (
+                  <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                ))}
+              </span>
+            )}
+            <p className="font-semibold text-sm">{hotel.name}</p>
+          </div>
+          {address && (
+            <p className="text-xs text-muted-foreground flex items-start gap-1">
+              <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-teal-600" />
+              <span>{address}</span>
+            </p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            {[stars ? `${stars}* hotel` : null, hotel.city || hotel.destination?.name || null]
+              .filter(Boolean)
+              .join(" · ") || "Catalogue hotel"}
+          </p>
+        </div>
+
+        <div className="px-4 py-3 flex flex-wrap gap-2 border-b">
+          {filters.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setFilter(f.key)}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium border transition-colors",
+                filter === f.key
+                  ? "bg-teal-600 text-white border-teal-600"
+                  : "bg-background text-foreground border-border hover:bg-muted/50",
+              )}
+            >
+              {filter === f.key && f.key === "breakfast" ? (
+                <span className="inline-flex items-center gap-1"><Coffee className="w-3 h-3" />{f.label}</span>
+              ) : f.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className="rounded-full px-3 py-1.5 text-xs font-medium border border-border text-muted-foreground hover:bg-muted/50"
+          >
+            Reset
+          </button>
+        </div>
+
+        <div className="px-4 py-3 space-y-3 pb-24">
+          {filtered.length === 0 && (
+            <div className="rounded-xl border bg-background p-6 text-center text-sm text-muted-foreground">
+              No rooms match this filter. Try All or Reset.
+            </div>
+          )}
+          {filtered.map((room, idx) => {
+            const unit = roomNightUnitPrice(room);
+            const stayTotal = unit > 0 && nights ? unit * quoteRooms * nights : unit;
+            const meal = String(room.mealPlan || "").trim();
+            const refundable = roomIsRefundable(room, hotel);
+            const thumb = roomThumb(room, hotel);
+            const isSelected = selected === room;
+            return (
+              <button
+                key={`${String(room.name || "room")}-${idx}`}
+                type="button"
+                onClick={() => setSelectedIdx(idx)}
+                className={cn(
+                  "w-full text-left rounded-xl border bg-background p-3 grid grid-cols-[96px_1fr] gap-3 transition-all",
+                  isSelected ? "border-teal-600 shadow-sm" : "border-border hover:border-teal-600/40",
+                )}
+              >
+                <div className="relative h-24 rounded-lg overflow-hidden bg-muted">
+                  {thumb ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={thumb} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Hotel className="w-8 h-8 text-muted-foreground/40" />
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex flex-col gap-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-sm leading-snug">{String(room.name || "Room")}</p>
+                    {isSelected && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 text-white text-[10px] font-semibold px-2 py-1 shrink-0">
+                        <Check className="w-3 h-3" /> Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Room Info · Booking Policy
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-[11px]">
+                    {meal && (
+                      <span className="inline-flex items-center gap-1 text-muted-foreground">
+                        <Coffee className="w-3 h-3" /> {meal}
+                      </span>
+                    )}
+                    {refundable ? (
+                      <span className="text-emerald-600 font-medium">Refundable</span>
+                    ) : (
+                      <span className="text-muted-foreground">Cancellation as per policy</span>
+                    )}
+                    <span className="text-amber-600 font-medium">On Request</span>
+                  </div>
+                  <p className="text-sm font-semibold text-teal-700 dark:text-teal-400 mt-auto pt-1">
+                    {stayTotal > 0
+                      ? `${formatFullINR(stayTotal)}${nights ? ` for ${nights} night${nights === 1 ? "" : "s"}` : ""}`
+                      : "Rate on confirm"}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="shrink-0 border-t bg-slate-900 text-white px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold truncate">
+            {quoteRooms} Room(s){selected ? ` · ${String(selected.name || "Room")}` : ""}
+          </p>
+          <p className="text-[11px] text-white/70">
+            {formatStayLabel(stay.checkIn, stay.checkOut, nights)}
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy || !selected}
+          className="bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+          onClick={() => void confirm()}
+        >
+          {busy ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
+          Confirm & Add Hotel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function isRecommendedHotel(item: ProductRecord): boolean {
+  // Server annotates contracted-rate eligibility. Stars / isFeatured are NOT substitutes.
+  return item.hasApplicableContractedRate === true;
+}
+
 function CatalogPicker({
   kind,
   travelDate,
   travelEndDate,
   destinationId,
   destination,
+  tripCities: tripCitiesProp,
+  stayWindows = [],
+  initialStar,
+  defaultRooms,
   open,
   onOpenChange,
   onAddSelfBooked,
   onPick,
+  variant = "dropdown",
 }: {
   kind: keyof typeof CATALOG_TYPE;
   travelDate?: string;
   travelEndDate?: string;
   destinationId?: string;
   destination?: string;
+  /** Cities selected in Basic Details trip plan. */
+  tripCities?: string[];
+  stayWindows?: TripCityStayWindow[];
+  /** Quote hotel star preference — initializes filter when catalogue opens; user may change. */
+  initialStar?: string;
+  defaultRooms?: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddSelfBooked?: () => void;
-  onPick: (item: ProductRecord, rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null }) => void;
+  onAddSelfBooked?: (preferredCity?: string) => void;
+  onPick: (
+    item: ProductRecord,
+    rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null },
+    stayCity?: string,
+    room?: Record<string, unknown> | null,
+  ) => void;
+  /** Hotels: "inline" fills the Hotels step; other catalogs keep dropdown. */
+  variant?: "dropdown" | "inline";
 }) {
   const { toast } = useToast();
   const [q, setQ] = useState("");
@@ -3450,12 +5359,50 @@ function CatalogPicker({
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [availableOnly, setAvailableOnly] = useState(true);
+  const [priceSort, setPriceSort] = useState<"low" | "high">("low");
+  const [hotelTab, setHotelTab] = useState<"recommended" | "all">("recommended");
+  const [cityFilter, setCityFilter] = useState<string>("all");
+  const [pickingId, setPickingId] = useState<string | null>(null);
+  const [roomSelectHotel, setRoomSelectHotel] = useState<ProductRecord | null>(null);
+  const [confirmingRoom, setConfirmingRoom] = useState(false);
   const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
   const [items, setItems] = useState<ProductRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const tripCityKey = (tripCitiesProp || []).map((c) => c.trim()).filter(Boolean).join("|");
+  const tripCities = useMemo(
+    () => [...new Set(tripCityKey ? tripCityKey.split("|") : [])],
+    [tripCityKey],
+  );
   const destLabel = (destination || "").trim();
   const isHotels = kind === "hotels";
+  const quoteRooms = Math.max(1, Number(defaultRooms) || 1);
+  const activeCities = useMemo(() => {
+    if (!isHotels) return [] as string[];
+    if (cityFilter !== "all") return [cityFilter];
+    if (tripCities.length) return tripCities;
+    return destLabel ? [destLabel] : [];
+  }, [isHotels, cityFilter, tripCities, destLabel]);
+
+  const activeStay = useMemo(() => {
+    if (cityFilter !== "all") return findStayWindowForCity(stayWindows, cityFilter) || null;
+    if (stayWindows.length === 1) return stayWindows[0];
+    return null;
+  }, [cityFilter, stayWindows]);
+
+  const stayCheckIn = activeStay?.checkIn || travelDate || "";
+  const stayCheckOut = activeStay?.checkOut || travelEndDate || "";
+
+  useEffect(() => {
+    if (!open) return;
+    const pref = (initialStar || "").trim();
+    setStar(pref || "all");
+    setHotelTab("recommended");
+    setPriceSort("low");
+    setQ("");
+    setCityFilter(tripCities[0] || "all");
+    setRoomSelectHotel(null);
+  }, [open, initialStar, tripCities]);
 
   useEffect(() => {
     if (!open || !isHotels) return;
@@ -3470,29 +5417,48 @@ function CatalogPicker({
     const t = setTimeout(() => {
       void (async () => {
         try {
-          const params = new URLSearchParams({ liveOnly: "true", pageSize: isHotels ? "50" : "20" });
+          const params = new URLSearchParams({ liveOnly: "true", pageSize: isHotels ? "80" : "20" });
           if (q.trim()) params.set("q", q.trim());
-          if (destinationId) params.set("destinationId", destinationId);
-          else if (destLabel) params.set("city", destLabel);
-          if (isHotels && star !== "all") params.set("starCategory", star);
-          if (isHotels && supplierId !== "all") params.set("supplierId", supplierId);
+          if (isHotels) {
+            // Prefer trip-plan cities over a single destinationId so multi-city quotes match correctly.
+            if (activeCities.length > 1) params.set("cities", activeCities.join(","));
+            else if (activeCities.length === 1) params.set("city", activeCities[0]);
+            else if (destinationId) params.set("destinationId", destinationId);
+            else if (destLabel) params.set("city", destLabel);
+            if (supplierId !== "all") params.set("supplierId", supplierId);
+            if (travelDate) params.set("travelDate", travelDate);
+            const cityStayPayload = encodeCityStayDates(stayWindows);
+            if (cityStayPayload) params.set("cityStayDates", cityStayPayload);
+            if (hotelTab === "recommended") params.set("recommendedOnly", "true");
+          } else {
+            if (destinationId) params.set("destinationId", destinationId);
+            else if (destLabel) params.set("city", destLabel);
+          }
           const res = await apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${params.toString()}`);
           let next = res.items || [];
           if (isHotels) {
+            // Keep only hotels that match selected trip cities when API returns broader results.
+            if (activeCities.length) {
+              next = next.filter((item) => activeCities.some((c) => hotelMatchesTripCity(item, c)));
+            }
             const min = Number(minPrice);
             const max = Number(maxPrice);
             if (Number.isFinite(min) && min > 0) next = next.filter((item) => hotelDisplayPrice(item) >= min);
             if (Number.isFinite(max) && max > 0) next = next.filter((item) => hotelDisplayPrice(item) <= max);
-            if (availableOnly && travelDate && travelEndDate) {
+            const availIn = stayCheckIn || travelDate;
+            const availOut = stayCheckOut || travelEndDate;
+            if (availableOnly && availIn && availOut) {
               const checked = await Promise.all(
                 next.map(async (item) => {
                   try {
                     const rooms = Array.isArray(item.roomCategories) ? (item.roomCategories as Array<Record<string, unknown>>) : [];
                     const firstRoom = rooms[0];
+                    const itemStay = findStayWindowForCity(stayWindows, String(item.city || item.destination?.name || ""))
+                      || activeStay;
                     const availParams = new URLSearchParams({
-                      checkIn: travelDate,
-                      checkOut: travelEndDate,
-                      rooms: "1",
+                      checkIn: itemStay?.checkIn || availIn,
+                      checkOut: itemStay?.checkOut || availOut,
+                      rooms: String(quoteRooms),
                     });
                     if (firstRoom?.name) availParams.set("roomType", String(firstRoom.name));
                     const avail = await apiFetch<{ ok: boolean }>(
@@ -3516,7 +5482,7 @@ function CatalogPicker({
       })();
     }, 250);
     return () => clearTimeout(t);
-  }, [open, q, kind, destinationId, destLabel, star, supplierId, minPrice, maxPrice, availableOnly, travelDate, travelEndDate, isHotels]);
+  }, [open, q, kind, destinationId, destLabel, supplierId, minPrice, maxPrice, availableOnly, travelDate, travelEndDate, isHotels, activeCities, stayWindows, stayCheckIn, stayCheckOut, activeStay, quoteRooms, hotelTab]);
 
   useEffect(() => {
     if (!open) return;
@@ -3527,6 +5493,7 @@ function CatalogPicker({
       onOpenChange(false);
     }
     function onPointer(e: MouseEvent) {
+      if (isHotels) return;
       const el = panelRef.current;
       if (!el) return;
       if (e.target instanceof Node && !el.contains(e.target)) onOpenChange(false);
@@ -3537,23 +5504,532 @@ function CatalogPicker({
       document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("mousedown", onPointer);
     };
-  }, [open, onOpenChange]);
+  }, [open, onOpenChange, isHotels]);
+
+  const starCounts = useMemo(() => {
+    const counts: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    for (const item of items) {
+      const n = hotelStarNumber(item);
+      if (n >= 1 && n <= 5) counts[n] += 1;
+      else if (n > 5) counts[5] += 1;
+    }
+    return counts;
+  }, [items]);
+
+  const hotelList = useMemo(() => {
+    let list = [...items];
+    if (star !== "all") {
+      const want = Number(star);
+      list = list.filter((item) => hotelStarNumber(item) === want || (want === 5 && hotelStarNumber(item) >= 5));
+    }
+    if (hotelTab === "recommended") {
+      list = list.filter((item) => isRecommendedHotel(item));
+    }
+    list.sort((a, b) => {
+      const pa = hotelDisplayPrice(a);
+      const pb = hotelDisplayPrice(b);
+      return priceSort === "low" ? pa - pb : pb - pa;
+    });
+    return list;
+  }, [items, star, hotelTab, priceSort]);
+
+  async function pickCatalogItem(item: ProductRecord) {
+    if (!travelDate) {
+      toast({ title: "Select a travel start date before choosing a contracted product.", variant: "destructive" });
+      return;
+    }
+    if (kind === "hotels") {
+      const productCity = String(
+        item.city || item.destination?.name || (cityFilter !== "all" ? cityFilter : ""),
+      ).trim();
+      const stayCity = cityFilter !== "all"
+        ? cityFilter
+        : (findStayWindowForCity(stayWindows, productCity)?.city || productCity || undefined);
+      const stay = (stayCity && findStayWindowForCity(stayWindows, stayCity)) || activeStay;
+      const cin = stay?.checkIn || travelDate;
+      const cout = stay?.checkOut || travelEndDate;
+      if (!cin || !cout) {
+        toast({
+          title: "Travel end date is missing",
+          description: "Set Travel Date and trip-city nights in Basic Details, then try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setRoomSelectHotel(item);
+      return;
+    }
+    setPickingId(item.id);
+    try {
+      const params = new URLSearchParams({
+        productType: CATALOG_TYPE[kind],
+        productId: item.id,
+        travelDate,
+      });
+      if (item.vehicleType) params.set("vehicleType", String(item.vehicleType));
+      if (item.transferType) params.set("transferType", String(item.transferType));
+      if (item.ticketType) params.set("ticketType", String(item.ticketType));
+      if (item.cabinClass) params.set("cabinClass", String(item.cabinClass));
+      const rate = await apiFetch<{
+        applicable: boolean;
+        message?: string;
+        rateId?: string;
+        validFrom?: string;
+        validTo?: string;
+        contractedCost?: number;
+        displayPrice?: number | null;
+      }>(`/api/contracted-rates/applicable?${params.toString()}`);
+      if (!rate.applicable || !rate.rateId) {
+        toast({
+          title: rate.message || NO_VALID_RATE,
+          description: `${item.name} needs an active contracted rate covering ${travelDate}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      onPick(
+        item,
+        {
+          rateId: rate.rateId,
+          validFrom: rate.validFrom || "",
+          validTo: rate.validTo || "",
+          contractedCost: rate.contractedCost,
+          displayPrice: rate.displayPrice,
+        },
+      );
+      onOpenChange(false);
+    } catch {
+      toast({ title: NO_VALID_RATE, variant: "destructive" });
+    } finally {
+      setPickingId(null);
+    }
+  }
+
+  function hotelStayForItem(item: ProductRecord) {
+    const productCity = String(
+      item.city || item.destination?.name || (cityFilter !== "all" ? cityFilter : ""),
+    ).trim();
+    const stayCity = cityFilter !== "all"
+      ? cityFilter
+      : (findStayWindowForCity(stayWindows, productCity)?.city || productCity || undefined);
+    const stay = (stayCity && findStayWindowForCity(stayWindows, stayCity)) || activeStay;
+    return {
+      checkIn: stay?.checkIn || travelDate || "",
+      checkOut: stay?.checkOut || travelEndDate || "",
+      nights: stay?.nights ?? stayNights(stay?.checkIn || travelDate, stay?.checkOut || travelEndDate),
+      city: stay?.city || stayCity,
+    };
+  }
+
+  function resetHotelFilters() {
+    setQ("");
+    setStar("all");
+    setSupplierId("all");
+    setMinPrice("");
+    setMaxPrice("");
+    setAvailableOnly(true);
+    setPriceSort("low");
+    setHotelTab("recommended");
+    setCityFilter(tripCities[0] || "all");
+  }
+
+  const isInlineHotels = isHotels && variant === "inline";
+
+  if (isInlineHotels && open && roomSelectHotel) {
+    const stay = hotelStayForItem(roomSelectHotel);
+    return (
+      <HotelRoomSelectionPanel
+        hotel={roomSelectHotel}
+        stay={stay}
+        quoteRooms={quoteRooms}
+        confirming={confirmingRoom}
+        onBack={() => setRoomSelectHotel(null)}
+        onConfirm={async ({ room, rate, stayCity }) => {
+          setConfirmingRoom(true);
+          try {
+            onPick(roomSelectHotel, rate, stayCity || stay.city, room);
+            setRoomSelectHotel(null);
+            onOpenChange(false);
+          } finally {
+            setConfirmingRoom(false);
+          }
+        }}
+      />
+    );
+  }
+
+  if (isInlineHotels && open) {
+    return (
+      <div className="rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col min-h-[min(70vh,720px)] max-h-[min(75vh,780px)]">
+            <div className="px-4 py-3 border-b bg-muted/20 shrink-0">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Hotel selection</p>
+                  <p className="text-base sm:text-lg font-semibold text-foreground mt-0.5">
+                    Find your ideal hotel at the best price
+                  </p>
+                  {activeCities.length > 0 ? (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Based on your trip plan
+                      {cityFilter === "all" && tripCities.length > 1
+                        ? `: ${tripCities.join(" · ")}`
+                        : `: ${activeCities.join(" · ")}`}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                      Add cities in Basic Details to recommend hotels for your trip.
+                    </p>
+                  )}
+                  {tripCities.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2.5">
+                      {tripCities.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setCityFilter("all")}
+                          className={cn(
+                            "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+                            cityFilter === "all"
+                              ? "bg-teal-600 text-white border-teal-600"
+                              : "bg-background border-border text-muted-foreground hover:bg-muted/50",
+                          )}
+                        >
+                          All trip cities
+                        </button>
+                      )}
+                      {tripCities.map((city) => (
+                        <button
+                          key={city}
+                          type="button"
+                          onClick={() => setCityFilter(city)}
+                          className={cn(
+                            "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+                            cityFilter === city
+                              ? "bg-teal-600 text-white border-teal-600"
+                              : "bg-background border-border text-muted-foreground hover:bg-muted/50",
+                          )}
+                        >
+                          {city}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {[
+                      { icon: ShieldCheck, label: "Free Cancellation" },
+                      { icon: BadgeCheck, label: "Best Price Promise" },
+                      { icon: Headphones, label: "24×7 Travel Support" },
+                    ].map((chip) => (
+                      <span
+                        key={chip.label}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
+                      >
+                        <chip.icon className="w-3.5 h-3.5 text-primary" />
+                        {chip.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <p className="text-xs text-muted-foreground">
+                    {loading ? "…" : `${hotelList.length} results`}
+                  </p>
+                  <Button type="button" size="sm" variant="outline" onClick={() => onOpenChange(false)}>
+                    <X className="w-3.5 h-3.5 mr-1" /> Back
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] flex-1 min-h-0">
+              <aside className="border-b md:border-b-0 md:border-r p-4 space-y-5 bg-background overflow-y-auto">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                  <Input
+                    className="h-9 pl-8 text-sm rounded-full"
+                    placeholder="Search by hotel name…"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    autoFocus
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">Filters</p>
+                  <button type="button" className="text-xs text-rose-600 hover:underline" onClick={resetHotelFilters}>
+                    Reset
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">Sort by Price</p>
+                  <div className="space-y-1.5">
+                    {(
+                      [
+                        { key: "low" as const, label: "Low → High" },
+                        { key: "high" as const, label: "High → Low" },
+                      ]
+                    ).map((opt) => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setPriceSort(opt.key)}
+                        className={cn(
+                          "w-full h-9 rounded-lg border text-sm font-medium transition-colors",
+                          priceSort === opt.key
+                            ? "bg-teal-600 text-white border-teal-600"
+                            : "bg-background border-border text-foreground hover:bg-muted/50",
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground">Star Rating</p>
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => setStar("all")}
+                      className={cn(
+                        "w-full flex items-center justify-between rounded-lg px-2 py-1.5 text-sm",
+                        star === "all" ? "bg-primary/10 font-medium text-primary" : "hover:bg-muted/50",
+                      )}
+                    >
+                      <span>Any</span>
+                      <span className="text-xs text-muted-foreground">{items.length}</span>
+                    </button>
+                    {[5, 4, 3, 2, 1].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setStar(String(n))}
+                        className={cn(
+                          "w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm",
+                          star === String(n) ? "bg-primary/10 font-medium" : "hover:bg-muted/50",
+                        )}
+                      >
+                        <span className="flex items-center gap-0.5">
+                          {Array.from({ length: n }).map((_, i) => (
+                            <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          ))}
+                        </span>
+                        <span className="flex-1 h-px bg-border" />
+                        <span className="text-xs text-muted-foreground w-5 text-right">{starCounts[n] || 0}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2 pt-1 border-t">
+                  <Label className="text-xs text-muted-foreground">Supplier</Label>
+                  <Select value={supplierId} onValueChange={setSupplierId}>
+                    <SelectTrigger className="h-9 w-full text-sm"><SelectValue placeholder="Any supplier" /></SelectTrigger>
+                    <SelectContent side="bottom" avoidCollisions={false}>
+                      <SelectItem value="all">Any supplier</SelectItem>
+                      {suppliers.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground pt-1">
+                    <Checkbox checked={availableOnly} onCheckedChange={(v) => setAvailableOnly(v === true)} />
+                    Available for travel dates
+                  </label>
+                </div>
+              </aside>
+
+              <div className="flex flex-col min-h-0 bg-muted/10 overflow-hidden">
+                <div className="px-4 pt-4 pb-2 flex flex-wrap items-center gap-2 shrink-0">
+                  {(
+                    [
+                      { key: "recommended" as const, label: "Recommended", icon: Star },
+                      { key: "all" as const, label: "All hotels", icon: Hotel },
+                    ]
+                  ).map((tab) => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setHotelTab(tab.key)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium border transition-colors",
+                        hotelTab === tab.key
+                          ? "bg-teal-600 text-white border-teal-600"
+                          : "bg-background text-foreground border-border hover:bg-muted/50",
+                      )}
+                    >
+                      <tab.icon className={cn("w-3.5 h-3.5", hotelTab === tab.key && tab.key === "recommended" ? "fill-amber-300 text-amber-300" : "")} />
+                      {tab.label}
+                    </button>
+                  ))}
+                  {onAddSelfBooked && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenChange(false);
+                        onAddSelfBooked(cityFilter !== "all" ? cityFilter : undefined);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium border bg-background text-foreground border-border hover:bg-muted/50"
+                    >
+                      <Home className="w-3.5 h-3.5" />
+                      Self booked
+                    </button>
+                  )}
+                </div>
+
+                <p className="px-4 pb-2 text-xs text-muted-foreground shrink-0">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal-500 mr-1.5 align-middle" />
+                  {loading ? "Loading hotels…" : `${hotelList.length} hotels found`}
+                  {cityFilter !== "all" ? ` · ${cityFilter}` : destLabel ? ` · ${destLabel}` : ""}
+                  {stayCheckIn && stayCheckOut
+                    ? ` · ${stayCheckIn} → ${stayCheckOut}${activeStay ? ` (${activeStay.nights}n)` : ""}`
+                    : travelDate && travelEndDate
+                      ? ` · ${travelDate} → ${travelEndDate}`
+                      : ""}
+                  {` · ${quoteRooms} room${quoteRooms === 1 ? "" : "s"}`}
+                </p>
+
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 space-y-3">
+                  {loading && (
+                    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Loading hotels…
+                    </div>
+                  )}
+                  {!loading && hotelList.length === 0 && (
+                    <div className="rounded-xl border bg-background p-8 text-center space-y-3">
+                      <Hotel className="w-10 h-10 mx-auto text-muted-foreground/50" />
+                      <p className="text-sm text-muted-foreground">
+                        {destLabel ? `No hotels found for ${destLabel}.` : "No live hotels found."}
+                      </p>
+                      {onAddSelfBooked && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            onOpenChange(false);
+                            onAddSelfBooked(cityFilter !== "all" ? cityFilter : undefined);
+                          }}
+                        >
+                          <Plus className="w-3.5 h-3.5 mr-1" /> Add self-booked instead
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {!loading && hotelList.map((item) => {
+                    const img = firstProductImage(item);
+                    const stars = hotelStarNumber(item);
+                    const recommended = isRecommendedHotel(item);
+                    const city = String(item.city || item.destination?.name || destLabel || "");
+                    const country = String(item.country || item.destination?.country || "");
+                    const address = String(item.address || item.location || "");
+                    const price = hotelDisplayPrice(item);
+                    const roomCats = Array.isArray(item.roomCategories) ? (item.roomCategories as Array<Record<string, unknown>>) : [];
+                    const firstRoom = roomCats[0];
+                    const roomLabel = firstRoom?.name ? String(firstRoom.name) : "";
+                    const mealLabel = firstRoom?.mealPlan ? String(firstRoom.mealPlan) : "";
+                    const cancelLabel = String(item.cancellationPolicy || item.cancellation || "").trim();
+                    const busy = pickingId === item.id;
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-xl border bg-background shadow-sm hover:border-teal-600/40 hover:shadow-md transition-all"
+                      >
+                        <div className="grid grid-cols-1 sm:grid-cols-[168px_1fr] gap-0">
+                          <div className="relative h-36 sm:h-auto sm:min-h-[148px] bg-muted overflow-hidden rounded-t-xl sm:rounded-tr-none sm:rounded-l-xl">
+                            {img ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : (
+                              <div className="absolute inset-0 bg-gradient-to-br from-teal-100 via-cyan-50 to-primary/20 dark:from-teal-950/40 dark:via-background dark:to-primary/10 flex items-center justify-center">
+                                <Hotel className="w-12 h-12 text-teal-600/70" />
+                              </div>
+                            )}
+                            {recommended && (
+                              <span className="absolute top-0 left-0 z-10 bg-orange-500 text-white text-[10px] font-bold tracking-wide px-2.5 py-1 rounded-br-md shadow-sm">
+                                RECOMMENDED
+                              </span>
+                            )}
+                          </div>
+                          <div className="p-4 flex flex-col min-w-0 gap-1">
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              <MapPin className="w-3 h-3 shrink-0 text-teal-600" />
+                              <span className="truncate">{[city, country].filter(Boolean).join(", ") || "—"}</span>
+                            </p>
+                            <p className="font-semibold text-base text-foreground leading-snug truncate">{item.name}</p>
+                            {stars > 0 && (
+                              <span className="flex items-center gap-0.5 mt-0.5">
+                                {Array.from({ length: Math.min(stars, 5) }).map((_, i) => (
+                                  <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                ))}
+                                {stars > 5 ? <span className="text-[10px] text-muted-foreground ml-1">{stars}★</span> : null}
+                              </span>
+                            )}
+                            {(roomLabel || mealLabel) && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {[roomLabel, mealLabel].filter(Boolean).join(" · ")}
+                              </p>
+                            )}
+                            <p className="text-[11px] text-muted-foreground">
+                              Cancellation: {cancelLabel || "Unavailable in catalogue"}
+                            </p>
+                            {recommended ? (
+                              <p className="text-[11px] text-teal-700 dark:text-teal-400">Contracted rate available for stay dates</p>
+                            ) : (
+                              <p className="text-[11px] text-muted-foreground">No applicable contracted rate for stay dates</p>
+                            )}
+                            {address ? (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{address}</p>
+                            ) : item.supplier?.name ? (
+                              <p className="text-xs text-muted-foreground mt-1">Supplier · {item.supplier.name}</p>
+                            ) : null}
+                            <div className="mt-3 pt-1 flex items-end justify-between gap-3">
+                              <div>
+                                {price > 0 ? (
+                                  <>
+                                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">From</p>
+                                    <p className="text-sm font-semibold text-teal-700 dark:text-teal-400">{formatFullINR(price)}</p>
+                                  </>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">Rate on select</p>
+                                )}
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={busy}
+                                className="bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+                                onClick={() => void pickCatalogItem(item)}
+                              >
+                                {busy ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Crosshair className="w-3.5 h-3.5 mr-1.5" />}
+                                Select Hotel
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative" ref={panelRef}>
       <Button size="sm" variant="outline" type="button" onClick={() => onOpenChange(!open)}>
         <Search className="w-3.5 h-3.5 mr-1" /> Catalog
       </Button>
-      {open && (
-        <div className={cn("absolute right-0 z-20 mt-1 rounded-md border bg-popover p-2 shadow-md", isHotels ? "w-[22rem] sm:w-[28rem]" : "w-80")}>
+
+      {!isHotels && open ? (
+        <div className="absolute right-0 z-20 mt-1 rounded-md border bg-popover p-2 shadow-md w-80">
           <div className="flex items-center gap-1 mb-2">
             <Input
               className="h-8 text-xs flex-1"
-              placeholder={
-                isHotels
-                  ? (destLabel ? `Hotel name in ${destLabel}…` : "Search hotel name…")
-                  : (destLabel ? `Search ${kind} in ${destLabel}…` : `Search ${kind}…`)
-              }
+              placeholder={destLabel ? `Search ${kind} in ${destLabel}…` : `Search ${kind}…`}
               value={q}
               onChange={(e) => setQ(e.target.value)}
               autoFocus
@@ -3569,64 +6045,11 @@ function CatalogPicker({
               <X className="w-3.5 h-3.5" />
             </Button>
           </div>
-
-          {isHotels && (
-            <div className="grid grid-cols-2 gap-2 mb-2">
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Destination</Label>
-                <Input className="h-8 text-xs" value={destLabel || "—"} readOnly />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Star rating</Label>
-                <Select value={star} onValueChange={setStar}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Any" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Any</SelectItem>
-                    {[5, 4, 3, 2, 1].map((n) => (
-                      <SelectItem key={n} value={String(n)}>{n}★</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1 col-span-2">
-                <Label className="text-[10px] text-muted-foreground">Supplier</Label>
-                <Select value={supplierId} onValueChange={setSupplierId}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Any supplier" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Any supplier</SelectItem>
-                    {suppliers.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Min price</Label>
-                <Input className="h-8 text-xs" type="number" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} placeholder="0" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[10px] text-muted-foreground">Max price</Label>
-                <Input className="h-8 text-xs" type="number" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="Any" />
-              </div>
-              <label className="col-span-2 flex items-center gap-2 text-[11px] text-muted-foreground px-0.5">
-                <Checkbox checked={availableOnly} onCheckedChange={(v) => setAvailableOnly(v === true)} />
-                Only show available for travel dates
-              </label>
-            </div>
-          )}
-
-          {destLabel && !isHotels && (
+          {destLabel && (
             <p className="text-[10px] text-muted-foreground px-1 mb-1.5">
               Showing live {kind} for {destLabel}
             </p>
           )}
-          {isHotels && destLabel && (
-            <p className="text-[10px] text-muted-foreground px-1 mb-1.5">
-              Hotel database · {destLabel}
-              {travelDate && travelEndDate ? ` · ${travelDate} → ${travelEndDate}` : ""}
-            </p>
-          )}
-
           <div className="max-h-56 overflow-y-auto space-y-1">
             {loading && <p className="text-[11px] text-muted-foreground px-1">Loading…</p>}
             {!loading && items.length === 0 && (
@@ -3642,7 +6065,7 @@ function CatalogPicker({
                     className="h-7 w-full text-xs"
                     onClick={() => {
                       onOpenChange(false);
-                      onAddSelfBooked();
+                            onAddSelfBooked(cityFilter !== "all" ? cityFilter : undefined);
                     }}
                   >
                     <Plus className="w-3 h-3 mr-1" /> Add self-booked instead
@@ -3655,83 +6078,9 @@ function CatalogPicker({
                 key={item.id}
                 type="button"
                 className="w-full text-left text-xs rounded px-2 py-1.5 hover:bg-muted"
-                onClick={() => {
-                  void (async () => {
-                    if (!travelDate) {
-                      toast({ title: "Select a travel start date before choosing a contracted product.", variant: "destructive" });
-                      return;
-                    }
-                    try {
-                      const rooms = Array.isArray(item.roomCategories) ? (item.roomCategories as Array<Record<string, unknown>>) : [];
-                      const firstRoom = rooms[0];
-                      if (kind === "hotels") {
-                        if (!travelEndDate) {
-                          toast({ title: "Select a travel end date before choosing a hotel.", variant: "destructive" });
-                          return;
-                        }
-                        const availParams = new URLSearchParams({
-                          checkIn: travelDate,
-                          checkOut: travelEndDate,
-                          rooms: "1",
-                        });
-                        if (firstRoom?.name) availParams.set("roomType", String(firstRoom.name));
-                        const avail = await apiFetch<{ ok: boolean; message?: string | null; liveSupplier?: boolean }>(
-                          `/api/products/hotels/${item.id}/catalogue-availability?${availParams.toString()}`,
-                        );
-                        if (!avail.ok) {
-                          toast({
-                            title: avail.message || "Hotel catalogue inventory unavailable for these dates",
-                            description: "Catalogue availability only — not a live supplier confirmation.",
-                            variant: "destructive",
-                          });
-                          return;
-                        }
-                      }
-                      const params = new URLSearchParams({
-                        productType: CATALOG_TYPE[kind],
-                        productId: item.id,
-                        travelDate,
-                      });
-                      if (firstRoom?.name) params.set("roomType", String(firstRoom.name));
-                      if (firstRoom?.mealPlan) params.set("mealPlan", String(firstRoom.mealPlan));
-                      if (item.vehicleType) params.set("vehicleType", String(item.vehicleType));
-                      if (item.transferType) params.set("transferType", String(item.transferType));
-                      if (item.ticketType) params.set("ticketType", String(item.ticketType));
-                      if (item.cabinClass) params.set("cabinClass", String(item.cabinClass));
-                      const rate = await apiFetch<{
-                        applicable: boolean;
-                        message?: string;
-                        rateId?: string;
-                        validFrom?: string;
-                        validTo?: string;
-                        contractedCost?: number;
-                        displayPrice?: number | null;
-                      }>(`/api/contracted-rates/applicable?${params.toString()}`);
-                      if (!rate.applicable || !rate.rateId || rate.contractedCost == null) {
-                        toast({
-                          title: rate.message || NO_VALID_RATE,
-                          description: `${item.name} needs an active contracted rate covering ${travelDate}. Add one under Contracted Rates, or use Add self-booked.`,
-                          variant: "destructive",
-                        });
-                        return;
-                      }
-                      onPick(item, { rateId: rate.rateId, validFrom: rate.validFrom || "", validTo: rate.validTo || "", contractedCost: rate.contractedCost, displayPrice: rate.displayPrice });
-                      onOpenChange(false);
-                    } catch {
-                      toast({ title: NO_VALID_RATE, variant: "destructive" });
-                    }
-                  })();
-                }}
+                onClick={() => void pickCatalogItem(item)}
               >
                 <span className="font-medium">{item.name}</span>
-                {isHotels && (
-                  <span className="block text-[10px] text-muted-foreground">
-                    {item.starCategory ? `${item.starCategory}★` : "Unrated"}
-                    {item.supplier?.name ? ` · ${item.supplier.name}` : ""}
-                    {hotelDisplayPrice(item) > 0 ? ` · ${formatFullINR(hotelDisplayPrice(item))}` : ""}
-                    {item.city || item.destination?.name ? ` · ${String(item.city || item.destination?.name)}` : ""}
-                  </span>
-                )}
                 {kind === "activities" && (
                   <span className="block text-[10px] text-muted-foreground">
                     {String(item.startTime || item.operatingHours || "Timing on request")}
@@ -3746,14 +6095,14 @@ function CatalogPicker({
                     {item.transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer"}
                   </span>
                 )}
-                {!isHotels && (item.city || item.destination?.name) && (
+                {(item.city || item.destination?.name) && (
                   <span className="text-muted-foreground"> · {String(item.city || item.destination?.name)}</span>
                 )}
               </button>
             ))}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

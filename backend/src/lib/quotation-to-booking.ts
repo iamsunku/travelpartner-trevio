@@ -138,39 +138,88 @@ async function copySelectedPackageToBookingTx(
   }
 
   for (const h of jsonArr(selected.hotels)) {
+    const selfBooked = h.selfBooked === true || String(h.source || "") === "MANUAL";
     await svc("Hotel", String(h.hotelName || h.name || "Hotel"), h, lineNote(h, [
+      selfBooked ? "Self-booked" : "",
       h.starCategory ? `${h.starCategory}*` : "",
       h.roomType ? String(h.roomType) : "",
       h.mealPlan ? String(h.mealPlan) : "",
+      h.tripCity || h.city ? String(h.tripCity || h.city) : "",
+      h.address ? `Address: ${h.address}` : "",
       h.checkIn && h.checkOut ? `${h.checkIn} → ${h.checkOut}` : "",
+      h.nights != null && h.nights !== "" ? `${h.nights} nights` : "",
       h.rooms ? `${h.rooms} rooms` : "",
     ]));
   }
   for (const f of jsonArr(selected.flights)) {
+    const paxBits = [
+      f.adults != null ? `${f.adults} adult(s)` : "",
+      f.children != null && Number(f.children) > 0 ? `${f.children} child(ren)` : "",
+      f.infants != null && Number(f.infants) > 0 ? `${f.infants} infant(s)` : "",
+    ].filter(Boolean);
     await svc("Flight", `${f.airline || "Flight"} ${f.flightNumber || f.flightNo || ""}`.trim(), f, lineNote(f, [
       f.from && f.to ? `${f.from} → ${f.to}` : "",
-      f.date ? String(f.date) : "",
+      f.date ? `Dep ${f.date}` : "",
+      f.arrivalDate ? `Arr ${f.arrivalDate}` : "",
+      f.depTime || f.arrTime ? `${f.depTime || ""}–${f.arrTime || ""}`.replace(/^–|–$/g, "") : "",
+      f.duration ? String(f.duration) : "",
+      f.stops != null && f.stops !== "" ? `${f.stops} stop(s)` : "",
+      f.baggage ? `Baggage: ${f.baggage}` : "",
       f.cabinClass || f.cabin ? String(f.cabinClass || f.cabin) : "",
+      f.source ? `Source: ${f.source}` : "",
+      paxBits.length ? paxBits.join(", ") : "",
+      f.pnr ? `PNR: ${f.pnr}` : "",
     ]));
   }
   for (const t of jsonArr(selected.transfers)) {
     await svc("Transfer", String(t.transferType || t.name || "Transfer"), t, lineNote(t, [
+      t.transferType ? String(t.transferType) : "",
       t.vehicleType ? String(t.vehicleType) : "",
-      t.pickup ? String(t.pickup) : "",
-      t.drop ? String(t.drop) : "",
-      t.date ? String(t.date) : "",
+      t.pickup || t.drop ? `${t.pickup || ""} → ${t.drop || ""}`.replace(/^\s*→\s*|\s*→\s*$/g, "").trim() : "",
+      t.date ? `Date ${t.date}` : "",
+      t.pickupTime ? `Pickup ${t.pickupTime}` : "",
+      t.duration ? `Duration ${t.duration}` : "",
+      t.pax != null && t.pax !== "" ? `${t.pax} pax` : "",
+      t.voucher ? `Voucher ${t.voucher}` : "",
+      t.source ? `Source: ${t.source}` : "",
+      t.currency ? String(t.currency) : "",
     ]));
   }
   for (const a of jsonArr(selected.activities)) {
+    const paxBits = [
+      a.adults != null && a.adults !== "" ? `${a.adults} adult(s)` : "",
+      a.children != null && Number(a.children) > 0 ? `${a.children} child(ren)` : "",
+    ].filter(Boolean);
     await svc("Attraction", String(a.activityName || a.name || "Activity"), a, lineNote(a, [
+      a.city || a.tripCity ? `City ${a.city || a.tripCity}` : "",
       a.ticketType ? String(a.ticketType) : "",
-      a.date ? String(a.date) : "",
+      a.date ? `Date ${a.date}` : "",
+      a.duration ? `Duration ${a.duration}` : "",
+      a.timeSlot || a.startTime ? `Time ${a.timeSlot || a.startTime}` : "",
+      paxBits.length ? paxBits.join(", ") : "",
+      a.voucher ? `Voucher ${a.voucher}` : "",
+      a.source ? `Source: ${a.source}` : "",
+      a.description ? String(a.description) : "",
     ]));
   }
   for (const m of jsonArr(selected.meals)) {
-    await svc("Other", `${m.mealType || "Meal"} ${m.restaurant || ""}`.trim(), m, lineNote(m, [
+    const paxBits = [
+      m.adults != null && m.adults !== "" ? `${m.adults} adult(s)` : "",
+      m.children != null && Number(m.children) > 0 ? `${m.children} child(ren)` : "",
+      m.infants != null && Number(m.infants) > 0 ? `${m.infants} infant(s)` : "",
+    ].filter(Boolean);
+    await svc("Meal", `${m.mealType || "Meal"} ${m.restaurant || ""}`.trim(), m, lineNote(m, [
+      m.city || m.tripCity ? `City ${m.city || m.tripCity}` : "",
+      m.location ? String(m.location) : "",
       m.cuisine ? String(m.cuisine) : "",
-      m.date ? String(m.date) : "",
+      m.date ? `Date ${m.date}` : "",
+      m.time ? `Time ${m.time}` : "",
+      m.duration ? `Duration ${m.duration}` : "",
+      paxBits.length ? paxBits.join(", ") : "",
+      m.dietary ? `Dietary ${m.dietary}` : "",
+      m.voucher ? `Voucher ${m.voucher}` : "",
+      m.source ? `Source: ${m.source}` : "",
+      m.description ? String(m.description) : "",
     ]));
   }
   const visa = selected.visa && typeof selected.visa === "object" ? (selected.visa as Record<string, unknown>) : null;

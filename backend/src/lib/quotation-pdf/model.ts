@@ -18,6 +18,7 @@ export type QuotationPdfPackage = {
     address?: string;
     imageUrl?: string;
     cancellationPolicy?: string;
+    selfBooked?: boolean;
   }>;
   flights: Array<{
     airline?: string;
@@ -25,11 +26,15 @@ export type QuotationPdfPackage = {
     from?: string;
     to?: string;
     date?: string;
+    arrivalDate?: string;
     depTime?: string;
     arrTime?: string;
     duration?: string;
+    stops?: number;
     cabin?: string;
     baggage?: string;
+    sellingPrice?: number;
+    currency?: string;
   }>;
   transfers: Array<{
     transferType?: string;
@@ -38,22 +43,42 @@ export type QuotationPdfPackage = {
     pickup?: string;
     drop?: string;
     date?: string;
+    pickupTime?: string;
+    duration?: string;
+    pax?: number;
+    remarks?: string;
+    sellingPrice?: number;
+    currency?: string;
     description?: string;
   }>;
   activities: Array<{
     activityName?: string;
     description?: string;
     date?: string;
+    city?: string;
     duration?: string;
+    timeSlot?: string;
+    paxLabel?: string;
     ticketType?: string;
+    sellingPrice?: number;
+    currency?: string;
     imageUrl?: string;
   }>;
   meals: Array<{
     mealType?: string;
     restaurant?: string;
+    location?: string;
     included?: boolean;
     date?: string;
+    city?: string;
     description?: string;
+    duration?: string;
+    time?: string;
+    paxLabel?: string;
+    remarks?: string;
+    voucher?: string;
+    sellingPrice?: number;
+    currency?: string;
   }>;
   visa?: {
     enabled: boolean;
@@ -83,7 +108,7 @@ export type QuotationPdfPackage = {
     date?: string;
     mealPlan?: string;
     coverImage?: string;
-    items: Array<{ activityName?: string; description?: string }>;
+    items: Array<{ activityName?: string; description?: string; itemType?: string; pickupTime?: string }>;
   }>;
   inclusions: string[];
   exclusions: string[];
@@ -243,7 +268,7 @@ function packagePricing(pkg: Record<string, unknown>, quote: Record<string, unkn
 function mapHotels(rows: Record<string, unknown>[]) {
   return rows.map((h) => ({
     hotelName: str(h.hotelName, "Accommodation"),
-    city: str(h.city) || undefined,
+    city: str(h.tripCity || h.city) || undefined,
     starCategory: str(h.starCategory) || undefined,
     roomType: str(h.roomType) || undefined,
     mealPlan: str(h.mealPlan) || undefined,
@@ -253,57 +278,118 @@ function mapHotels(rows: Record<string, unknown>[]) {
     address: str(h.address) || undefined,
     imageUrl: isImgUrl(h.imageUrl) ? str(h.imageUrl) : undefined,
     cancellationPolicy: str(h.cancellationPolicy) || undefined,
+    selfBooked: h.selfBooked === true || undefined,
   }));
 }
 
 function mapFlights(rows: Record<string, unknown>[]) {
-  return rows.map((f) => ({
-    airline: str(f.airline) || undefined,
-    flightNo: str(f.flightNo || f.flightNumber) || undefined,
-    from: str(f.from) || undefined,
-    to: str(f.to) || undefined,
-    date: str(f.date) || undefined,
-    depTime: str(f.depTime) || undefined,
-    arrTime: str(f.arrTime) || undefined,
-    duration: str(f.duration) || undefined,
-    cabin: str(f.cabin || f.cabinClass) || undefined,
-    baggage: str(f.baggage) || undefined,
-  }));
+  return rows.map((f) => {
+    const selling = Number(f.sellingPrice ?? f.fare ?? 0);
+    return {
+      airline: str(f.airline) || undefined,
+      flightNo: str(f.flightNo || f.flightNumber) || undefined,
+      from: str(f.from) || undefined,
+      to: str(f.to) || undefined,
+      date: str(f.date) || undefined,
+      arrivalDate: str(f.arrivalDate) || undefined,
+      depTime: str(f.depTime) || undefined,
+      arrTime: str(f.arrTime) || undefined,
+      duration: str(f.duration) || undefined,
+      stops: f.stops != null && f.stops !== "" ? Number(f.stops) : undefined,
+      cabin: str(f.cabin || f.cabinClass) || undefined,
+      baggage: str(f.baggage) || undefined,
+      sellingPrice: Number.isFinite(selling) && selling > 0 ? Math.round(selling) : undefined,
+      currency: str(f.currency) || undefined,
+    };
+  });
 }
 
 function mapTransfers(rows: Record<string, unknown>[]) {
-  return rows.map((t) => ({
-    transferType: str(t.transferType) || undefined,
-    route: str(t.route || `${str(t.from)} – ${str(t.to)}`) || undefined,
-    vehicleType: str(t.vehicleType) || undefined,
-    pickup: str(t.pickup || t.pickupTime) || undefined,
-    drop: str(t.drop || t.dropTime) || undefined,
-    date: str(t.date) || undefined,
-    description: str(t.description) || undefined,
-  }));
+  return rows.map((t) => {
+    const pickup = str(t.pickup) || undefined;
+    const drop = str(t.drop) || undefined;
+    const routeFromEnds = pickup && drop ? `${pickup} → ${drop}` : undefined;
+    const selling = Number(t.sellingPrice);
+    return {
+      transferType: str(t.transferType) || undefined,
+      route: str(t.route) || routeFromEnds || (str(t.from) && str(t.to) ? `${str(t.from)} – ${str(t.to)}` : undefined) || undefined,
+      vehicleType: str(t.vehicleType) || undefined,
+      pickup,
+      drop,
+      date: str(t.date) || undefined,
+      pickupTime: str(t.pickupTime || t.time) || undefined,
+      duration: str(t.duration) || undefined,
+      pax: Number.isFinite(Number(t.pax)) && Number(t.pax) > 0 ? Math.round(Number(t.pax)) : undefined,
+      remarks: str(t.remarks) || undefined,
+      sellingPrice: Number.isFinite(selling) && selling > 0 ? Math.round(selling) : undefined,
+      currency: str(t.currency) || undefined,
+      description: str(t.description) || undefined,
+    };
+  });
 }
 
 function mapActivities(rows: Record<string, unknown>[]) {
-  return rows.map((a) => ({
-    activityName: str(a.activityName) || undefined,
-    description: str(a.description) || undefined,
-    date: str(a.date) || undefined,
-    duration: str(a.duration) || undefined,
-    ticketType: str(a.ticketType) || undefined,
-    imageUrl: isImgUrl(a.imageUrl) ? str(a.imageUrl) : undefined,
-  }));
+  return rows.map((a) => {
+    const adults = Number(a.adults);
+    const children = Number(a.children);
+    const paxParts = [
+      Number.isFinite(adults) && adults > 0 ? `${Math.round(adults)} adult(s)` : "",
+      Number.isFinite(children) && children > 0 ? `${Math.round(children)} child(ren)` : "",
+    ].filter(Boolean);
+    const selling = Number(a.sellingPrice);
+    return {
+      activityName: str(a.activityName || a.name) || undefined,
+      description: str(a.description) || undefined,
+      date: str(a.date) || undefined,
+      city: str(a.city || a.tripCity) || undefined,
+      duration: str(a.duration) || undefined,
+      timeSlot: str(a.timeSlot || a.startTime || a.time) || undefined,
+      paxLabel: paxParts.length ? paxParts.join(", ") : undefined,
+      ticketType: str(a.ticketType) || undefined,
+      sellingPrice: Number.isFinite(selling) && selling > 0 ? Math.round(selling) : undefined,
+      currency: str(a.currency) || undefined,
+      imageUrl: isImgUrl(a.imageUrl) ? str(a.imageUrl) : undefined,
+    };
+  });
 }
 
 function mapMeals(rows: Record<string, unknown>[]) {
   return rows
     .filter((m) => m.includedInPlan !== true && m.included !== true)
-    .map((m) => ({
-      mealType: str(m.mealType || m.name) || undefined,
-      restaurant: str(m.restaurant) || undefined,
-      included: Boolean(m.included),
-      date: str(m.date) || undefined,
-      description: str(m.description) || undefined,
-    }));
+    .map((m) => {
+      const adults = Number(m.adults);
+      const children = Number(m.children);
+      const infants = Number(m.infants);
+      const paxParts = [
+        Number.isFinite(adults) && adults > 0 ? `${Math.round(adults)} adult(s)` : "",
+        Number.isFinite(children) && children > 0 ? `${Math.round(children)} child(ren)` : "",
+        Number.isFinite(infants) && infants > 0 ? `${Math.round(infants)} infant(s)` : "",
+      ].filter(Boolean);
+      const selling = Number(m.sellingPrice);
+      const fromAdultChild =
+        (m.adultRate != null || m.childRate != null)
+          ? Math.round(Number(m.adultRate || 0) * Number(m.adults || 0) + Number(m.childRate || 0) * Number(m.children || 0))
+          : 0;
+      const sellOut = Number.isFinite(selling) && selling > 0
+        ? Math.round(selling)
+        : (fromAdultChild > 0 ? fromAdultChild : undefined);
+      return {
+        mealType: str(m.mealType || m.name) || undefined,
+        restaurant: str(m.restaurant) || undefined,
+        location: str(m.location) || undefined,
+        included: Boolean(m.included),
+        date: str(m.date) || undefined,
+        city: str(m.city || m.tripCity) || undefined,
+        description: str(m.description) || undefined,
+        duration: str(m.duration) || undefined,
+        time: str(m.time || m.timeSlot) || undefined,
+        paxLabel: paxParts.length ? paxParts.join(", ") : undefined,
+        remarks: str(m.remarks) || undefined,
+        voucher: str(m.voucher) || undefined,
+        sellingPrice: sellOut,
+        currency: str(m.currency) || undefined,
+      };
+    });
 }
 
 function mapItinerary(rows: Record<string, unknown>[]) {
@@ -317,6 +403,8 @@ function mapItinerary(rows: Record<string, unknown>[]) {
     items: asArr(day.items).map((it) => ({
       activityName: str(it.activityName) || undefined,
       description: str(it.description) || undefined,
+      itemType: str(it.itemType) || undefined,
+      pickupTime: str(it.pickupTime) || undefined,
     })),
   }));
 }

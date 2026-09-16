@@ -66,6 +66,9 @@ export interface Flight {
   destinationCity: string;
   departTime: string;
   arriveTime: string;
+  /** YYYY-MM-DD when known (overnight flights). */
+  departDate?: string;
+  arrivalDate?: string;
   duration: string;
   stops: number;
   price: number;
@@ -77,6 +80,9 @@ export interface Flight {
   /** Provider baggage allowance when supplied (e.g. "1 × 23kg"). */
   baggage?: string;
   rating: number;
+  direction?: "outbound" | "return" | "segment";
+  segmentIndex?: number;
+  journeyId?: string;
 }
 
 export interface Hotel {

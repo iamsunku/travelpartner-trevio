@@ -52,9 +52,12 @@ describe("phase 12 flight sources → quotation lines", () => {
   it("B. Manual flight template supports required fields", () => {
     const line = manualFlightTemplate();
     expect(line.source).toBe("MANUAL");
-    for (const key of ["airline", "flightNumber", "from", "to", "duration", "baggage", "cabinClass", "pnr", "remarks", "currency"]) {
+    for (const key of ["airline", "flightNumber", "from", "to", "duration", "baggage", "cabinClass", "pnr", "remarks", "currency", "selfBooked"]) {
       expect(Object.prototype.hasOwnProperty.call(line, key)).toBe(true);
     }
+    expect(line.costPrice).toBeUndefined();
+    expect(line.sellingPrice).toBeUndefined();
+    expect(line.fare).toBeUndefined();
   });
 
   it("C. Contracted flight product maps with productId + cost/selling", () => {

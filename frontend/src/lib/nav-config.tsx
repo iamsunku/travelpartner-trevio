@@ -144,6 +144,10 @@ export function getNavForUser(user: Pick<User, "role" | "permissions" | "product
 }
 
 export function canAccessView(user: Pick<User, "role" | "permissions" | "productAccess">, view: ViewKey): boolean {
+  // Wizard is opened from Quotations — same permission gate, not a sidebar item.
+  if (view === "quotation-wizard") {
+    return canAccessView(user, "quotations");
+  }
   const mockOk = isMockInventoryEnabled();
   const stubsOk = isStubModulesEnabled();
   return NAV_SECTIONS.some((section) =>

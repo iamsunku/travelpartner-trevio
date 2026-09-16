@@ -200,6 +200,18 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
       for (const activity of pkg.activities.slice(0, 8)) {
         ensure(doc, 36, onNewPage);
         doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(11).text(activity.activityName || "Experience");
+        const meta = [
+          activity.city,
+          activity.date,
+          activity.duration,
+          activity.timeSlot,
+          activity.paxLabel,
+          activity.ticketType,
+          activity.sellingPrice != null
+            ? `${activity.currency || "INR"} ${Math.round(activity.sellingPrice).toLocaleString("en-IN")}`
+            : "",
+        ].filter(Boolean).join(" · ");
+        if (meta) body(doc, meta, { width: contentWidth() });
         if (activity.description) body(doc, activity.description, { width: contentWidth() });
         doc.moveDown(0.25);
       }
@@ -218,8 +230,10 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
           body(doc, [day.city, day.date].filter(Boolean).join(" · "));
         }
         for (const item of day.items) {
+          const prefix = item.itemType ? `[${String(item.itemType).charAt(0)}${String(item.itemType).slice(1).toLowerCase()}] ` : "";
+          const time = item.pickupTime ? `${item.pickupTime} · ` : "";
           const line = [item.activityName, item.description].filter(Boolean).join(" — ");
-          if (line) body(doc, `• ${line}`, { width: contentWidth() });
+          if (line) body(doc, `• ${prefix}${time}${line}`, { width: contentWidth() });
         }
         if (day.mealPlan) {
           doc.fillColor(TEAL).font("Helvetica-Bold").fontSize(9).text(`Meal plan: ${day.mealPlan}`);
@@ -240,6 +254,7 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
         const hotelRows: Array<[string, string]> = [
           ["Property", hotel.hotelName],
         ];
+        if (hotel.selfBooked) hotelRows.push(["Booking", "Self-booked by customer / agent"]);
         if (hotel.starCategory) hotelRows.push(["Category", `${hotel.starCategory} Star`]);
         if (hotel.address) hotelRows.push(["Address", hotel.address]);
         hotelRows.push(["Room", [hotel.roomType || "Standard", hotel.mealPlan || "Breakfast"].join(" · ")]);
@@ -258,14 +273,22 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
         ensure(doc, 36, onNewPage);
         const sector = [flight.from, flight.to].filter(Boolean).join(" to ") || "Sector as discussed";
         doc.fillColor(NAVY).font("Helvetica-Bold").fontSize(10).text(sector);
+        const dates = [flight.date, flight.arrivalDate && flight.arrivalDate !== flight.date ? `arr ${flight.arrivalDate}` : ""]
+          .filter(Boolean)
+          .join(" · ");
+        const priceBit = flight.sellingPrice != null
+          ? `${flight.currency || "INR"} ${Math.round(flight.sellingPrice).toLocaleString("en-IN")}`
+          : "";
         body(doc, [
           flight.airline,
           flight.flightNo,
-          flight.date,
+          dates,
           [flight.depTime, flight.arrTime].filter(Boolean).join(" – "),
           flight.cabin,
           flight.baggage,
           flight.duration,
+          flight.stops != null ? `${flight.stops} stop${flight.stops === 1 ? "" : "s"}` : "",
+          priceBit,
         ].filter(Boolean).join(" · "), { width: contentWidth() });
         doc.moveDown(0.25);
       }
@@ -281,12 +304,23 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
       heading(doc, "Ground transfers");
       for (const transfer of pkg.transfers) {
         ensure(doc, 28, onNewPage);
+        const route = transfer.route
+          || (transfer.pickup && transfer.drop ? `${transfer.pickup} → ${transfer.drop}` : "")
+          || transfer.pickup
+          || transfer.drop
+          || "";
         body(doc, [
           transfer.transferType,
-          transfer.route,
-          transfer.vehicleType,
-          transfer.pickup,
+          route,
           transfer.date,
+          transfer.pickupTime,
+          transfer.vehicleType,
+          transfer.duration,
+          transfer.pax != null ? `${transfer.pax} pax` : "",
+          transfer.remarks,
+          transfer.sellingPrice != null
+            ? `${transfer.currency || "INR"} ${Math.round(transfer.sellingPrice).toLocaleString("en-IN")}`
+            : "",
           transfer.description,
         ].filter(Boolean).join(" · "), { width: contentWidth() });
       }
@@ -297,8 +331,23 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
       kicker(doc, "Meals");
       heading(doc, "Meal arrangements");
       for (const meal of pkg.meals) {
-        ensure(doc, 22, onNewPage);
-        body(doc, [meal.mealType, meal.restaurant, meal.date, meal.description].filter(Boolean).join(" · "), { width: contentWidth() });
+        ensure(doc, 28, onNewPage);
+        body(doc, [
+          meal.mealType,
+          meal.city,
+          meal.date,
+          meal.time,
+          meal.restaurant,
+          meal.location,
+          meal.duration,
+          meal.paxLabel,
+          meal.remarks,
+          meal.voucher ? `Ref ${meal.voucher}` : "",
+          meal.sellingPrice != null
+            ? `${meal.currency || "INR"} ${Math.round(meal.sellingPrice).toLocaleString("en-IN")}`
+            : "",
+          meal.description,
+        ].filter(Boolean).join(" · "), { width: contentWidth() });
       }
     }
 

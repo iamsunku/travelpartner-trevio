@@ -233,7 +233,18 @@ function formatDurationHours(hours: number): string {
   return `${h}h ${m}m`;
 }
 
-export function generateFlights(origin: string, destination: string, count = 8): Flight[] {
+export function generateFlights(
+  origin: string,
+  destination: string,
+  count = 8,
+  opts: {
+    departureDate?: string;
+    cabinClass?: string;
+    direction?: Flight["direction"];
+    segmentIndex?: number;
+    journeyPrefix?: string;
+  } = {},
+): Flight[] {
   const flights: Flight[] = [];
   const depHours = ["06:00", "07:30", "09:15", "11:00", "13:45", "16:20", "18:30", "20:10", "22:05"];
   const tier = routeTier(origin, destination);
@@ -241,6 +252,8 @@ export function generateFlights(origin: string, destination: string, count = 8):
   const pool = airlinesForRoute(destination).map(airline).filter(Boolean);
   const originCity = AIRPORT_INDEX[origin]?.city || origin;
   const destinationCity = AIRPORT_INDEX[destination]?.city || destination;
+  const departDate = opts.departureDate || "";
+  const wantCabin = String(opts.cabinClass || "").trim();
 
   for (let i = 0; i < count; i++) {
     const al = pick(pool.length ? pool : AIRLINES, i);
@@ -248,25 +261,52 @@ export function generateFlights(origin: string, destination: string, count = 8):
     const dur = cfg.durMin + (i % 4) * (cfg.durSpread / 4) + (i % 2) * 0.5;
     const stops = i % 5 === 0 ? 1 : 0;
     const totalDur = dur + stops * 1.25;
-    const arrH = (parseInt(dep.slice(0, 2)) + Math.floor(totalDur)) % 24;
-    const arrM = (parseInt(dep.slice(3, 5)) + Math.round((totalDur % 1) * 60)) % 60;
+    const depH = parseInt(dep.slice(0, 2), 10);
+    const arrTotalMin = depH * 60 + parseInt(dep.slice(3, 5), 10) + Math.round(totalDur * 60);
+    const overnight = arrTotalMin >= 24 * 60;
+    const arrH = Math.floor(arrTotalMin / 60) % 24;
+    const arrM = arrTotalMin % 60;
+    let arrivalDate = departDate;
+    if (departDate && overnight) {
+      const d = new Date(`${departDate}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + 1);
+      arrivalDate = d.toISOString().slice(0, 10);
+    }
+    const cabin: Flight["cabin"] = wantCabin
+      ? (wantCabin as Flight["cabin"])
+      : (i % 6 === 0 ? "Business" : "Economy");
+    if (wantCabin && cabin.toLowerCase() !== wantCabin.toLowerCase() && i % 3 !== 0) {
+      // Keep a mix but prefer requested cabin for most mock rows.
+    }
+    const journeyId = opts.journeyPrefix ? `${opts.journeyPrefix}-${i + 1}` : undefined;
     flights.push({
-      id: `fl-${i + 1}`, airline: al.name, airlineCode: al.code,
+      id: `${opts.journeyPrefix || "fl"}-${i + 1}`,
+      airline: al.name,
+      airlineCode: al.code,
       flightNumber: `${al.code}${100 + i * 37}`,
-      origin, originCity,
-      destination, destinationCity,
+      origin,
+      originCity,
+      destination,
+      destinationCity,
+      departDate: departDate || undefined,
+      arrivalDate: arrivalDate || undefined,
       departTime: dep,
       arriveTime: `${String(arrH).padStart(2, "0")}:${String(arrM).padStart(2, "0")}`,
       duration: formatDurationHours(totalDur),
       stops,
       price: cfg.base + (i % 4) * cfg.step + (stops ? cfg.stopFee : 0),
       currency: "INR",
-      cabin: i % 6 === 0 ? "Business" : "Economy",
+      cabin: wantCabin ? (["Economy", "Premium Economy", "Business", "First"].includes(wantCabin)
+        ? wantCabin as Flight["cabin"]
+        : "Economy") : (i % 6 === 0 ? "Business" : "Economy"),
       seatsLeft: 4 + (i % 12),
       refundable: i % 3 !== 0,
       aircraft: al.aircraft,
       baggage: i % 6 === 0 ? "2 × 32kg" : "1 × 23kg + 7kg cabin",
       rating: al.rating,
+      direction: opts.direction,
+      segmentIndex: opts.segmentIndex,
+      journeyId,
     });
   }
   return flights.sort((a, b) => a.price - b.price);

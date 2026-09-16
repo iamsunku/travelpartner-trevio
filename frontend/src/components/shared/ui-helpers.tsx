@@ -19,9 +19,13 @@ export function formatFullINR(amount: number): string {
 
 export function formatPrettyDate(iso: string, empty = "Select date"): string {
   if (!iso) return empty;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso.trim());
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
   const d = new Date(`${iso}T12:00:00`);
   if (Number.isNaN(d.getTime())) return empty;
-  return d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  return `${day}/${month}/${d.getFullYear()}`;
 }
 
 
