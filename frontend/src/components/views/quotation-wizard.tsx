@@ -3434,7 +3434,8 @@ function ServiceEditor({
   packageHotels?: Record<string, unknown>[];
 }) {
   const user = useAuthStore((s) => s.user);
-  const hideInternalCost = user?.role === "travel_agent" || user?.role === "customer";
+  // Quotation wizard is staff/agent-facing; agents must not see internal cost fields.
+  const hideInternalCost = user?.role === "travel_agent";
   const visibleFields = hideInternalCost
     ? fields.filter((f) => !["costPrice", "markup", "supplier", "quotedCostPrice", "contractedCost"].includes(f))
     : fields;

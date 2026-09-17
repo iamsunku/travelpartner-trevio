@@ -576,7 +576,7 @@ export function mergeFlightsIntoItinerary(
 
 export function stripAutoFlightItems(days: Record<string, unknown>[]): Record<string, unknown>[] {
   return days
-    .map((day) => ({
+    .map((day): Record<string, unknown> => ({
       ...day,
       items: asItems(day).filter((item) => item.autoFromFlight !== true),
     }))
