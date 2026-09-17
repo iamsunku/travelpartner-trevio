@@ -203,34 +203,55 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f8fb] overflow-y-auto">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+    <div className="min-h-screen relative overflow-y-auto bg-[#f4f8fd] text-foreground">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute -top-24 -right-16 h-72 w-72 rounded-full bg-sky-200/50 blur-3xl" />
+        <div className="absolute -bottom-20 -left-10 h-80 w-80 rounded-full bg-brand-teal/20 blur-3xl" />
+        <div className="absolute top-1/3 -right-8 h-40 w-40 rounded-full bg-brand-blue/10 blur-2xl" />
+      </div>
+
+      <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="flex items-center justify-between gap-4 mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#fff6e5] border border-amber-200/80 text-[11px] font-semibold tracking-wide text-[#1e2a5a]">
-            <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" aria-hidden />
-            NEW AGENT REGISTRATION
+          <div className="flex items-center gap-3 min-w-0">
+            <img src="/trevio-logo.png" alt="Trevio Global" className="h-8 w-auto shrink-0" />
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-brand-blue/10 border border-brand-blue/20 text-[11px] font-semibold tracking-wide text-brand-blue">
+              <span className="w-2 h-2 rounded-full bg-brand-teal shrink-0" aria-hidden />
+              NEW AGENT REGISTRATION
+            </div>
           </div>
-          <Button type="button" onClick={onLogin} className="bg-[#1e2a5a] hover:bg-[#162044] text-white px-6 rounded-lg">
+          <Button
+            type="button"
+            onClick={onLogin}
+            variant="outline"
+            className="border-slate-200 bg-white text-slate-800 hover:bg-slate-50 hover:text-slate-900 px-6 rounded-xl shadow-sm"
+          >
             Login
           </Button>
         </div>
 
         <div className="mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold leading-[1.15]">
-            <span className="block text-[#1e2a5a]">Create Your</span>
-            <span className="block text-amber-500">Agent Account!</span>
+          <h1 className="text-3xl sm:text-4xl font-bold leading-[1.15] tracking-tight text-slate-900">
+            <span className="block">Create Your</span>
+            <span className="block bg-gradient-to-r from-brand-blue to-brand-teal bg-clip-text text-transparent">
+              Agent Account!
+            </span>
           </h1>
-          <p className="text-muted-foreground mt-3 max-w-2xl text-sm sm:text-base">
+          <p className="text-slate-500 mt-3 max-w-2xl text-sm sm:text-base">
             Fill in your details below to register with Trevio Global. An administrator must approve your account before you can sign in.
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} noValidate className="bg-white rounded-2xl border border-border/80 shadow-sm p-5 sm:p-8 space-y-5">
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="rounded-[1.75rem] bg-white border border-slate-200/80 shadow-[0_24px_60px_-20px_rgba(15,40,80,0.18)] p-5 sm:p-8 space-y-5"
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Full Name" required error={errors.fullName}>
               <Input
                 autoComplete="name"
                 placeholder="Enter full name"
+                className="h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                 value={fullName}
                 onChange={(e) => { setFullName(e.target.value); clearError("fullName"); }}
                 aria-invalid={Boolean(errors.fullName)}
@@ -240,6 +261,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
               <Input
                 autoComplete="organization"
                 placeholder="Enter company name"
+                className="h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                 value={companyName}
                 onChange={(e) => { setCompanyName(e.target.value); clearError("companyName"); }}
                 aria-invalid={Boolean(errors.companyName)}
@@ -252,6 +274,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
               autoComplete="street-address"
               placeholder="Enter business address"
               rows={3}
+              className="rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
               value={address}
               onChange={(e) => { setAddress(e.target.value); clearError("address"); }}
               aria-invalid={Boolean(errors.address)}
@@ -264,6 +287,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                 type="email"
                 autoComplete="email"
                 placeholder="Enter email address"
+                className="h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); clearError("email"); }}
                 aria-invalid={Boolean(errors.email)}
@@ -275,7 +299,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                   value={countryCode}
                   onValueChange={(v) => { setCountryCode(v); clearError("phone"); }}
                 >
-                  <SelectTrigger className="w-[108px] shrink-0" aria-label="Country calling code">
+                  <SelectTrigger className="w-[108px] shrink-0 h-11 rounded-xl border-slate-200" aria-label="Country calling code">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -287,7 +311,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                   </SelectContent>
                 </Select>
                 <Input
-                  className="flex-1"
+                  className="flex-1 h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                   inputMode="numeric"
                   autoComplete="tel-national"
                   placeholder="Enter mobile number"
@@ -315,7 +339,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                   clearError("city");
                 }}
               >
-                <SelectTrigger aria-invalid={Boolean(errors.country)}>
+                <SelectTrigger className="h-11 rounded-xl border-slate-200" aria-invalid={Boolean(errors.country)}>
                   <SelectValue placeholder="Select Country" />
                 </SelectTrigger>
                 <SelectContent>
@@ -328,7 +352,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
             <Field label="State/Province" required error={errors.state}>
               {stateOptions.length > 0 ? (
                 <Select value={state} onValueChange={(v) => { setState(v); clearError("state"); }}>
-                  <SelectTrigger aria-invalid={Boolean(errors.state)}>
+                  <SelectTrigger className="h-11 rounded-xl border-slate-200" aria-invalid={Boolean(errors.state)}>
                     <SelectValue placeholder="State/Province" />
                   </SelectTrigger>
                   <SelectContent>
@@ -338,6 +362,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
               ) : (
                 <Input
                   placeholder="State/Province"
+                  className="h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                   value={state}
                   onChange={(e) => { setState(e.target.value); clearError("state"); }}
                   aria-invalid={Boolean(errors.state)}
@@ -357,7 +382,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                       role="combobox"
                       aria-expanded={cityOpen}
                       className={cn(
-                        "w-full justify-between font-normal h-9",
+                        "w-full justify-between font-normal h-11 rounded-xl border-slate-200",
                         !city && "text-muted-foreground",
                         errors.city && "border-destructive",
                       )}
@@ -400,6 +425,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
               ) : (
                 <Input
                   placeholder="Search to select city"
+                  className="h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                   value={city}
                   onChange={(e) => { setCity(e.target.value); clearError("city"); }}
                   aria-invalid={Boolean(errors.city)}
@@ -409,6 +435,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
             <Field label="PAN / Tax No.">
               <Input
                 placeholder="PAN / Tax No."
+                className="h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                 value={panNumber}
                 onChange={(e) => setPanNumber(e.target.value)}
                 autoComplete="off"
@@ -422,6 +449,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                 <Input
                   type={showPassword ? "text" : "password"}
                   autoComplete="new-password"
+                  className="h-11 rounded-xl border-slate-200 pr-10 focus-visible:ring-brand-blue/30"
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); clearError("password"); clearError("confirmPassword"); }}
                   aria-invalid={Boolean(errors.password)}
@@ -429,13 +457,13 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <p className="text-[10px] text-muted-foreground mt-1">Min 12 chars, upper, lower, number & special character</p>
+              <p className="text-[10px] text-slate-500 mt-1">Min 12 chars, upper, lower, number & special character</p>
             </Field>
             <Field label="Confirm Password" required error={errors.confirmPassword}>
               <div className="relative">
@@ -443,6 +471,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                   type={showConfirm ? "text" : "password"}
                   autoComplete="new-password"
                   placeholder="Confirm password"
+                  className="h-11 rounded-xl border-slate-200 pr-10 focus-visible:ring-brand-blue/30"
                   value={confirmPassword}
                   onChange={(e) => { setConfirmPassword(e.target.value); clearError("confirmPassword"); }}
                   aria-invalid={Boolean(errors.confirmPassword)}
@@ -450,7 +479,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                 <button
                   type="button"
                   onClick={() => setShowConfirm(!showConfirm)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   aria-label={showConfirm ? "Hide confirm password" : "Show confirm password"}
                 >
                   {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -463,6 +492,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
             <Field label="GST / VAT No.">
               <Input
                 placeholder="GST / VAT No."
+                className="h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                 value={gstNumber}
                 onChange={(e) => {
                   const next = e.target.value;
@@ -490,29 +520,29 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                   onClick={() => fileRef.current?.click()}
                   disabled={gstProofUploading}
                   className={cn(
-                    "w-full rounded-xl border-2 border-dashed border-border p-6 text-center transition hover:border-primary/40 hover:bg-muted/30",
+                    "w-full rounded-xl border-2 border-dashed border-slate-200 p-6 text-center transition hover:border-brand-blue/40 hover:bg-brand-blue/5",
                     errors.gstProof && "border-destructive/50",
                   )}
                 >
                   {gstProofUploading ? (
-                    <Loader2 className="w-7 h-7 mx-auto text-muted-foreground mb-2 animate-spin" />
+                    <Loader2 className="w-7 h-7 mx-auto text-brand-teal mb-2 animate-spin" />
                   ) : (
-                    <Upload className="w-7 h-7 mx-auto text-muted-foreground mb-2" />
+                    <Upload className="w-7 h-7 mx-auto text-brand-blue/70 mb-2" />
                   )}
-                  <p className="text-sm font-medium">Click to upload GST / VAT Proof</p>
-                  <p className="text-xs text-muted-foreground mt-1">JPG, PNG or PDF • Max 5MB</p>
+                  <p className="text-sm font-medium text-slate-800">Click to upload GST / VAT Proof</p>
+                  <p className="text-xs text-slate-500 mt-1">JPG, PNG or PDF • Max 5MB</p>
                 </button>
               ) : (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-3 flex items-start gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="rounded-xl border border-brand-teal/30 bg-brand-teal/5 px-3 py-3 flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-brand-teal shrink-0 mt-0.5" />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{gstProofName}</p>
-                    <p className="text-xs text-muted-foreground">{(gstProofSize / 1024).toFixed(0)} KB · Ready</p>
+                    <p className="text-sm font-medium truncate text-slate-800">{gstProofName}</p>
+                    <p className="text-xs text-slate-500">{(gstProofSize / 1024).toFixed(0)} KB · Ready</p>
                     <div className="flex gap-2 mt-2">
-                      <Button type="button" variant="outline" size="sm" className="h-7" onClick={() => fileRef.current?.click()}>
+                      <Button type="button" variant="outline" size="sm" className="h-7 rounded-lg" onClick={() => fileRef.current?.click()}>
                         Replace
                       </Button>
-                      <Button type="button" variant="ghost" size="sm" className="h-7" onClick={clearProof}>
+                      <Button type="button" variant="ghost" size="sm" className="h-7 rounded-lg" onClick={clearProof}>
                         <X className="w-3.5 h-3.5 mr-1" /> Remove
                       </Button>
                     </div>
@@ -530,11 +560,11 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
                 onCheckedChange={(v) => { setTermsAccepted(v === true); clearError("terms"); }}
                 aria-invalid={Boolean(errors.terms)}
               />
-              <label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed cursor-pointer">
+              <label htmlFor="terms" className="text-sm text-slate-600 leading-relaxed cursor-pointer">
                 I agree to the{" "}
                 <button
                   type="button"
-                  className="font-semibold text-[#1e2a5a] underline-offset-2 hover:underline"
+                  className="font-semibold text-brand-blue underline-offset-2 hover:underline"
                   onClick={(ev) => { ev.preventDefault(); setTermsOpen(true); }}
                 >
                   Terms & Conditions
@@ -548,7 +578,7 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
           <Button
             type="submit"
             disabled={submitting}
-            className="w-full h-12 text-base font-semibold bg-[#1e2a5a] hover:bg-[#162044] rounded-lg"
+            className="w-full h-12 text-base font-semibold rounded-xl bg-gradient-to-r from-brand-blue to-brand-teal text-white hover:opacity-95 shadow-lg shadow-brand-blue/20"
           >
             {submitting ? (
               <span className="flex items-center gap-2">
@@ -577,7 +607,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-sm font-semibold text-[#1e2a5a]">
+      <Label className="text-sm font-semibold text-slate-800">
         {label}
         {required && <span className="text-rose-500 ml-0.5" aria-hidden>*</span>}
       </Label>
