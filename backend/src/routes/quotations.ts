@@ -123,6 +123,23 @@ function emptyToNull(value: unknown): string | null {
   return s;
 }
 
+/** Coerce unknown body fields to a non-empty string (Record<string, unknown> safe). */
+function asStr(value: unknown, fallback = ""): string {
+  return emptyToNull(value) ?? fallback;
+}
+
+function asNumOrUndef(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function asBoolOrUndef(value: unknown): boolean | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "boolean") return value;
+  return Boolean(value);
+}
+
 function jsonValue(value: unknown, fallback: Prisma.InputJsonValue = []): Prisma.InputJsonValue {
   try {
     return JSON.parse(JSON.stringify(value ?? fallback)) as Prisma.InputJsonValue;
@@ -754,7 +771,7 @@ export function mountQuotationRoutes(
       const agentName = codes.agentName;
       const quoteNo = await nextQuoteNo();
       const tripBasics = resolveTripBasicsFromBody(body);
-      const computedNights = nightsBetween(body.travelStartDate, body.travelEndDate);
+      const computedNights = nightsBetween(emptyToNull(body.travelStartDate), emptyToNull(body.travelEndDate));
       const nights = tripBasics.nights != null
         ? tripBasics.nights
         : (computedNights != null
@@ -771,17 +788,20 @@ export function mountQuotationRoutes(
           quoteNo,
           agencyId: agencyId || null,
           branchId: ownBranchId(req) || null,
-          customerName: body.customerName || "Customer",
-          service: body.service || (body.isInternational ? "International" : "Holiday"),
+          customerName: asStr(body.customerName, "Customer"),
+          service: asStr(body.service, body.isInternational ? "International" : "Holiday"),
           items: 1,
           amount: 0,
           gst: 0,
           total: 0,
           status: "Draft",
-          validTill: body.validTill || body.quoteExpiryDate || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
-          quoteDate: body.quoteDate || new Date().toISOString().slice(0, 10),
+          validTill: asStr(
+            body.validTill || body.quoteExpiryDate,
+            new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10),
+          ),
+          quoteDate: asStr(body.quoteDate, new Date().toISOString().slice(0, 10)),
           createdById,
-          createdBy: body.createdBy || req.auth?.email || "System",
+          createdBy: asStr(body.createdBy || req.auth?.email, "System"),
           contactPerson: emptyToNull(body.contactPerson),
           contactEmail: emptyToNull(body.contactEmail),
           contactPhone: emptyToNull(body.contactPhone),
@@ -804,8 +824,8 @@ export function mountQuotationRoutes(
           landOnly: body.landOnly === true,
           estimatedBookingDate: optionalDateString(body.estimatedBookingDate),
           tripCities: (tripBasics.tripCities ?? []) as unknown as Prisma.InputJsonValue,
-          currency: body.currency || "INR",
-          baseCurrency: body.baseCurrency || body.currency || "INR",
+          currency: asStr(body.currency, "INR"),
+          baseCurrency: asStr(body.baseCurrency || body.currency, "INR"),
           exchangeRate: toFloat(body.exchangeRate, 1) || 1,
           agentName,
           agentId,
@@ -868,25 +888,25 @@ export function mountQuotationRoutes(
           let selectedTaxRate = 0;
           for (const pkg of incomingPackages) {
             const frozen = await freezePackageLines(pkg, {
-              travelDate: body.travelStartDate || null,
-              travelEndDate: body.travelEndDate || null,
+              travelDate: emptyToNull(body.travelStartDate),
+              travelEndDate: emptyToNull(body.travelEndDate),
               scope: catalogRateScope(req, agencyScope),
             });
             const priced = await priceFrozenPackage(frozen, {
-              currency: body.currency,
+              currency: asStr(body.currency, "INR"),
               nights,
               adults: Math.max(1, toInt(body.adults, 2) || 2),
               children: Math.max(0, toInt(body.children, 0)),
               infants: Math.max(0, toInt(body.infants, 0)),
-              trevioMarkupType: body.trevioMarkupType,
-              trevioMarkupValue: body.trevioMarkupValue,
-              agentMarkupType: body.agentMarkupType,
-              agentMarkup: body.agentMarkup,
-              discountType: body.discountType,
-              discountValue: body.discountValue,
-              travelStartDate: body.travelStartDate,
-              exchangeRate: body.exchangeRate,
-              exchangeRateExplicit: body.exchangeRateExplicit,
+              trevioMarkupType: emptyToNull(body.trevioMarkupType),
+              trevioMarkupValue: asNumOrUndef(body.trevioMarkupValue),
+              agentMarkupType: emptyToNull(body.agentMarkupType),
+              agentMarkup: asNumOrUndef(body.agentMarkup),
+              discountType: emptyToNull(body.discountType),
+              discountValue: asNumOrUndef(body.discountValue),
+              travelStartDate: emptyToNull(body.travelStartDate),
+              exchangeRate: asNumOrUndef(body.exchangeRate),
+              exchangeRateExplicit: asBoolOrUndef(body.exchangeRateExplicit),
               scope: catalogRateScope(req, agencyScope),
             });
             const layers = layersFromPackage(priced.priced);
@@ -914,7 +934,7 @@ export function mountQuotationRoutes(
                 discountAmount: selectedLayers.discountAmount,
                 taxableAmount: selectedLayers.taxableAmount,
                 perPersonCost: selectedLayers.perPersonCost,
-                items: body.packages.length,
+                items: incomingPackages.length,
                 taxRate: selectedTaxRate,
                 taxRuleId: selectedTaxRuleId,
                 pricingStatus: selectedUnresolved ? "UNRESOLVED" : "OK",
@@ -926,7 +946,7 @@ export function mountQuotationRoutes(
           await db.quotationPackage.create({
             data: {
               quotationId: quote.id,
-              name: body.packageName || "Standard",
+              name: asStr(body.packageName, "Standard"),
               sortOrder: 0,
               isSelected: true,
               inclusions: body.packageIncludes || ["Accommodation", "Breakfast"],
@@ -938,7 +958,7 @@ export function mountQuotationRoutes(
         await db.quotationPackage.create({
           data: {
             quotationId: quote.id,
-            name: body.packageName || "Standard",
+            name: asStr(body.packageName, "Standard"),
             sortOrder: 0,
             isSelected: true,
             inclusions: body.packageIncludes || ["Accommodation", "Breakfast"],
@@ -1020,7 +1040,7 @@ export function mountQuotationRoutes(
       // Over-limit discounts are allowed but require a Discount approval stage (not a hard 400).
       const nextDiscountType = isAgentLike(req.auth?.role)
         ? existing.discountType
-        : (body.discountType !== undefined ? body.discountType : existing.discountType);
+        : (body.discountType !== undefined ? emptyToNull(body.discountType) : existing.discountType);
       const nextDiscountValue = isAgentLike(req.auth?.role)
         ? existing.discountValue
         : (body.discountValue != null ? toFloat(body.discountValue, 0) : existing.discountValue);
@@ -1074,7 +1094,7 @@ export function mountQuotationRoutes(
           agencyCode: body.agencyCode ?? existing.agencyCode,
           agentCode: body.agentCode ?? existing.agentCode,
         },
-        agencyId: existing.agencyId || ownAgencyId(req, body.agencyId),
+        agencyId: existing.agencyId || ownAgencyId(req, emptyToNull(body.agencyId) || undefined),
       });
       data.agencyCode = codes.agencyCode;
       data.agentCode = codes.agentCode;
@@ -1085,40 +1105,49 @@ export function mountQuotationRoutes(
 
       let pricedTaxRuleId: string | null = existing.taxRuleId;
       if (Array.isArray(body.packages)) {
-        const keepIds = body.packages.map((p: { id?: string }) => p.id).filter((id: string | undefined): id is string => Boolean(id));
+        const packages = body.packages as Record<string, unknown>[];
+        const keepIds = packages.map((p) => p.id).filter((id): id is string => typeof id === "string" && Boolean(id));
         await db.quotationPackage.deleteMany({
           where: {
             quotationId: existing.id,
             ...(keepIds.length ? { id: { notIn: keepIds } } : {}),
           },
         });
-        for (const pkg of body.packages) {
+        for (const pkg of packages) {
           const frozen = await freezePackageLines(pkg, {
-            travelDate: body.travelStartDate ?? existing.travelStartDate,
-            travelEndDate: body.travelEndDate ?? existing.travelEndDate,
+            travelDate: emptyToNull(body.travelStartDate) ?? existing.travelStartDate,
+            travelEndDate: emptyToNull(body.travelEndDate) ?? existing.travelEndDate,
             existingPackages: existing.packages as unknown as Array<Record<string, unknown>>,
             scope: catalogRateScope(req, agencyScope),
           });
           const pricedPkg = await priceFrozenPackage(frozen, {
-            currency: body.currency ?? existing.currency,
+            currency: asStr(body.currency, existing.currency || "INR"),
             nights: nights ?? existing.nights,
-            adults: body.adults ?? existing.adults,
-            children: body.children ?? existing.children,
-            infants: body.infants ?? existing.infants,
-            trevioMarkupType: isAgentLike(req.auth?.role) ? existing.trevioMarkupType : (body.trevioMarkupType ?? existing.trevioMarkupType),
-            trevioMarkupValue: isAgentLike(req.auth?.role) ? existing.trevioMarkupValue : (body.trevioMarkupValue ?? existing.trevioMarkupValue),
-            agentMarkupType: body.agentMarkupType ?? existing.agentMarkupType,
-            agentMarkup: body.agentMarkup ?? existing.agentMarkup,
-            discountType: isAgentLike(req.auth?.role) ? existing.discountType : (body.discountType ?? existing.discountType),
-            discountValue: isAgentLike(req.auth?.role) ? existing.discountValue : (body.discountValue ?? existing.discountValue),
-            travelStartDate: body.travelStartDate ?? existing.travelStartDate,
+            adults: body.adults != null ? toInt(body.adults, existing.adults ?? 2) : existing.adults,
+            children: body.children != null ? toInt(body.children, existing.children ?? 0) : existing.children,
+            infants: body.infants != null ? toInt(body.infants, existing.infants ?? 0) : existing.infants,
+            trevioMarkupType: isAgentLike(req.auth?.role)
+              ? existing.trevioMarkupType
+              : (emptyToNull(body.trevioMarkupType) ?? existing.trevioMarkupType),
+            trevioMarkupValue: isAgentLike(req.auth?.role)
+              ? existing.trevioMarkupValue
+              : (asNumOrUndef(body.trevioMarkupValue) ?? existing.trevioMarkupValue),
+            agentMarkupType: emptyToNull(body.agentMarkupType) ?? existing.agentMarkupType,
+            agentMarkup: asNumOrUndef(body.agentMarkup) ?? existing.agentMarkup,
+            discountType: isAgentLike(req.auth?.role)
+              ? existing.discountType
+              : (emptyToNull(body.discountType) ?? existing.discountType),
+            discountValue: isAgentLike(req.auth?.role)
+              ? existing.discountValue
+              : (asNumOrUndef(body.discountValue) ?? existing.discountValue),
+            travelStartDate: emptyToNull(body.travelStartDate) ?? existing.travelStartDate,
             exchangeRate: existing.exchangeRate,
             exchangeRateExplicit: body.exchangeRateExplicit === true || existing.exchangeRateExplicit,
             scope: catalogRateScope(req, agencyScope),
           });
           if (pkg.isSelected || pricedTaxRuleId === existing.taxRuleId) pricedTaxRuleId = pricedPkg.taxRuleId;
           const pkgData = packageWriteData(pricedPkg.frozen, layersFromPackage(pricedPkg.priced));
-          if (pkg.id) {
+          if (typeof pkg.id === "string" && pkg.id) {
             await db.quotationPackage.updateMany({
               where: { id: pkg.id, quotationId: existing.id },
               data: pkgData,
