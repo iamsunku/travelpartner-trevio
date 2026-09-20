@@ -2228,7 +2228,7 @@ app.get("/api/sales-executives", requireAuth, requirePermission("quotations"), a
       where: {
         ...agencyScope(req),
         status: "Active",
-        role: { in: ["sales_executive", "agency_admin", "branch_manager", "super_admin", "employee"] },
+        role: { in: ["sales_executive", "product_executive", "agency_admin", "branch_manager", "super_admin", "employee"] },
       },
       select: {
         id: true,

@@ -82,10 +82,10 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
 
   function validateClient(): FieldErrors {
     const next: FieldErrors = {};
-    if (!fullName.trim() || fullName.trim().length < 2) next.fullName = "Enter your full name";
+    if (!fullName.trim() || fullName.trim().length < 2) next.fullName = "Enter agent name";
     if (!companyName.trim() || companyName.trim().length < 2) next.companyName = "Enter company name";
     if (!address.trim() || address.trim().length < 8) next.address = "Enter a complete business address";
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) next.email = "Enter a valid email address";
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) next.email = "Enter a valid agent email id";
     const phoneErr = validatePhoneDigits(countryCode, phone);
     if (phoneErr) next.phone = phoneErr;
     if (!country.trim()) next.country = "Select a country";
@@ -247,10 +247,10 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
           className="rounded-[1.75rem] bg-white border border-slate-200/80 shadow-[0_24px_60px_-20px_rgba(15,40,80,0.18)] p-5 sm:p-8 space-y-5"
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Full Name" required error={errors.fullName}>
+            <Field label="Agent Name" required error={errors.fullName}>
               <Input
                 autoComplete="name"
-                placeholder="Enter full name"
+                placeholder="Enter agent name"
                 className="h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                 value={fullName}
                 onChange={(e) => { setFullName(e.target.value); clearError("fullName"); }}
@@ -282,11 +282,11 @@ export function AgentRegistrationForm({ onLogin }: { onLogin: () => void }) {
           </Field>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Email Address" required error={errors.email}>
+            <Field label="Agent Email Id" required error={errors.email}>
               <Input
                 type="email"
                 autoComplete="email"
-                placeholder="Enter email address"
+                placeholder="Enter agent email id"
                 className="h-11 rounded-xl border-slate-200 focus-visible:ring-brand-blue/30"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); clearError("email"); }}

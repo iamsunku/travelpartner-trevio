@@ -106,18 +106,23 @@ import {
   formatTransferRoute,
   getTransferVehicleOptions,
   bindAirportTransfersToSelectedHotels,
+  airportPickupSearchQuery,
+  hotelsForAirportPickupDay,
   isAirportGuideMandatory,
   isGenericCityHotelAirportTransfer,
+  isGentingDayCity,
   isMalaysiaHotelCatalogueCity,
+  matchesAirportPickupForDayCity,
   matchesAirportPickupForHotel,
   MALAYSIA_HOTEL_CITIES,
   MALAYSIA_TRANSFER_CITIES,
-  matchesMalaysiaKlAirportTransferList,
   normalizeMalaysiaHotelCity,
   parseClockToMinutes,
   requiredVehicleBandForPax,
+  resolveAirportLabelForHotelCity,
   resolveFlightArrivalForPickup,
   resolveTransferHubCity,
+  transferMatchesDayCity,
   transferPlaceholderImage,
   vehicleCapacityMax,
 } from "@/lib/transfer-catalog";
@@ -399,6 +404,9 @@ export function QuotationWizardView() {
     role: string;
   }>>([]);
   const [salesExecutiveId, setSalesExecutiveId] = useState("");
+  const isTravelAgentUser = user?.role === "travel_agent";
+  const canAssignTravelAgent = Boolean(user && !isTravelAgentUser);
+  const canPickSalesExecutive = Boolean(user && !isTravelAgentUser);
 
   useEffect(() => {
     if (!open) return;
@@ -513,30 +521,52 @@ export function QuotationWizardView() {
 
   useEffect(() => {
     if (!open || !user || quotationId) return;
-    setForm((f) => ({
-      ...f,
-      agentName: f.agentName || user.name || user.email || "",
-      agentId: f.agentId || user.id || "",
-      agentCode: user.agentCode || f.agentCode || "",
-      agencyCode: user.agencyCode || f.agencyCode || "",
-      salesExecutiveName: f.salesExecutiveName || user.name || user.email || "",
-      salesExecutiveEmail: f.salesExecutiveEmail || user.email || "",
-      salesExecutivePhone: f.salesExecutivePhone || user.phone || "",
-    }));
-    if (user.id) setSalesExecutiveId((id) => id || user.id);
+    if (isTravelAgentUser) {
+      // Agent quotes: lock travel agent to self; destination expert filled once sales list loads.
+      setForm((f) => ({
+        ...f,
+        agentName: user.name || user.email || f.agentName || "",
+        agentId: user.id || f.agentId || "",
+        agentCode: user.agentCode || f.agentCode || "",
+        agencyCode: user.agencyCode || f.agencyCode || "",
+      }));
+    } else {
+      // Super admin / internal: auto sales executive = creator; travel agent left for optional pick.
+      setForm((f) => ({
+        ...f,
+        agentName: f.agentName || "",
+        agentId: f.agentId || "",
+        agentCode: f.agentCode || "",
+        agencyCode: user.agencyCode || f.agencyCode || "",
+        salesExecutiveName: f.salesExecutiveName || user.name || user.email || "",
+        salesExecutiveEmail: f.salesExecutiveEmail || user.email || "",
+        salesExecutivePhone: f.salesExecutivePhone || user.phone || "",
+      }));
+      if (user.id) setSalesExecutiveId((id) => id || user.id);
+    }
     api.getMe()
       .then(({ user: raw }) => {
         const mapped = mapApiUser(raw);
-        setForm((f) => ({
-          ...f,
-          agentName: f.agentName || mapped.name || "",
-          agentId: f.agentId || mapped.id,
-          agentCode: mapped.agentCode || f.agentCode || "",
-          agencyCode: mapped.agencyCode || f.agencyCode || "",
-        }));
+        if (isTravelAgentUser) {
+          setForm((f) => ({
+            ...f,
+            agentName: mapped.name || f.agentName || "",
+            agentId: mapped.id || f.agentId,
+            agentCode: mapped.agentCode || f.agentCode || "",
+            agencyCode: mapped.agencyCode || f.agencyCode || "",
+          }));
+        } else {
+          setForm((f) => ({
+            ...f,
+            agencyCode: mapped.agencyCode || f.agencyCode || "",
+            salesExecutiveName: f.salesExecutiveName || mapped.name || "",
+            salesExecutiveEmail: f.salesExecutiveEmail || mapped.email || "",
+            salesExecutivePhone: f.salesExecutivePhone || mapped.phone || "",
+          }));
+        }
       })
       .catch(() => undefined);
-  }, [open, user, quotationId]);
+  }, [open, user, quotationId, isTravelAgentUser]);
 
   useEffect(() => {
     if (!open) return;
@@ -558,6 +588,29 @@ export function QuotationWizardView() {
       .then((res) => {
         const list = res.salesExecutives || [];
         setSalesExecutives(list);
+
+        if (isTravelAgentUser && !quotationId) {
+          // Auto destination expert: prefer a real sales/product expert; else the agent.
+          const prefer =
+            list.find((s) => s.role === "sales_executive")
+            || list.find((s) => s.role === "product_executive")
+            || list.find((s) => s.id !== user?.id && ["agency_admin", "branch_manager", "employee"].includes(s.role))
+            || null;
+          const expert = prefer || (user
+            ? { id: user.id, name: user.name || user.email || "", email: user.email || "", phone: user.phone || "", role: user.role }
+            : null);
+          if (expert) {
+            setSalesExecutiveId(expert.id);
+            setForm((f) => ({
+              ...f,
+              salesExecutiveName: expert.name || f.salesExecutiveName,
+              salesExecutiveEmail: expert.email || f.salesExecutiveEmail,
+              salesExecutivePhone: expert.phone || f.salesExecutivePhone,
+            }));
+          }
+          return;
+        }
+
         setSalesExecutiveId((current) => {
           if (current) return current;
           const byEmail = list.find((s) => s.email && s.email === form.salesExecutiveEmail);
@@ -568,7 +621,7 @@ export function QuotationWizardView() {
         });
       })
       .catch(() => setSalesExecutives([]));
-  }, [open]);
+  }, [open, isTravelAgentUser, quotationId, user]);
 
   const nights = useMemo(() => {
     const cityNights = tripCities.reduce((s, c) => s + Math.max(0, Number(c.nights) || 0), 0);
@@ -2165,19 +2218,19 @@ export function QuotationWizardView() {
                   onChange={(v) => setForm({ ...form, estimatedBookingDate: v })}
                 />
 
+                {canAssignTravelAgent ? (
                 <div className="space-y-1.5 min-w-0">
                   <Label className="text-sm font-medium">Travel agent</Label>
                   {agents.length ? (
                     <Select
-                      value={!form.agentId || form.agentId === user?.id ? "self" : form.agentId}
+                      value={form.agentId || "none"}
                       onValueChange={(v) => {
-                        if (v === "self") {
+                        if (v === "none") {
                           setForm({
                             ...form,
-                            agentId: user?.id || "",
-                            agentName: user?.name || user?.email || form.agentName,
-                            agentCode: user?.agentCode || form.agentCode,
-                            agencyCode: user?.agencyCode || form.agencyCode,
+                            agentId: "",
+                            agentName: "",
+                            agentCode: "",
                           });
                           return;
                         }
@@ -2195,8 +2248,8 @@ export function QuotationWizardView() {
                         <SelectValue placeholder="Select travel agent" className="truncate" />
                       </SelectTrigger>
                       <SelectContent side="bottom" avoidCollisions={false}>
-                        <SelectItem value="self">{user?.name || "Current user"}{user?.agentCode ? ` · ${user.agentCode}` : ""}</SelectItem>
-                        {agents.filter((a) => a.id !== user?.id).map((a) => (
+                        <SelectItem value="none">No travel agent</SelectItem>
+                        {agents.map((a) => (
                           <SelectItem key={a.id} value={a.id}>
                             {a.name}{a.agentCode ? ` · ${a.agentCode}` : ""}
                           </SelectItem>
@@ -2204,9 +2257,16 @@ export function QuotationWizardView() {
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Input className="h-10 w-full" value={form.agentName} onChange={(e) => setForm({ ...form, agentName: e.target.value })} />
+                    <Input
+                      className="h-10 w-full"
+                      placeholder="Travel agent name (optional)"
+                      value={form.agentName}
+                      onChange={(e) => setForm({ ...form, agentName: e.target.value })}
+                    />
                   )}
                 </div>
+                ) : null}
+                {canPickSalesExecutive ? (
                 <div className="space-y-1.5 min-w-0">
                   <Label className="text-sm font-medium">Sales executive</Label>
                   <Select
@@ -2245,6 +2305,16 @@ export function QuotationWizardView() {
                     </SelectContent>
                   </Select>
                 </div>
+                ) : (
+                <div className="space-y-1.5 min-w-0">
+                  <Label className="text-sm font-medium">Destination expert</Label>
+                  <Input
+                    className="h-10 w-full bg-muted/40"
+                    value={form.salesExecutiveName || "—"}
+                    readOnly
+                  />
+                </div>
+                )}
                 <div className="space-y-1.5 min-w-0">
                   <Label className="text-sm font-medium">Agency code</Label>
                   <Input className="h-10 w-full bg-muted/40 font-mono" value={form.agencyCode || "—"} readOnly />
@@ -6418,7 +6488,7 @@ function CatalogPicker({
   const quoteChildren = Math.max(0, Number(children) || 0);
   const quoteTotalPax = Math.max(1, quoteAdults + quoteChildren);
 
-  /** Hotel covering this day — Airport Pickup is scoped to this hotel. */
+  /** Hotel covering this day — Airport Pickup is scoped to this hotel (never another city's stay). */
   const dayHotel = useMemo(() => {
     if (!isTransfers || !selectedHotels.length) return null;
     const date = (serviceDate || travelDate || "").trim();
@@ -6434,17 +6504,17 @@ function CatalogPicker({
     });
     if (covering) return covering;
     if (cityNeedle) {
-      const byCity = selectedHotels.find((h) => {
+      return selectedHotels.find((h) => {
         const hc = String(h.tripCity || h.city || "").toLowerCase();
         return hc === cityNeedle || hc.includes(cityNeedle) || cityNeedle.includes(hc);
-      });
-      if (byCity) return byCity;
+      }) || null;
     }
-    return selectedHotels[0] || null;
+    return null;
   }, [isTransfers, selectedHotels, serviceDate, travelDate, destLabel]);
 
   const dayHotelName = String(dayHotel?.hotelName || dayHotel?.name || "").trim();
   const dayHotelCity = String(dayHotel?.tripCity || dayHotel?.city || destLabel || "").trim();
+  const dayAirportLabel = resolveAirportLabelForHotelCity(dayHotelCity || destLabel || "Kuala Lumpur");
 
   const flightArrival = useMemo(
     () => resolveFlightArrivalForPickup(selectedFlights, serviceDate || travelDate),
@@ -6490,11 +6560,12 @@ function CatalogPicker({
     setHotelTab("recommended");
     setPriceSort("low");
     setQ("");
-    setCityFilter(tripCities[0] || "all");
+    // Day city from trip plan (e.g. Day 2 Genting / Langkawi) — hotels start from that city.
+    const dayCity = destLabel || dayHotelCity || tripCities[0] || "Kuala Lumpur";
+    setCityFilter(normalizeMalaysiaHotelCity(dayCity) || dayCity || "all");
     setCatalogCityFilter("all");
     setCountryFallback(null);
-    const hubCity = dayHotelCity || tripCities[0] || destLabel || "Kuala Lumpur";
-    setTransferCity(resolveTransferHubCity(hubCity));
+    setTransferCity(resolveTransferHubCity(dayCity));
     setVehiclePickItem(null);
     setVehicleQtyById({});
     setAirportPickupTime("");
@@ -6505,7 +6576,7 @@ function CatalogPicker({
     setActivityVehicleQty(
       Object.fromEntries(ACTIVITY_TRANSFER_VEHICLES.map((v) => [v.id, 0])),
     );
-    setActivityCity(resolveActivityLocationCity(tripCities[0] || destLabel || "Kuala Lumpur"));
+    setActivityCity(resolveActivityLocationCity(dayCity));
     setMealDetailsItem(null);
     setMealExpandId(null);
     setMealTimeSlot("12:00 - 13:00");
@@ -6563,18 +6634,24 @@ function CatalogPicker({
             if (hotelTab === "recommended") params.set("recommendedOnly", "true");
           } else if (isTransfers) {
             if (transferKind === "airport_pickup") {
-              // Pull KTH one-ways that mention KL Airport, then keep the curated DESTINATION list.
-              params.set("q", "Kuala Lumpur Airport");
+              const dayCity = destLabel || dayHotelCity || tripCities[0] || "Kuala Lumpur";
+              params.set("q", airportPickupSearchQuery(dayCity));
               params.set("pageSize", "120");
               if (travelDate) params.set("travelDate", travelDate);
             } else {
-              const hubCity = dayHotelCity || transferCity || destLabel || tripCities[0] || "Kuala Lumpur";
-              const hub = transferCity || resolveTransferHubCity(hubCity);
+              const dayCity = destLabel || dayHotelCity || tripCities[0] || "Kuala Lumpur";
+              const hub = transferCity || resolveTransferHubCity(dayCity);
               params.set("city", hub);
+              // Genting products are stored under KL — pull a wider page then filter client-side.
+              if (isGentingDayCity(dayCity)) {
+                params.set("pageSize", "120");
+                params.set("q", "Genting");
+              }
               if (travelDate) params.set("travelDate", travelDate);
             }
           } else if (isActivities) {
-            const loc = activityCity || resolveActivityLocationCity(destLabel || tripCities[0] || "Kuala Lumpur");
+            const loc = activityCity
+              || resolveActivityLocationCity(destLabel || tripCities[0] || "Kuala Lumpur");
             params.set("city", loc);
             if (travelDate) params.set("travelDate", travelDate);
           } else if (isMeals) {
@@ -6589,16 +6666,27 @@ function CatalogPicker({
 
           // Transfers: if hub city empty and Malaysia trip, broaden then re-filter client-side.
           if (isTransfers && next.length === 0 && looksLikeMalaysiaPlace(destLabel || tripCities[0] || countryLabel || dayHotelCity || "")) {
+            const dayCity = destLabel || dayHotelCity || tripCities[0] || "";
             const broad = new URLSearchParams(params);
             broad.delete("city");
             broad.delete("destinationId");
             broad.set("country", "Malaysia");
-            broad.set("pageSize", "80");
+            broad.set("pageSize", "120");
             res = await apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${broad.toString()}`);
             next = (res.items || []).filter((item) =>
-              String(item.city || "").toLowerCase() === String(transferCity || "Kuala Lumpur").toLowerCase()
-              || String(item.pickupLocation || "").toLowerCase().includes("airport"),
+              transferKind === "airport_pickup"
+                ? matchesAirportPickupForDayCity(item, dayCity)
+                : transferMatchesDayCity(item, dayCity || transferCity || "Kuala Lumpur"),
             );
+          }
+
+          // Regular transfers: keep products relevant to the day city (esp. Genting on KL hub).
+          if (isTransfers && transferKind !== "airport_pickup" && next.length) {
+            const dayCity = destLabel || dayHotelCity || tripCities[0] || transferCity || "";
+            if (dayCity) {
+              const scoped = next.filter((item) => transferMatchesDayCity(item, dayCity));
+              if (scoped.length) next = scoped;
+            }
           }
 
           // Activities: empty city → fetch broader list then filter by mapped location.
@@ -6691,9 +6779,13 @@ function CatalogPicker({
 
           if (isTransfers) {
             if (transferKind === "airport_pickup") {
-              // Curated Airport → Hotel destinations, then bind booked hotel names on top.
-              next = next.filter((item) => matchesMalaysiaKlAirportTransferList(item));
-              next = bindAirportTransfersToSelectedHotels(next, selectedHotels) as ProductRecord[];
+              const dayCity = destLabel || dayHotelCity || tripCities[0] || "Kuala Lumpur";
+              next = next.filter((item) => matchesAirportPickupForDayCity(item, dayCity));
+              const dayHotels = hotelsForAirportPickupDay(selectedHotels, {
+                serviceDate: serviceDate || travelDate,
+                dayCity,
+              });
+              next = bindAirportTransfersToSelectedHotels(next, dayHotels) as ProductRecord[];
             }
           }
           setItems(next);
@@ -6902,7 +6994,7 @@ function CatalogPicker({
     ).trim();
     const pickupFrom = String(vehiclePickItem.pickupLocation || "").trim()
       || destinationTitle.match(/from\s+(.+?)\s+-\s+/i)?.[1]?.trim()
-      || "Kuala Lumpur Airport";
+      || dayAirportLabel;
     // Always prefer the booked hotel name when Airport Pickup is tied to a trip hotel.
     const dropTo = boundHotel
       || dayHotelName
@@ -6912,8 +7004,8 @@ function CatalogPicker({
     if (!dropTo) {
       toast({
         title: "Destination required",
-        description: selectedHotels.length === 0
-          ? "Add a hotel on this trip first, then choose Airport Pickup."
+        description: !dayHotelName
+          ? `Add a hotel in ${destLabel || "this city"} first, then choose Airport Pickup.`
           : "Could not resolve the transfer drop-off from this destination.",
         variant: "destructive",
       });
@@ -7897,7 +7989,7 @@ function CatalogPicker({
             <p className="text-sm font-semibold text-teal-950 mt-0.5">
               {dayHotelName
                 ? `${dayHotelName}${dayHotelCity ? ` · ${dayHotelCity}` : ""}`
-                : "Kuala Lumpur Airport → Hotel (KTH)"}
+                : `${dayAirportLabel} → Hotel`}
             </p>
           </div>
         ) : null}
@@ -7920,7 +8012,7 @@ function CatalogPicker({
             <div className="space-y-1">
               <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Hub</Label>
               <div className="h-10 w-full rounded-lg border border-border bg-muted/40 px-3 text-sm flex items-center text-foreground">
-                {resolveTransferHubCity(dayHotelCity || transferCity)}
+                {resolveTransferHubCity(destLabel || dayHotelCity || transferCity)}
               </div>
             </div>
           )}
@@ -7945,24 +8037,24 @@ function CatalogPicker({
               <Loader2 className="w-4 h-4 animate-spin" /> Loading transfers…
             </div>
           )}
-          {!loading && isAirportPickup && selectedHotels.length === 0 ? (
+          {!loading && isAirportPickup && !dayHotelName ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              Add a hotel on this trip first — Airport Pickup will then show{" "}
-              <span className="font-medium">Airport → your hotel name</span>.
+              Add a hotel for <span className="font-medium">{destLabel || "this city"}</span> first — Airport Pickup will then show{" "}
+              <span className="font-medium">{dayAirportLabel} → your hotel name</span>.
             </div>
           ) : null}
           {!loading && transferItems.length === 0 && (
             <div className="rounded-xl border bg-background p-8 text-center space-y-2">
               <p className="text-sm text-muted-foreground">
                 {isAirportPickup
-                  ? selectedHotels.length === 0
-                    ? "Add a hotel first to see Airport → Hotel pickup options."
-                    : "No Airport → Hotel transfer destinations found for this trip."
+                  ? !dayHotelName
+                    ? `Add a hotel in ${destLabel || "this city"} first to see Airport → Hotel pickup options.`
+                    : `No Airport → Hotel transfer destinations found for ${destLabel || dayHotelCity || "this city"}.`
                   : `No transfer options for ${transferCity}.`}
               </p>
               <p className="text-xs text-muted-foreground">
                 {isAirportPickup
-                  ? "KTH one-way rates from Kuala Lumpur Airport to the selected hotel / outstation."
+                  ? `KTH one-way rates from ${dayAirportLabel} to the selected hotel / outstation.`
                   : "KTH 2026 rates cover Kuala Lumpur (KLIA), Langkawi, and Penang."}
               </p>
             </div>
@@ -7983,7 +8075,7 @@ function CatalogPicker({
             ).trim();
             const route = isAirportPickup
               ? (boundHotel
-                ? `One Way Transfer from Kuala Lumpur Airport - ${boundHotel}`
+                ? `One Way Transfer from ${dayAirportLabel} - ${boundHotel}`
                 : formatTransferDestination(item))
               : formatTransferRoute(item);
             const listKey = String(

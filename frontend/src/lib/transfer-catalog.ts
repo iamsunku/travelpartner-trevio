@@ -15,9 +15,117 @@ export function resolveTransferHubCity(city: string): string {
   if (!key) return "Kuala Lumpur";
   if (key.includes("langkawi")) return "Langkawi";
   if (key.includes("penang") || key.includes("georgetown") || key.includes("george town")) return "Penang";
+  // Genting transfers live on the KL sheet (KLIA / KL Hotel ↔ Genting Hotel).
   if (key.includes("genting")) return "Kuala Lumpur";
   // Default Malaysia hub for KL / Melaka / Alor Gajah / JB / etc.
   return "Kuala Lumpur";
+}
+
+/** True when the day city is Genting (hub stays KL, products filtered by name). */
+export function isGentingDayCity(city: string): boolean {
+  return /genting/i.test(String(city || "").trim());
+}
+
+/** Search query for Airport Pickup products by day / hotel city. */
+export function airportPickupSearchQuery(dayCity: string): string {
+  const hub = resolveTransferHubCity(dayCity);
+  if (hub === "Langkawi") return "Langkawi Airport";
+  if (hub === "Penang") return "Penang Airport";
+  return "Kuala Lumpur Airport";
+}
+
+/**
+ * Airport → Hotel products for the day's hub.
+ * - KL / Genting → curated KLIA list (Genting destinations included)
+ * - Langkawi / Penang → local airport → hotel one-ways
+ */
+export function matchesAirportPickupForDayCity(
+  item: {
+    name?: string | null;
+    pickupLocation?: string | null;
+    dropLocation?: string | null;
+  },
+  dayCity: string,
+): boolean {
+  if (!isAirportToHotelTransfer(item)) return false;
+  const hub = resolveTransferHubCity(dayCity);
+  const hay = [item.name, item.pickupLocation, item.dropLocation]
+    .map((v) => String(v || "").toLowerCase())
+    .join(" ");
+
+  if (hub === "Langkawi") {
+    return /langkawi\s*airport/.test(hay) && /langkawi|hotel|beach|north|datai|st regis/.test(hay);
+  }
+  if (hub === "Penang") {
+    return /penang.*airport|airport.*penang|airport.*hotel or vice versa/.test(hay);
+  }
+
+  // KL hub — curated KLIA list; when day is Genting, keep Genting destinations only.
+  if (!matchesMalaysiaKlAirportTransferList(item)) return false;
+  if (isGentingDayCity(dayCity)) {
+    return /genting/.test(hay);
+  }
+  return true;
+}
+
+/**
+ * Regular transfer list for a trip day.
+ * Genting days filter KL-hub products that mention Genting; other hubs keep city match.
+ */
+export function transferMatchesDayCity(
+  item: {
+    name?: string | null;
+    city?: string | null;
+    pickupLocation?: string | null;
+    dropLocation?: string | null;
+  },
+  dayCity: string,
+): boolean {
+  const needle = String(dayCity || "").trim();
+  if (!needle) return true;
+  const hay = [item.name, item.city, item.pickupLocation, item.dropLocation]
+    .map((v) => String(v || "").toLowerCase())
+    .join(" ");
+
+  if (isGentingDayCity(needle)) {
+    return /genting/.test(hay);
+  }
+
+  const hub = resolveTransferHubCity(needle).toLowerCase();
+  const itemCity = String(item.city || "").toLowerCase();
+  if (itemCity && (itemCity === hub || itemCity.includes(hub) || hub.includes(itemCity))) {
+    return true;
+  }
+  return hay.includes(hub) || hay.includes(needle.toLowerCase());
+}
+
+/** Hotels to bind for Airport Pickup on a given service day / city. */
+export function hotelsForAirportPickupDay(
+  hotels: Array<Record<string, unknown>>,
+  opts: { serviceDate?: string; dayCity?: string },
+): Array<Record<string, unknown>> {
+  const date = String(opts.serviceDate || "").trim();
+  const cityNeedle = String(opts.dayCity || "").trim().toLowerCase();
+
+  const covering = hotels.filter((h) => {
+    const cin = String(h.checkIn || "");
+    const cout = String(h.checkOut || "");
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(cin)) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(cout)) return date >= cin && date < cout;
+      return date === cin;
+    }
+    return false;
+  });
+  if (covering.length) return covering;
+
+  if (cityNeedle) {
+    const byCity = hotels.filter((h) => {
+      const hc = String(h.tripCity || h.city || "").toLowerCase();
+      return hc === cityNeedle || hc.includes(cityNeedle) || cityNeedle.includes(hc);
+    });
+    if (byCity.length) return byCity;
+  }
+  return [];
 }
 
 export function isAirportTransfer(item: {
@@ -405,8 +513,9 @@ export function findBaseAirportTransferForHotelCity<T extends {
 }
 
 /**
- * Prepend Airport → {booked hotel name} rows for each selected trip hotel.
+ * Prepend Airport → {booked hotel name} rows for selected hotels.
  * Uses the matching city Airport→Hotel rate product underneath; hides the replaced generic city-hotel row.
+ * Prefer passing only the day hotel(s) so multi-city trips do not bind KL rates onto Langkawi days.
  */
 export function bindAirportTransfersToSelectedHotels<T extends {
   id?: string;
@@ -423,11 +532,18 @@ export function bindAirportTransfersToSelectedHotels<T extends {
   for (const hotel of hotels) {
     const hotelName = String(hotel.hotelName || hotel.name || "").trim();
     if (!hotelName) continue;
-    const hotelCity = String(hotel.tripCity || hotel.city || "Kuala Lumpur").trim() || "Kuala Lumpur";
+    const hotelCity = String(hotel.tripCity || hotel.city || "").trim();
+    if (!hotelCity) continue;
+    const hub = resolveTransferHubCity(hotelCity);
     const base = findBaseAirportTransferForHotelCity(products, hotelCity)
-      // Fallbacks so a booked hotel always gets an Airport → hotel card when any airport pickup exists.
-      || products.find((p) => isAirportToHotelTransfer(p) && /kuala lumpur hotel/i.test(`${p.name || ""} ${p.dropLocation || ""}`))
-      || products.find((p) => isAirportToHotelTransfer(p))
+      // Only fall back within the same airport hub — never price Langkawi with KLIA rates.
+      || products.find((p) => {
+        if (!isAirportToHotelTransfer(p)) return false;
+        const hay = `${p.name || ""} ${p.pickupLocation || ""}`.toLowerCase();
+        if (hub === "Langkawi") return /langkawi\s*airport/.test(hay);
+        if (hub === "Penang") return /penang/.test(hay) && /airport/.test(hay);
+        return /kuala lumpur airport|klia/.test(hay) && /kuala lumpur hotel/i.test(`${p.name || ""} ${p.dropLocation || ""}`);
+      })
       || null;
     if (!base) continue;
     const baseId = String(base.id || "");

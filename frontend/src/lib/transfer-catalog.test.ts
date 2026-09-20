@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  airportPickupSearchQuery,
   bindAirportTransfersToSelectedHotels,
   estimateCustomerInrPrice,
   filterVehiclesForAirportPax,
   formatTransferDestination,
   getTransferVehicleOptions,
+  hotelsForAirportPickupDay,
   isAirportGuideMandatory,
   isMalaysiaHotelCatalogueCity,
+  matchesAirportPickupForDayCity,
   matchesMalaysiaKlAirportTransferList,
   normalizeMalaysiaHotelCity,
   requiredVehicleBandForPax,
+  transferMatchesDayCity,
   validateAirportVehicleForPax,
 } from "./transfer-catalog";
 
@@ -144,5 +148,108 @@ describe("KL Airport transfer destinations", () => {
     // Generic KL Hotel row replaced; Singapore outstation kept.
     expect(bound.some((p) => String(p.name).includes("Kuala Lumpur Hotel ("))).toBe(false);
     expect(bound.some((p) => String(p.name).includes("Singapore Hotel"))).toBe(true);
+  });
+});
+
+describe("Multi-city day airport / transfer scoping", () => {
+  it("maps airport search query by day city", () => {
+    expect(airportPickupSearchQuery("Langkawi")).toBe("Langkawi Airport");
+    expect(airportPickupSearchQuery("Genting Highlands")).toBe("Kuala Lumpur Airport");
+    expect(airportPickupSearchQuery("Kuala Lumpur")).toBe("Kuala Lumpur Airport");
+  });
+
+  it("scopes airport pickup to Langkawi / Genting / KL", () => {
+    const langkawi = {
+      name: "One Way Transfer from Langkawi Airport - Langkawi Hotel",
+      pickupLocation: "Langkawi Airport",
+      dropLocation: "Langkawi Hotel",
+    };
+    const genting = {
+      name: "One Way Transfer from Kuala Lumpur Airport - Genting Hotel",
+      pickupLocation: "Kuala Lumpur Airport",
+      dropLocation: "Genting Hotel",
+    };
+    const kl = {
+      name: "One Way Transfer from Kuala Lumpur Airport - Kuala Lumpur Hotel ( 6am - 11pm )",
+      pickupLocation: "Kuala Lumpur Airport",
+      dropLocation: "Kuala Lumpur Hotel",
+    };
+
+    expect(matchesAirportPickupForDayCity(langkawi, "Langkawi")).toBe(true);
+    expect(matchesAirportPickupForDayCity(genting, "Langkawi")).toBe(false);
+    expect(matchesAirportPickupForDayCity(genting, "Genting Highlands")).toBe(true);
+    expect(matchesAirportPickupForDayCity(kl, "Genting Highlands")).toBe(false);
+    expect(matchesAirportPickupForDayCity(kl, "Kuala Lumpur")).toBe(true);
+  });
+
+  it("filters regular transfers for Genting days", () => {
+    expect(transferMatchesDayCity({
+      name: "One Way Transfer from Kuala Lumpur Hotel - Genting Hotel",
+      city: "Kuala Lumpur",
+    }, "Genting Highlands")).toBe(true);
+    expect(transferMatchesDayCity({
+      name: "One Way Transfer from Kuala Lumpur Hotel - Malacca Hotel",
+      city: "Kuala Lumpur",
+    }, "Genting Highlands")).toBe(false);
+    expect(transferMatchesDayCity({
+      name: "Langkawi Hotel - Langkawi Airport",
+      city: "Langkawi",
+    }, "Langkawi")).toBe(true);
+  });
+
+  it("binds only hotels covering the day / city", () => {
+    const hotels = [
+      {
+        lineId: "h-kl",
+        hotelName: "Ramada Encore",
+        tripCity: "Kuala Lumpur",
+        checkIn: "2026-06-01",
+        checkOut: "2026-06-03",
+      },
+      {
+        lineId: "h-lgk",
+        hotelName: "The Datai",
+        tripCity: "Langkawi",
+        checkIn: "2026-06-03",
+        checkOut: "2026-06-05",
+      },
+    ];
+    expect(hotelsForAirportPickupDay(hotels, {
+      serviceDate: "2026-06-03",
+      dayCity: "Langkawi",
+    }).map((h) => h.hotelName)).toEqual(["The Datai"]);
+    expect(hotelsForAirportPickupDay(hotels, {
+      serviceDate: "2026-06-01",
+      dayCity: "Kuala Lumpur",
+    }).map((h) => h.hotelName)).toEqual(["Ramada Encore"]);
+    expect(hotelsForAirportPickupDay(hotels, {
+      dayCity: "Genting Highlands",
+    })).toEqual([]);
+  });
+
+  it("does not bind KL hotel onto Langkawi airport products", () => {
+    const products = [
+      {
+        id: "xfer-lgk",
+        name: "One Way Transfer from Langkawi Airport - Langkawi Hotel",
+        pickupLocation: "Langkawi Airport",
+        dropLocation: "Langkawi Hotel",
+      },
+      {
+        id: "xfer-kl",
+        name: "One Way Transfer from Kuala Lumpur Airport - Kuala Lumpur Hotel ( 6am - 11pm )",
+        pickupLocation: "Kuala Lumpur Airport",
+        dropLocation: "Kuala Lumpur Hotel",
+      },
+    ];
+    const dayHotels = hotelsForAirportPickupDay(
+      [{ lineId: "h1", hotelName: "The Datai", tripCity: "Langkawi", checkIn: "2026-06-03", checkOut: "2026-06-05" }],
+      { serviceDate: "2026-06-03", dayCity: "Langkawi" },
+    );
+    const bound = bindAirportTransfersToSelectedHotels(products, dayHotels);
+    expect(bound[0]?.boundHotelName).toBe("The Datai");
+    expect(String(bound[0]?.name)).toContain("Langkawi Airport");
+    expect(String(bound[0]?.name)).toContain("The Datai");
+    expect(bound.some((p) => String(p.boundHotelName) === "Ramada Encore")).toBe(false);
   });
 });
