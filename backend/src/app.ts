@@ -539,6 +539,7 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
       state: string;
       city: string;
       panNumber?: string;
+      passportNumber: string;
       password: string;
       gstNumber?: string;
       gstProofId?: string;
@@ -596,6 +597,7 @@ app.post("/api/auth/register", authLimiter, validate(agentRegistrationSchema), a
           state: body.state || resolveGstState(null, body.gstNumber) || undefined,
           city: body.city,
           panNumber: body.panNumber || null,
+          passportNumber: body.passportNumber || null,
           gstNumber: body.gstNumber || null,
           vatNumber: body.gstNumber || null,
           gstProofUrl: null,

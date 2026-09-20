@@ -247,6 +247,7 @@ describe("Phase 15 agent registration approval", { timeout: 30_000 }, () => {
       state: "Karnataka",
       city: "Bengaluru",
       panNumber: "AAAAA1111A",
+      passportNumber: "P1234567",
       password,
       confirmPassword: password,
       gstNumber: "29AAAAA1111A1Z5",

@@ -359,8 +359,9 @@ export function mountBmsRoutes(
           res.status(400).json({ error: "passengers array required" });
           return;
         }
+        const requirePassport = existing.isInternational || /hotel/i.test(String(existing.service || ""));
         for (const p of list) {
-          const err = validatePassenger(p, existing.isInternational);
+          const err = validatePassenger(p, existing.isInternational, { requirePassport });
           if (err) {
             res.status(400).json({ error: err });
             return;
@@ -384,7 +385,7 @@ export function mountBmsRoutes(
                   gender: p.gender,
                   dateOfBirth: p.dateOfBirth,
                   nationality: p.nationality,
-                  passportNumber: existing.isInternational ? p.passportNumber : null,
+                  passportNumber: requirePassport ? (p.passportNumber || null) : null,
                   passportIssueDate: existing.isInternational ? p.passportIssueDate : null,
                   passportExpiry: existing.isInternational ? p.passportExpiry : null,
                   mobile: p.mobile,

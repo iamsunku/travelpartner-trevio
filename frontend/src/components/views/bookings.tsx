@@ -530,11 +530,15 @@ function BookingDetailDialog({
                         {p.isLead && !booking.isInternational && (
                           <Field label="PAN *" value={p.panNumber || ""} onChange={(v) => updatePax(idx, { panNumber: v.toUpperCase() })} />
                         )}
-                        {booking.isInternational && (
+                        {(booking.isInternational || /hotel/i.test(String(booking.service || ""))) && (
                           <>
                             <Field label="Passport No *" value={p.passportNumber || ""} onChange={(v) => updatePax(idx, { passportNumber: v })} />
-                            <Field label="Passport Expiry *" value={p.passportExpiry || ""} onChange={(v) => updatePax(idx, { passportExpiry: v })} placeholder="YYYY-MM-DD" />
-                            <Field label="Passport Issue" value={p.passportIssueDate || ""} onChange={(v) => updatePax(idx, { passportIssueDate: v })} />
+                            {booking.isInternational && (
+                              <>
+                                <Field label="Passport Expiry *" value={p.passportExpiry || ""} onChange={(v) => updatePax(idx, { passportExpiry: v })} placeholder="YYYY-MM-DD" />
+                                <Field label="Passport Issue" value={p.passportIssueDate || ""} onChange={(v) => updatePax(idx, { passportIssueDate: v })} />
+                              </>
+                            )}
                           </>
                         )}
                       </div>

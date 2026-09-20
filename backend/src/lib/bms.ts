@@ -123,15 +123,19 @@ export function validatePassenger(
     isLead?: boolean;
   },
   isInternational: boolean,
+  opts?: { requirePassport?: boolean },
 ): string | null {
   if (!p.firstName?.trim() || !p.lastName?.trim()) return "First and last name are required";
   if (!p.dateOfBirth?.trim()) return "Date of birth is required";
   if (p.isLead && !isInternational && !p.panNumber?.trim()) {
     return "PAN number is required for lead passenger on domestic bookings";
   }
-  if (isInternational) {
-    if (!p.passportNumber?.trim()) return "Passport number is required for international bookings";
-    if (!p.passportExpiry?.trim()) return "Passport expiry is required for international bookings";
+  const needPassport = isInternational || opts?.requirePassport === true;
+  if (needPassport) {
+    if (!p.passportNumber?.trim()) return "Passport number is required";
+    if (isInternational && !p.passportExpiry?.trim()) {
+      return "Passport expiry is required for international bookings";
+    }
   }
   return null;
 }

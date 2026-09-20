@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Hotel as HotelIcon, Search, Calendar, Users, ChevronRight, ChevronDown,
@@ -168,6 +168,32 @@ export function HotelsView() {
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
   const [specialRequest, setSpecialRequest] = useState("");
+  const [guests, setGuests] = useState<Array<{
+    firstName: string;
+    lastName: string;
+    passportNumber: string;
+    dateOfBirth: string;
+  }>>([{ firstName: "", lastName: "", passportNumber: "", dateOfBirth: "" }]);
+
+  const guestCount = Math.max(1, adults + childrenCount);
+
+  useEffect(() => {
+    setGuests((prev) =>
+      Array.from({ length: guestCount }, (_, i) => prev[i] || {
+        firstName: "",
+        lastName: "",
+        passportNumber: "",
+        dateOfBirth: "",
+      }),
+    );
+  }, [guestCount]);
+
+  function updateGuest(
+    index: number,
+    patch: Partial<{ firstName: string; lastName: string; passportNumber: string; dateOfBirth: string }>,
+  ) {
+    setGuests((prev) => prev.map((g, i) => (i === index ? { ...g, ...patch } : g)));
+  }
 
   const nights = useMemo(() => {
     if (!checkIn || !checkOut) return 1;
@@ -282,15 +308,27 @@ export function HotelsView() {
   }
 
   async function processPayment() {
-    if (!guestName.trim() || !guestEmail.trim() || !guestPhone.trim()) {
+    for (let i = 0; i < guests.length; i++) {
+      const g = guests[i];
+      if (!g.firstName.trim() || !g.lastName.trim() || !g.passportNumber.trim() || !g.dateOfBirth.trim()) {
+        toast({
+          title: `Guest ${i + 1} details incomplete`,
+          description: "First name, last name, passport number and date of birth are required for every guest.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    if (!guestEmail.trim() || !guestPhone.trim()) {
       toast({
-        title: "Guest details required",
-        description: "Please fill in name, email and phone.",
+        title: "Contact details required",
+        description: "Please fill in email and phone for the lead guest.",
         variant: "destructive",
       });
       return;
     }
 
+    const leadName = `${guests[0].firstName.trim()} ${guests[0].lastName.trim()}`.trim();
     const description = `${selectedHotel?.name ?? "Hotel"} · ${selectedRoom?.name ?? ""}`;
     let paidMethod: "Wallet" | "Razorpay" = "Razorpay";
 
@@ -320,7 +358,7 @@ export function HotelsView() {
     setPaySuccess(true);
     if (selectedHotel && selectedRoom) {
       addBooking({
-        customerName: guestName,
+        customerName: leadName || guestName,
         service: "Hotel",
         route: `${selectedHotel.name}, ${selectedHotel.city} - ${nights}N`,
         travelDate: checkIn || new Date().toISOString().slice(0, 10),
@@ -340,6 +378,7 @@ export function HotelsView() {
     setGuestEmail("");
     setGuestPhone("");
     setSpecialRequest("");
+    setGuests([{ firstName: "", lastName: "", passportNumber: "", dateOfBirth: "" }]);
     setPaySuccess(false);
     setPaying(false);
   }
@@ -648,7 +687,7 @@ export function HotelsView() {
 
       {/* GUEST DETAILS + PAYMENT DIALOG */}
       <Dialog open={paymentDialog} onOpenChange={(o) => { if (!paying) setPaymentDialog(o); }}>
-        <DialogContent className="sm:max-w-lg" showCloseButton={!paying && !paySuccess}>
+        <DialogContent className="sm:max-w-2xl" showCloseButton={!paying && !paySuccess}>
           {paySuccess ? (
             <div className="py-8 text-center">
               <motion.div
@@ -703,18 +742,60 @@ export function HotelsView() {
               <div className="grid grid-cols-1 sm:grid-cols-[1fr_180px] gap-4">
                 {/* Forms */}
                 <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="g-name" className="text-xs">Primary guest name</Label>
-                    <Input
-                      id="g-name"
-                      value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      placeholder="e.g. Karthik Venkat"
-                    />
+                  <div className="rounded-lg border bg-muted/30 px-3 py-2">
+                    <p className="text-xs font-semibold text-foreground">
+                      Guest details ({guestCount} guest{guestCount === 1 ? "" : "s"})
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Enter first name, last name, passport and date of birth for every traveller.
+                    </p>
+                  </div>
+                  <div className="max-h-[40vh] overflow-y-auto space-y-3 pr-1">
+                    {guests.map((g, idx) => (
+                      <div key={idx} className="rounded-lg border p-3 space-y-2">
+                        <p className="text-xs font-semibold">
+                          Guest {idx + 1}{idx === 0 ? " (Lead)" : ""}
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">First name *</Label>
+                            <Input
+                              value={g.firstName}
+                              onChange={(e) => updateGuest(idx, { firstName: e.target.value })}
+                              placeholder="First name"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Last name *</Label>
+                            <Input
+                              value={g.lastName}
+                              onChange={(e) => updateGuest(idx, { lastName: e.target.value })}
+                              placeholder="Last name"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Passport number *</Label>
+                            <Input
+                              value={g.passportNumber}
+                              onChange={(e) => updateGuest(idx, { passportNumber: e.target.value })}
+                              placeholder="Passport number"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Date of birth *</Label>
+                            <Input
+                              type="date"
+                              value={g.dateOfBirth}
+                              onChange={(e) => updateGuest(idx, { dateOfBirth: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
-                      <Label htmlFor="g-email" className="text-xs">Email</Label>
+                      <Label htmlFor="g-email" className="text-xs">Lead email *</Label>
                       <Input
                         id="g-email"
                         type="email"
@@ -724,7 +805,7 @@ export function HotelsView() {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="g-phone" className="text-xs">Phone</Label>
+                      <Label htmlFor="g-phone" className="text-xs">Lead phone *</Label>
                       <Input
                         id="g-phone"
                         value={guestPhone}
@@ -746,7 +827,7 @@ export function HotelsView() {
                   <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 flex items-start gap-2">
                     <ShieldCheck className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
                     <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                      Free cancellation up to 48 hours before check-in.
+                      Free cancellation up to 48 hours before check-in. Names must match passport.
                     </p>
                   </div>
                 </div>
