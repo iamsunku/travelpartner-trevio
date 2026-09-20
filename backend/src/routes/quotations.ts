@@ -42,6 +42,7 @@ import { generateQuotationPdf, QuotationPdfError } from "../lib/quotation-pdf/in
 import { publicErrorMessage } from "../lib/http-error.js";
 import { resolveDefaultAgencyId } from "../lib/api-key-config.js";
 import { TAX_CONFIGURATION_REQUIRED, pricePackage, pricingBlockReason, ruleApplies, stripAgentPricingOverrides, type TaxRuleInput } from "../lib/pricing.js";
+import { validateMalaysiaTransferLines } from "../lib/malaysia-transfer-rules.js";
 import {
   NO_VALID_RATE_MESSAGE,
   RATE_SOURCES,
@@ -71,6 +72,16 @@ import {
 import { extractTemplateContent, mergeTemplateIntoQuotation, type MergeMode } from "../lib/quote-template-merge.js";
 
 type ScopeFn = (req: AuthRequest) => Record<string, unknown>;
+
+/**
+ * Contracted-rate freeze must resolve shared catalogue rates (agencyId null),
+ * matching catalogAgencyScope used by /api/contracted-rates and /api/products.
+ */
+function catalogRateScope(req: AuthRequest, agencyScope: ScopeFn): Record<string, unknown> {
+  const scope = agencyScope(req);
+  if (!Object.prototype.hasOwnProperty.call(scope, "agencyId")) return scope;
+  return { OR: [{ agencyId: scope.agencyId }, { agencyId: null }] };
+}
 type OwnAgencyFn = (req: AuthRequest, fallback?: string) => string | undefined;
 type OwnBranchFn = (req: AuthRequest) => string | undefined;
 type BranchScopeFn = (req: AuthRequest, ownField?: string) => Record<string, unknown>;
@@ -378,6 +389,13 @@ async function priceFrozenPackage(
     allowClientTax?: boolean;
   },
 ) {
+  const quotePax = Math.max(1, Number(input.adults ?? 0) + Number(input.children ?? 0));
+  const transferRuleError = validateMalaysiaTransferLines(frozen.transfers, quotePax);
+  if (transferRuleError) {
+    const err = new Error(transferRuleError) as Error & { statusCode: number };
+    err.statusCode = 400;
+    throw err;
+  }
   const taxRule = await loadActiveTaxRule(input.scope, input.travelStartDate);
   const priced = pricePackage(frozen, {
     currency: input.currency || "INR",
@@ -710,12 +728,22 @@ export function mountQuotationRoutes(
   // ── Create (wizard / draft) ──────────────────────────────────────────────
   app.post("/api/quotations/wizard", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      if (isAgentLike(req.auth?.role)) {
-        res.status(403).json({ error: "Agents cannot create internal quotations" });
+      if (req.auth?.role === "customer") {
+        res.status(403).json({ error: "Customers cannot create quotations" });
         return;
       }
-      const body = req.body || {};
-      let agencyId = ownAgencyId(req, body.agencyId);
+      const agentActor = req.auth?.role === "travel_agent";
+      let body = (req.body || {}) as Record<string, unknown>;
+      if (agentActor) {
+        body = stripAgentPricingOverrides(body);
+        body.agentId = req.auth?.userId;
+        body.internalNotes = undefined;
+        body.trevioMarkupType = "Percentage";
+        body.trevioMarkupValue = 0;
+        body.discountType = null;
+        body.discountValue = 0;
+      }
+      let agencyId = ownAgencyId(req, body.agencyId as string | undefined);
       if (!agencyId && req.auth?.role === "super_admin") {
         agencyId = (await resolveDefaultAgencyId()) || undefined;
       }
@@ -842,7 +870,7 @@ export function mountQuotationRoutes(
             const frozen = await freezePackageLines(pkg, {
               travelDate: body.travelStartDate || null,
               travelEndDate: body.travelEndDate || null,
-              scope: agencyScope(req),
+              scope: catalogRateScope(req, agencyScope),
             });
             const priced = await priceFrozenPackage(frozen, {
               currency: body.currency,
@@ -859,7 +887,7 @@ export function mountQuotationRoutes(
               travelStartDate: body.travelStartDate,
               exchangeRate: body.exchangeRate,
               exchangeRateExplicit: body.exchangeRateExplicit,
-              scope: agencyScope(req),
+              scope: catalogRateScope(req, agencyScope),
             });
             const layers = layersFromPackage(priced.priced);
             if (pkg.isSelected || !selectedLayers) {
@@ -961,10 +989,11 @@ export function mountQuotationRoutes(
   // ── Update wizard / full quote ───────────────────────────────────────────
   app.put("/api/quotations/:id/wizard", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
     try {
-      if (isAgentLike(req.auth?.role)) {
+      if (req.auth?.role === "customer") {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
+      const agentActor = req.auth?.role === "travel_agent";
       const existing = await loadQuoteForActor(req, agencyScope, branchScope);
       if (!existing) {
         res.status(404).json({ error: "Not found" });
@@ -975,7 +1004,16 @@ export function mountQuotationRoutes(
         return;
       }
 
-      const body = req.body || {};
+      let body = (req.body || {}) as Record<string, unknown>;
+      if (agentActor) {
+        body = stripAgentPricingOverrides(body);
+        body.agentId = req.auth?.userId;
+        delete body.internalNotes;
+        delete body.trevioMarkupType;
+        delete body.trevioMarkupValue;
+        delete body.discountType;
+        delete body.discountValue;
+      }
       const tripBasics = resolveTripBasicsFromBody(body, existing);
       const nights = tripBasics.nights;
 
@@ -1059,7 +1097,7 @@ export function mountQuotationRoutes(
             travelDate: body.travelStartDate ?? existing.travelStartDate,
             travelEndDate: body.travelEndDate ?? existing.travelEndDate,
             existingPackages: existing.packages as unknown as Array<Record<string, unknown>>,
-            scope: agencyScope(req),
+            scope: catalogRateScope(req, agencyScope),
           });
           const pricedPkg = await priceFrozenPackage(frozen, {
             currency: body.currency ?? existing.currency,
@@ -1076,7 +1114,7 @@ export function mountQuotationRoutes(
             travelStartDate: body.travelStartDate ?? existing.travelStartDate,
             exchangeRate: existing.exchangeRate,
             exchangeRateExplicit: body.exchangeRateExplicit === true || existing.exchangeRateExplicit,
-            scope: agencyScope(req),
+            scope: catalogRateScope(req, agencyScope),
           });
           if (pkg.isSelected || pricedTaxRuleId === existing.taxRuleId) pricedTaxRuleId = pricedPkg.taxRuleId;
           const pkgData = packageWriteData(pricedPkg.frozen, layersFromPackage(pricedPkg.priced));
@@ -1182,6 +1220,11 @@ export function mountQuotationRoutes(
 
       res.json({ quotation: sanitizeQuotationForRole((latest || updated) as unknown as Record<string, unknown>, req.auth?.role) });
     } catch (e) {
+      const status = (e as { statusCode?: number })?.statusCode;
+      if (status === 400) {
+        res.status(400).json({ error: e instanceof Error ? e.message : "Validation failed" });
+        return;
+      }
       logger.error(e);
       res.status(500).json({ error: "Server error" });
     }
@@ -1264,7 +1307,7 @@ export function mountQuotationRoutes(
           travelDate: existing.travelStartDate,
           travelEndDate: existing.travelEndDate,
           existingPackages: existing.packages as unknown as Array<Record<string, unknown>>,
-          scope: agencyScope(req),
+          scope: catalogRateScope(req, agencyScope),
         }));
       }
 
@@ -2409,7 +2452,7 @@ export function mountQuotationRoutes(
         {
           travelDate: body.travelStartDate || null,
           travelEndDate: body.travelEndDate || null,
-          scope: agencyScope(req),
+          scope: catalogRateScope(req, agencyScope),
         },
       );
       const priced = await priceFrozenPackage(
@@ -2432,7 +2475,7 @@ export function mountQuotationRoutes(
           agentMarkupType: "Fixed",
           agentMarkup,
           travelStartDate: body.travelStartDate || null,
-          scope: agencyScope(req),
+          scope: catalogRateScope(req, agencyScope),
         },
       );
       const layers = layersFromPackage(priced.priced);
@@ -2561,7 +2604,7 @@ export function mountQuotationRoutes(
 
       const prepared = await prepareAgentTripLines(lines, {
         travelDate: body.travelStartDate,
-        scope: agencyScope(req),
+        scope: catalogRateScope(req, agencyScope),
       });
       if (prepared.error || !prepared.lineItems || !prepared.packages) {
         res.status(400).json({ error: prepared.error || NO_VALID_RATE_MESSAGE });
@@ -2580,7 +2623,7 @@ export function mountQuotationRoutes(
         agentMarkupType: body.agentMarkupType === "Percentage" ? "Percentage" : "Fixed",
         agentMarkup,
         travelStartDate: body.travelStartDate,
-        scope: agencyScope(req),
+        scope: catalogRateScope(req, agencyScope),
       });
       const layers = layersFromPackage(priced.priced);
       const quoteNo = await nextQuoteNo();
@@ -2725,7 +2768,7 @@ export function mountQuotationRoutes(
           travelStartDate: body.travelStartDate ?? existing.travelStartDate,
           exchangeRate: existing.exchangeRate,
           exchangeRateExplicit: existing.exchangeRateExplicit,
-          scope: agencyScope(req),
+          scope: catalogRateScope(req, agencyScope),
         });
         const layers = layersFromPackage(priced.priced);
         data.agentMarkup = agentMarkup;

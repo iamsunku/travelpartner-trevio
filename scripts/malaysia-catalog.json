@@ -1,0 +1,3460 @@
+{
+  "source": {
+    "hotels": "Malaysia Contracted rates .xlsx",
+    "kth": "KTH RATE SHEET 2026 - TREVIO.xlsx",
+    "validFrom": "2026-01-01",
+    "validTo": "2026-12-31",
+    "fx": {
+      "USD_TO_INR": 84.0,
+      "MYR_TO_INR": 19.0
+    }
+  },
+  "hotels": [
+    {
+      "name": "Ramada Encore",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 3,
+      "rooms": [
+        {
+          "name": "Deluxe Double / Twin",
+          "usd": 39,
+          "extraBedUsd": 21,
+          "inr": 3276,
+          "extraBedInr": 1764
+        }
+      ]
+    },
+    {
+      "name": "Metro Star",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 3,
+      "rooms": [
+        {
+          "name": "Superior",
+          "usd": 37,
+          "extraBedUsd": 21,
+          "inr": 3108,
+          "extraBedInr": 1764
+        },
+        {
+          "name": "Deluxe",
+          "usd": 45,
+          "extraBedUsd": 21,
+          "inr": 3780,
+          "extraBedInr": 1764
+        }
+      ]
+    },
+    {
+      "name": "Metro Bukit Bintang",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 3,
+      "rooms": [
+        {
+          "name": "Superior",
+          "usd": 37,
+          "extraBedUsd": 21,
+          "inr": 3108,
+          "extraBedInr": 1764
+        },
+        {
+          "name": "Deluxe",
+          "usd": 39,
+          "extraBedUsd": 21,
+          "inr": 3276,
+          "extraBedInr": 1764
+        }
+      ]
+    },
+    {
+      "name": "Ibis Frazer",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 3,
+      "rooms": [
+        {
+          "name": "Standard",
+          "usd": 33,
+          "extraBedUsd": 21,
+          "inr": 2772,
+          "extraBedInr": 1764
+        }
+      ]
+    },
+    {
+      "name": "Trigo Kuala Lumpur",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 3,
+      "rooms": [
+        {
+          "name": "Standard",
+          "usd": 41,
+          "extraBedUsd": 21,
+          "inr": 3444,
+          "extraBedInr": 1764
+        }
+      ]
+    },
+    {
+      "name": "Brisdale Kuala Lumpur",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 3,
+      "rooms": [
+        {
+          "name": "Standard",
+          "usd": 46,
+          "extraBedUsd": 21,
+          "inr": 3864,
+          "extraBedInr": 1764
+        }
+      ]
+    },
+    {
+      "name": "Ideas Hotel Kuala Lumpur",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 4,
+      "rooms": [
+        {
+          "name": "Signature Room",
+          "usd": 62,
+          "extraBedUsd": 37,
+          "inr": 5208,
+          "extraBedInr": 3108
+        }
+      ]
+    },
+    {
+      "name": "Tamu Hotel Kuala Lumpur",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 4,
+      "rooms": [
+        {
+          "name": "Deluxe Room",
+          "usd": 63,
+          "extraBedUsd": 37,
+          "inr": 5292,
+          "extraBedInr": 3108
+        }
+      ]
+    },
+    {
+      "name": "Furama Bukit Bintang Kuala Lumpur",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 4,
+      "rooms": [
+        {
+          "name": "Deluxe Room",
+          "usd": 61,
+          "extraBedUsd": 37,
+          "inr": 5124,
+          "extraBedInr": 3108
+        }
+      ]
+    },
+    {
+      "name": "Hotel Grand Continental KL",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 4,
+      "rooms": [
+        {
+          "name": "Deluxe ( Superior/Deluxe )",
+          "usd": 47,
+          "extraBedUsd": 37,
+          "inr": 3948,
+          "extraBedInr": 3108
+        },
+        {
+          "name": "Premium ( Superior/Deluxe )",
+          "usd": 55,
+          "extraBedUsd": 37,
+          "inr": 4620,
+          "extraBedInr": 3108
+        }
+      ]
+    },
+    {
+      "name": "Royale Chulan Kuala Lumpur",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 5,
+      "rooms": [
+        {
+          "name": "Superior Room",
+          "usd": 92,
+          "extraBedUsd": 37,
+          "inr": 7728,
+          "extraBedInr": 3108
+        },
+        {
+          "name": "Deluxe Room",
+          "usd": 103,
+          "extraBedUsd": 37,
+          "inr": 8652,
+          "extraBedInr": 3108
+        }
+      ]
+    },
+    {
+      "name": "Seri Pacific KL",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "starCategory": 5,
+      "rooms": [
+        {
+          "name": "Superior Room",
+          "usd": 68,
+          "extraBedUsd": 26,
+          "inr": 5712,
+          "extraBedInr": 2184
+        },
+        {
+          "name": "Deluxe Room",
+          "usd": 74,
+          "extraBedUsd": 26,
+          "inr": 6216,
+          "extraBedInr": 2184
+        }
+      ]
+    },
+    {
+      "name": "Swiss Garden Genting",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "starCategory": 4,
+      "rooms": [
+        {
+          "name": "Deluxe Room ( Double / Twin )",
+          "usd": 58,
+          "extraBedUsd": 42,
+          "inr": 4872,
+          "extraBedInr": 3528
+        }
+      ]
+    },
+    {
+      "name": "Ion Majestic",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "starCategory": 5,
+      "rooms": [
+        {
+          "name": "Studio Room",
+          "usd": 87,
+          "extraBedUsd": 37,
+          "inr": 7308,
+          "extraBedInr": 3108
+        },
+        {
+          "name": "Family Room ( weekday - Sunday - Thursday )",
+          "usd": 158,
+          "extraBedUsd": 37,
+          "inr": 13272,
+          "extraBedInr": 3108
+        }
+      ]
+    },
+    {
+      "name": "Hotel Grand Continental Langkawi",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "starCategory": 3,
+      "rooms": [
+        {
+          "name": "Premium Single / Twin",
+          "usd": 43,
+          "extraBedUsd": 21,
+          "inr": 3612,
+          "extraBedInr": 1764
+        },
+        {
+          "name": "Premium Triple",
+          "usd": 63,
+          "extraBedUsd": 21,
+          "inr": 5292,
+          "extraBedInr": 1764
+        }
+      ]
+    },
+    {
+      "name": "Bayview Hotel Langkawi",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "starCategory": 4,
+      "rooms": [
+        {
+          "name": "Sup",
+          "usd": 76,
+          "extraBedUsd": 34,
+          "inr": 6384,
+          "extraBedInr": 2856
+        },
+        {
+          "name": "Deluxe",
+          "usd": 82,
+          "extraBedUsd": 34,
+          "inr": 6888,
+          "extraBedInr": 2856
+        }
+      ]
+    },
+    {
+      "name": "Dash Hotel Langkawi",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "starCategory": 4,
+      "rooms": [
+        {
+          "name": "Sup (Week Day) — High Season",
+          "usd": 147,
+          "extraBedUsd": 42,
+          "inr": 12348,
+          "extraBedInr": 3528
+        },
+        {
+          "name": "Sup (Week End) — High Season",
+          "usd": 155,
+          "extraBedUsd": 42,
+          "inr": 13020,
+          "extraBedInr": 3528
+        },
+        {
+          "name": "Sup (Week Day) — Normal Season",
+          "usd": 142,
+          "extraBedUsd": 42,
+          "inr": 11928,
+          "extraBedInr": 3528
+        },
+        {
+          "name": "Sup (Week End) — Normal Season",
+          "usd": 150,
+          "extraBedUsd": 42,
+          "inr": 12600,
+          "extraBedInr": 3528
+        }
+      ]
+    }
+  ],
+  "transfers": [
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Kuala Lumpur Hotel ( 6am - 11pm )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 125.0,
+        "van10": 170.0,
+        "van18": 235.0,
+        "van18Guide": 535.0
+      },
+      "inr": {
+        "car": 2375,
+        "van10": 3230,
+        "van18": 4465,
+        "van18Guide": 10165
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Kuala Lumpur Hotel ( 11.01pm - 5.59am )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 180.0,
+        "van10": 247.5,
+        "van18": 345.0,
+        "van18Guide": 645.0
+      },
+      "inr": {
+        "car": 3420,
+        "van10": 4702,
+        "van18": 6555,
+        "van18Guide": 12255
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Kuala Lumpur Hotel + Enroute Putrajaya ( 30Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 155.0,
+        "van10": 210.0,
+        "van18": 295.0,
+        "van18Guide": 595.0
+      },
+      "inr": {
+        "car": 2945,
+        "van10": 3990,
+        "van18": 5605,
+        "van18Guide": 11305
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Kuala Lumpur Hotel + Enroute Putrajaya ( 60Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 185.0,
+        "van10": 250.0,
+        "van18": 355.0,
+        "van18Guide": 655.0
+      },
+      "inr": {
+        "car": 3515,
+        "van10": 4750,
+        "van18": 6745,
+        "van18Guide": 12445
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Genting Hotel + Enrote Batu Caves ( 30Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 235.0,
+        "van10": 300.0,
+        "van18": 355.0,
+        "van18Guide": 755.0
+      },
+      "inr": {
+        "car": 4465,
+        "van10": 5700,
+        "van18": 6745,
+        "van18Guide": 14345
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Genting Hotel + Enrote Batu Caves ( 60Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 265.0,
+        "van10": 355.0,
+        "van18": 405.0,
+        "van18Guide": 805.0
+      },
+      "inr": {
+        "car": 5035,
+        "van10": 6745,
+        "van18": 7695,
+        "van18Guide": 15295
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Genting Hotel + Enrote Putrajaya ( 30Mins ) + Enrote Batu Caves ( 30Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 265.0,
+        "van10": 355.0,
+        "van18": 405.0,
+        "van18Guide": 805.0
+      },
+      "inr": {
+        "car": 5035,
+        "van10": 6745,
+        "van18": 7695,
+        "van18Guide": 15295
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Malacca Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 285.0,
+        "van10": 405.0,
+        "van18": 505.0,
+        "van18Guide": 905.0
+      },
+      "inr": {
+        "car": 5415,
+        "van10": 7695,
+        "van18": 9595,
+        "van18Guide": 17195
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Port Dickson Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 225.0,
+        "van10": 355.0,
+        "van18": 455.0,
+        "van18Guide": 855.0
+      },
+      "inr": {
+        "car": 4275,
+        "van10": 6745,
+        "van18": 8645,
+        "van18Guide": 16245
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Hotel - Kuala Lumpur Airport",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 125.0,
+        "van10": 170.0,
+        "van18": 235.0,
+        "van18Guide": 535.0
+      },
+      "inr": {
+        "car": 2375,
+        "van10": 3230,
+        "van18": 4465,
+        "van18Guide": 10165
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Hotel - Kuala Lumpur Airport + Enroute Putrajaya ( 30Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 155.0,
+        "van10": 210.0,
+        "van18": 295.0,
+        "van18Guide": 595.0
+      },
+      "inr": {
+        "car": 2945,
+        "van10": 3990,
+        "van18": 5605,
+        "van18Guide": 11305
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Hotel - Kuala Lumpur Airport + Enroute Putrajaya ( 60Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 185.0,
+        "van10": 250.0,
+        "van18": 355.0,
+        "van18Guide": 655.0
+      },
+      "inr": {
+        "car": 3515,
+        "van10": 4750,
+        "van18": 6745,
+        "van18Guide": 12445
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Kuala Lumpur Airport",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 235.0,
+        "van10": 300.0,
+        "van18": 355.0,
+        "van18Guide": 755.0
+      },
+      "inr": {
+        "car": 4465,
+        "van10": 5700,
+        "van18": 6745,
+        "van18Guide": 14345
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Kuala Lumpur Airport + Enrote Putrajaya ( 30Mins ) + Enrote Batu Caves ( 30Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 265.0,
+        "van10": 355.0,
+        "van18": 405.0,
+        "van18Guide": 805.0
+      },
+      "inr": {
+        "car": 5035,
+        "van10": 6745,
+        "van18": 7695,
+        "van18Guide": 15295
+      }
+    },
+    {
+      "name": "One Way Transfer from Malacca Hotel - Kuala Lumpur Airport",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 285.0,
+        "van10": 405.0,
+        "van18": 505.0,
+        "van18Guide": 905.0
+      },
+      "inr": {
+        "car": 5415,
+        "van10": 7695,
+        "van18": 9595,
+        "van18Guide": 17195
+      }
+    },
+    {
+      "name": "One Way Transfer from Port Dickson Hotel - Kuala Lumpur Airport",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 225.0,
+        "van10": 355.0,
+        "van18": 455.0,
+        "van18Guide": 855.0
+      },
+      "inr": {
+        "car": 4275,
+        "van10": 6745,
+        "van18": 8645,
+        "van18Guide": 16245
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Ipoh / Tambun Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 365.0,
+        "van10": 415.0,
+        "van18": 495.0,
+        "van18Guide": 895.0
+      },
+      "inr": {
+        "car": 6935,
+        "van10": 7885,
+        "van18": 9405,
+        "van18Guide": 17005
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Cameron Highland Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 565.0,
+        "van10": 635.0,
+        "van18": 715.0,
+        "van18Guide": 1115.0
+      },
+      "inr": {
+        "car": 10735,
+        "van10": 12065,
+        "van18": 13585,
+        "van18Guide": 21185
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Penang Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 665.0,
+        "van10": 765.0,
+        "van18": 865.0,
+        "van18Guide": 1265.0
+      },
+      "inr": {
+        "car": 12635,
+        "van10": 14535,
+        "van18": 16435,
+        "van18Guide": 24035
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Johor Bahru Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 665.0,
+        "van10": 765.0,
+        "van18": 865.0,
+        "van18Guide": 1265.0
+      },
+      "inr": {
+        "car": 12635,
+        "van10": 14535,
+        "van18": 16435,
+        "van18Guide": 24035
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Airport - Singapore Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 995.0,
+        "van10": 1165.0,
+        "van18": 1415.0,
+        "van18Guide": 1815.0
+      },
+      "inr": {
+        "car": 18905,
+        "van10": 22135,
+        "van18": 26885,
+        "van18Guide": 34485
+      }
+    },
+    {
+      "name": "One Way Transfer from Ipoh / Tambun Hotel - Kuala Lumpur Airport",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 365.0,
+        "van10": 415.0,
+        "van18": 495.0,
+        "van18Guide": 895.0
+      },
+      "inr": {
+        "car": 6935,
+        "van10": 7885,
+        "van18": 9405,
+        "van18Guide": 17005
+      }
+    },
+    {
+      "name": "One Way Transfer from Cameron Highland Hotel - Kuala Lumpur Airport",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 565.0,
+        "van10": 635.0,
+        "van18": 715.0,
+        "van18Guide": 1115.0
+      },
+      "inr": {
+        "car": 10735,
+        "van10": 12065,
+        "van18": 13585,
+        "van18Guide": 21185
+      }
+    },
+    {
+      "name": "One Way Transfer from Penang Hotel - Kuala Lumpur Airport",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 665.0,
+        "van10": 765.0,
+        "van18": 865.0,
+        "van18Guide": 1265.0
+      },
+      "inr": {
+        "car": 12635,
+        "van10": 14535,
+        "van18": 16435,
+        "van18Guide": 24035
+      }
+    },
+    {
+      "name": "One Way Transfer from Johor Bahru Hotel - Kuala Lumpur Airport",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 665.0,
+        "van10": 765.0,
+        "van18": 865.0,
+        "van18Guide": 1265.0
+      },
+      "inr": {
+        "car": 12635,
+        "van10": 14535,
+        "van18": 16435,
+        "van18Guide": 24035
+      }
+    },
+    {
+      "name": "One Way Transfer from Singapore Hotel - Kuala Lumpur Airport",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 995.0,
+        "van10": 1165.0,
+        "van18": 1415.0,
+        "van18Guide": 1815.0
+      },
+      "inr": {
+        "car": 18905,
+        "van10": 22135,
+        "van18": 26885,
+        "van18Guide": 34485
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Hotel - Kuala Lumpur Hotel ( Inter Hotel Transfer )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 75.0,
+        "van10": 105.0,
+        "van18": 135.0,
+        "van18Guide": 435.0
+      },
+      "inr": {
+        "car": 1425,
+        "van10": 1995,
+        "van18": 2565,
+        "van18Guide": 8265
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Coach Station - Genting Hotel + Enrote Batu Caves ( 30Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 185.0,
+        "van10": 250.0,
+        "van18": 310.0,
+        "van18Guide": 710.0
+      },
+      "inr": {
+        "car": 3515,
+        "van10": 4750,
+        "van18": 5890,
+        "van18Guide": 13490
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Hotel - Genting Hotel + Enrote Batu Caves ( 30Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 185.0,
+        "van10": 250.0,
+        "van18": 310.0,
+        "van18Guide": 710.0
+      },
+      "inr": {
+        "car": 3515,
+        "van10": 4750,
+        "van18": 5890,
+        "van18Guide": 13490
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Hotel - Genting Hotel + Enrote Batu Caves ( 60Mins )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 185.0,
+        "van10": 355.0,
+        "van18": 405.0,
+        "van18Guide": 805.0
+      },
+      "inr": {
+        "car": 3515,
+        "van10": 6745,
+        "van18": 7695,
+        "van18Guide": 15295
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Hotel - Port Klang Cruise Terminal",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 185.0,
+        "van10": 250.0,
+        "van18": 310.0,
+        "van18Guide": 710.0
+      },
+      "inr": {
+        "car": 3515,
+        "van10": 4750,
+        "van18": 5890,
+        "van18Guide": 13490
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Hotel - Malacca Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 325.0,
+        "van10": 405.0,
+        "van18": 505.0,
+        "van18Guide": 905.0
+      },
+      "inr": {
+        "car": 6175,
+        "van10": 7695,
+        "van18": 9595,
+        "van18Guide": 17195
+      }
+    },
+    {
+      "name": "One Way Transfer from Kuala Lumpur Hotel - Port Dickson Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 305.0,
+        "van10": 355.0,
+        "van18": 430.0,
+        "van18Guide": 830.0
+      },
+      "inr": {
+        "car": 5795,
+        "van10": 6745,
+        "van18": 8170,
+        "van18Guide": 15770
+      }
+    },
+    {
+      "name": "One Way Transfer from Port Klang Cruise Terminal - Kuala Lumpur Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 185.0,
+        "van10": 250.0,
+        "van18": 310.0,
+        "van18Guide": 710.0
+      },
+      "inr": {
+        "car": 3515,
+        "van10": 4750,
+        "van18": 5890,
+        "van18Guide": 13490
+      }
+    },
+    {
+      "name": "One Way Transfer from Malacca Hotel - Kuala Lumpur Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 325.0,
+        "van10": 405.0,
+        "van18": 505.0,
+        "van18Guide": 905.0
+      },
+      "inr": {
+        "car": 6175,
+        "van10": 7695,
+        "van18": 9595,
+        "van18Guide": 17195
+      }
+    },
+    {
+      "name": "One Way Transfer from Port Dickson Hotel - Kuala Lumpur Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 305.0,
+        "van10": 355.0,
+        "van18": 455.0,
+        "van18Guide": 855.0
+      },
+      "inr": {
+        "car": 5795,
+        "van10": 6745,
+        "van18": 8645,
+        "van18Guide": 16245
+      }
+    },
+    {
+      "name": "One Way Transfer from KL Hotel - Ipoh / Tambun Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 365.0,
+        "van10": 415.0,
+        "van18": 495.0,
+        "van18Guide": 895.0
+      },
+      "inr": {
+        "car": 6935,
+        "van10": 7885,
+        "van18": 9405,
+        "van18Guide": 17005
+      }
+    },
+    {
+      "name": "One Way Transfer from KL Hotel - Cameron Highland Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 565.0,
+        "van10": 635.0,
+        "van18": 715.0,
+        "van18Guide": 1115.0
+      },
+      "inr": {
+        "car": 10735,
+        "van10": 12065,
+        "van18": 13585,
+        "van18Guide": 21185
+      }
+    },
+    {
+      "name": "One Way Transfer from KL Hotel - Penang Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 665.0,
+        "van10": 765.0,
+        "van18": 865.0,
+        "van18Guide": 1265.0
+      },
+      "inr": {
+        "car": 12635,
+        "van10": 14535,
+        "van18": 16435,
+        "van18Guide": 24035
+      }
+    },
+    {
+      "name": "One Way Transfer from KL Hotel - Johor Hotel / Legoland Resort",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 665.0,
+        "van10": 765.0,
+        "van18": 865.0,
+        "van18Guide": 1265.0
+      },
+      "inr": {
+        "car": 12635,
+        "van10": 14535,
+        "van18": 16435,
+        "van18Guide": 24035
+      }
+    },
+    {
+      "name": "One Way Transfer from KL Hotel - Singapore Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 995.0,
+        "van10": 1165.0,
+        "van18": 1415.0,
+        "van18Guide": 1815.0
+      },
+      "inr": {
+        "car": 18905,
+        "van10": 22135,
+        "van18": 26885,
+        "van18Guide": 34485
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Kuala Lumpur Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 205.0,
+        "van10": 255.0,
+        "van18": 355.0,
+        "van18Guide": 755.0
+      },
+      "inr": {
+        "car": 3895,
+        "van10": 4845,
+        "van18": 6745,
+        "van18Guide": 14345
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Kuala Lumpur Coach Station",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 205.0,
+        "van10": 255.0,
+        "van18": 355.0,
+        "van18Guide": 755.0
+      },
+      "inr": {
+        "car": 3895,
+        "van10": 4845,
+        "van18": 6745,
+        "van18Guide": 14345
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Port Klang Cruise Terminal",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 355.0,
+        "van10": 525.0,
+        "van18": 625.0,
+        "van18Guide": 1025.0
+      },
+      "inr": {
+        "car": 6745,
+        "van10": 9975,
+        "van18": 11875,
+        "van18Guide": 19475
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Malacca Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 605.0,
+        "van10": 805.0,
+        "van18": 855.0,
+        "van18Guide": 1255.0
+      },
+      "inr": {
+        "car": 11495,
+        "van10": 15295,
+        "van18": 16245,
+        "van18Guide": 23845
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Port Dickson Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 455.0,
+        "van10": 555.0,
+        "van18": 655.0,
+        "van18Guide": 1055.0
+      },
+      "inr": {
+        "car": 8645,
+        "van10": 10545,
+        "van18": 12445,
+        "van18Guide": 20045
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Ipoh Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 465.0,
+        "van10": 515.0,
+        "van18": 595.0,
+        "van18Guide": 995.0
+      },
+      "inr": {
+        "car": 8835,
+        "van10": 9785,
+        "van18": 11305,
+        "van18Guide": 18905
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Cameron Highland Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 665.0,
+        "van10": 735.0,
+        "van18": 815.0,
+        "van18Guide": 1215.0
+      },
+      "inr": {
+        "car": 12635,
+        "van10": 13965,
+        "van18": 15485,
+        "van18Guide": 23085
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Penang Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 765.0,
+        "van10": 865.0,
+        "van18": 965.0,
+        "van18Guide": 1365.0
+      },
+      "inr": {
+        "car": 14535,
+        "van10": 16435,
+        "van18": 18335,
+        "van18Guide": 25935
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Johor Bahru Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 765.0,
+        "van10": 865.0,
+        "van18": 965.0,
+        "van18Guide": 1365.0
+      },
+      "inr": {
+        "car": 14535,
+        "van10": 16435,
+        "van18": 18335,
+        "van18Guide": 25935
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Singapore Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 1165.0,
+        "van10": 1315.0,
+        "van18": 1565.0,
+        "van18Guide": 1965.0
+      },
+      "inr": {
+        "car": 22135,
+        "van10": 24985,
+        "van18": 29735,
+        "van18Guide": 37335
+      }
+    },
+    {
+      "name": "One Way Transfer from Genting Hotel - Singapore Hotel + Enroute Lunch Stop",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 1225.0,
+        "van10": 1387.5,
+        "van18": 1655.0,
+        "van18Guide": 2055.0
+      },
+      "inr": {
+        "car": 23275,
+        "van10": 26362,
+        "van18": 31445,
+        "van18Guide": 39045
+      }
+    },
+    {
+      "name": "KL Half Day City Tour ( 3 Hours ) - No Entrance Ticket",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 135.0,
+        "van10": 205.0,
+        "van18": 265.0,
+        "van18Guide": 665.0
+      },
+      "inr": {
+        "car": 2565,
+        "van10": 3895,
+        "van18": 5035,
+        "van18Guide": 12635
+      }
+    },
+    {
+      "name": "KL Half Day City Tour ( 4 Hours ) [Optional Twin Tower or KL Tower Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 155.0,
+        "van10": 265.0,
+        "van18": 305.0,
+        "van18Guide": 705.0
+      },
+      "inr": {
+        "car": 2945,
+        "van10": 5035,
+        "van18": 5795,
+        "van18Guide": 13395
+      }
+    },
+    {
+      "name": "KL Half Day Country Side Tour ( 3 Hours )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 135.0,
+        "van10": 205.0,
+        "van18": 265.0,
+        "van18Guide": 665.0
+      },
+      "inr": {
+        "car": 2565,
+        "van10": 3895,
+        "van18": 5035,
+        "van18Guide": 12635
+      }
+    },
+    {
+      "name": "KL Half Day [Aquaira / Zoo / KL Bird Park Visit ~ Choose 1 ] ( 3 Hours )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 155.0,
+        "van10": 265.0,
+        "van18": 305.0,
+        "van18Guide": 705.0
+      },
+      "inr": {
+        "car": 2945,
+        "van10": 5035,
+        "van18": 5795,
+        "van18Guide": 13395
+      }
+    },
+    {
+      "name": "KL Night Tour ( 4 Hours ) [Optional Twin Tower or KL Tower Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 155.0,
+        "van10": 205.0,
+        "van18": 285.0,
+        "van18Guide": 685.0
+      },
+      "inr": {
+        "car": 2945,
+        "van10": 3895,
+        "van18": 5415,
+        "van18Guide": 13015
+      }
+    },
+    {
+      "name": "KL Night Tour ( 4 Hours ) Enroute Dinner Transfer [Optional Twin Tower or KL Tower Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 205.0,
+        "van10": 255.0,
+        "van18": 305.0,
+        "van18Guide": 705.0
+      },
+      "inr": {
+        "car": 3895,
+        "van10": 4845,
+        "van18": 5795,
+        "van18Guide": 13395
+      }
+    },
+    {
+      "name": "Half Day Putrajaya Tour ( 3 Hours ) [Optional Putrajaya Cruise Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 205.0,
+        "van10": 305.0,
+        "van18": 345.0,
+        "van18Guide": 745.0
+      },
+      "inr": {
+        "car": 3895,
+        "van10": 5795,
+        "van18": 6555,
+        "van18Guide": 14155
+      }
+    },
+    {
+      "name": "Half Day Putrajaya Tour ( 4 Hours ) [Optional Putrajaya Cruise Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 235.0,
+        "van10": 365.0,
+        "van18": 385.0,
+        "van18Guide": 785.0
+      },
+      "inr": {
+        "car": 4465,
+        "van10": 6935,
+        "van18": 7315,
+        "van18Guide": 14915
+      }
+    },
+    {
+      "name": "Full Day Sunway Lagoon Tour ( 8 Hours ) [Optional Sunway Lagoon Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 125.0,
+        "van10": 205.0,
+        "van18": 275.0,
+        "van18Guide": 675.0
+      },
+      "inr": {
+        "car": 2375,
+        "van10": 3895,
+        "van18": 5225,
+        "van18Guide": 12825
+      }
+    },
+    {
+      "name": "Full Day Sunway Lagoon Tour Enroute Dinner ( 8 Hours ) [Optional Sunway Lagoon Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 155.0,
+        "van10": 265.0,
+        "van18": 305.0,
+        "van18Guide": 705.0
+      },
+      "inr": {
+        "car": 2945,
+        "van10": 5035,
+        "van18": 5795,
+        "van18Guide": 13395
+      }
+    },
+    {
+      "name": "Full Day Genting Tour ( 8 Hours ) + Enroute Batu Caves ( 30Mins ) [Optional 02 Way Genting Cable Car Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 335.0,
+        "van10": 425.0,
+        "van18": 495.0,
+        "van18Guide": 895.0
+      },
+      "inr": {
+        "car": 6365,
+        "van10": 8075,
+        "van18": 9405,
+        "van18Guide": 17005
+      }
+    },
+    {
+      "name": "Full Day Genting Tour ( 8 Hours ) + Enroute Batu Caves ( 60Mins ) [Optional 02 Way Genting Cable Car Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 335.0,
+        "van10": 425.0,
+        "van18": 495.0,
+        "van18Guide": 895.0
+      },
+      "inr": {
+        "car": 6365,
+        "van10": 8075,
+        "van18": 9405,
+        "van18Guide": 17005
+      }
+    },
+    {
+      "name": "Full Day Genting Tour ( 8 Hours ) + Enroute Batu Caves ( 30Mins ) + Enroute Dinner [Optional 02 Way Genting Cable Car Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 385.0,
+        "van10": 525.0,
+        "van18": 545.0,
+        "van18Guide": 945.0
+      },
+      "inr": {
+        "car": 7315,
+        "van10": 9975,
+        "van18": 10355,
+        "van18Guide": 17955
+      }
+    },
+    {
+      "name": "Full Day Malacca Tour ( 8 Hours )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 505.0,
+        "van10": 655.0,
+        "van18": 695.0,
+        "van18Guide": 1095.0
+      },
+      "inr": {
+        "car": 9595,
+        "van10": 12445,
+        "van18": 13205,
+        "van18Guide": 20805
+      }
+    },
+    {
+      "name": "Full Day Port Dickson Tour ( 8 Hours ) \n \"Recomended Guest to bring wet cloths as beach activity can be done in the common beach\"",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 455.0,
+        "van10": 625.0,
+        "van18": 595.0,
+        "van18Guide": 995.0
+      },
+      "inr": {
+        "car": 8645,
+        "van10": 11875,
+        "van18": 11305,
+        "van18Guide": 18905
+      }
+    },
+    {
+      "name": "GAMUDA SKY LUGE 2 Way Transfer",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 235.0,
+        "van10": 325.0,
+        "van18": 455.0,
+        "van18Guide": 855.0
+      },
+      "inr": {
+        "car": 4465,
+        "van10": 6175,
+        "van18": 8645,
+        "van18Guide": 16245
+      }
+    },
+    {
+      "name": "GAMUDA COVE SPLASH MANIA 2 way transfer",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 235.0,
+        "van10": 325.0,
+        "van18": 455.0,
+        "van18Guide": 855.0
+      },
+      "inr": {
+        "car": 4465,
+        "van10": 6175,
+        "van18": 8645,
+        "van18Guide": 16245
+      }
+    },
+    {
+      "name": "Full Day Lost World Of Tambun Day Trip [Optional Lost World Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 565.0,
+        "van10": 665.0,
+        "van18": 815.0,
+        "van18Guide": 1215.0
+      },
+      "inr": {
+        "car": 10735,
+        "van10": 12635,
+        "van18": 15485,
+        "van18Guide": 23085
+      }
+    },
+    {
+      "name": "Full Day Cameron Tour ( 8 Hours )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 665.0,
+        "van10": 765.0,
+        "van18": 915.0,
+        "van18Guide": 1315.0
+      },
+      "inr": {
+        "car": 12635,
+        "van10": 14535,
+        "van18": 17385,
+        "van18Guide": 24985
+      }
+    },
+    {
+      "name": "Full Day Penang Tour ( 8 Hours )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 1215.0,
+        "van10": 1315.0,
+        "van18": 1465.0,
+        "van18Guide": 1865.0
+      },
+      "inr": {
+        "car": 23085,
+        "van10": 24985,
+        "van18": 27835,
+        "van18Guide": 35435
+      }
+    },
+    {
+      "name": "Full Day Legoland Tour (8 Hours ) [Optional Legoland Entrance Ticket]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 1215.0,
+        "van10": 1315.0,
+        "van18": 1465.0,
+        "van18Guide": 1865.0
+      },
+      "inr": {
+        "car": 23085,
+        "van10": 24985,
+        "van18": 27835,
+        "van18Guide": 35435
+      }
+    },
+    {
+      "name": "Lunch / Dinner Transfer ( 2 Way )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 145.0,
+        "van10": 205.0,
+        "van18": 285.0,
+        "van18Guide": 685.0
+      },
+      "inr": {
+        "car": 2755,
+        "van10": 3895,
+        "van18": 5415,
+        "van18Guide": 13015
+      }
+    },
+    {
+      "name": "Evening FireFly Tour [Optional Firefly / Blue Tears Entrance Ticket ]",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 505.0,
+        "van10": 575.0,
+        "van18": 645.0,
+        "van18Guide": 1045.0
+      },
+      "inr": {
+        "car": 9595,
+        "van10": 10925,
+        "van18": 12255,
+        "van18Guide": 19855
+      }
+    },
+    {
+      "name": "KL Half Day Disposal ( 4 Hours ) - Within City Limits",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 255.0,
+        "van10": 305.0,
+        "van18": 375.0,
+        "van18Guide": 775.0
+      },
+      "inr": {
+        "car": 4845,
+        "van10": 5795,
+        "van18": 7125,
+        "van18Guide": 14725
+      }
+    },
+    {
+      "name": "KL Full Day Disposal ( 8 Hours ) - Within City Limits",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 455.0,
+        "van10": 555.0,
+        "van18": 645.0,
+        "van18Guide": 1045.0
+      },
+      "inr": {
+        "car": 8645,
+        "van10": 10545,
+        "van18": 12255,
+        "van18Guide": 19855
+      }
+    },
+    {
+      "name": "Additional Hour for Extention - Per Hour",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 75.0,
+        "van10": 87.5,
+        "van18": 105.0,
+        "van18Guide": null
+      },
+      "inr": {
+        "car": 1425,
+        "van10": 1662,
+        "van18": 1995,
+        "van18Guide": null
+      }
+    },
+    {
+      "name": "Terms & Conditions:-",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": {
+        "car": 444.0,
+        "van10": null,
+        "van18": null,
+        "van18Guide": null
+      },
+      "inr": {
+        "car": 8436,
+        "van10": null,
+        "van18": null,
+        "van18Guide": null
+      }
+    },
+    {
+      "name": "One Way Transfer from Langkawi Airport - Langkawi Hotel ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 60.0,
+        "van10": 80.0,
+        "van18": 145.0,
+        "van18Guide": 275.0
+      },
+      "inr": {
+        "car": 1140,
+        "van10": 1520,
+        "van18": 2755,
+        "van18Guide": 5225
+      }
+    },
+    {
+      "name": "One Way Transfer from Langkawi Hotel ( from Beach Hotel ) - Langkawi Airport",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 60.0,
+        "van10": 80.0,
+        "van18": 145.0,
+        "van18Guide": 275.0
+      },
+      "inr": {
+        "car": 1140,
+        "van10": 1520,
+        "van18": 2755,
+        "van18Guide": 5225
+      }
+    },
+    {
+      "name": "One Way Transfer from Langkawi Airport - Langkawi Hotel ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 70.0,
+        "van10": 115.0,
+        "van18": 145.0,
+        "van18Guide": 315.0
+      },
+      "inr": {
+        "car": 1330,
+        "van10": 2185,
+        "van18": 2755,
+        "van18Guide": 5985
+      }
+    },
+    {
+      "name": "One Way Transfer from Langkawi Hotel ( from North Hotel ) - Langkawi Airport",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 70.0,
+        "van10": 115.0,
+        "van18": 145.0,
+        "van18Guide": 315.0
+      },
+      "inr": {
+        "car": 1330,
+        "van10": 2185,
+        "van18": 2755,
+        "van18Guide": 5985
+      }
+    },
+    {
+      "name": "02 Way Lunch Transfer at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 90.0,
+        "van10": 165.0,
+        "van18": 230.0,
+        "van18Guide": 400.0
+      },
+      "inr": {
+        "car": 1710,
+        "van10": 3135,
+        "van18": 4370,
+        "van18Guide": 7600
+      }
+    },
+    {
+      "name": "02 Way Lunch Transfer at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 100.0,
+        "van10": 200.0,
+        "van18": 240.0,
+        "van18Guide": 410.0
+      },
+      "inr": {
+        "car": 1900,
+        "van10": 3800,
+        "van18": 4560,
+        "van18Guide": 7790
+      }
+    },
+    {
+      "name": "02 Way Dinner Transfer at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 90.0,
+        "van10": 165.0,
+        "van18": 230.0,
+        "van18Guide": 400.0
+      },
+      "inr": {
+        "car": 1710,
+        "van10": 3135,
+        "van18": 4370,
+        "van18Guide": 7600
+      }
+    },
+    {
+      "name": "02 Way Dinner Transfer at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 100.0,
+        "van10": 200.0,
+        "van18": 240.0,
+        "van18Guide": 410.0
+      },
+      "inr": {
+        "car": 1900,
+        "van10": 3800,
+        "van18": 4560,
+        "van18Guide": 7790
+      }
+    },
+    {
+      "name": "02 Way Island Hopping Transfer at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 90.0,
+        "van10": 165.0,
+        "van18": 230.0,
+        "van18Guide": 400.0
+      },
+      "inr": {
+        "car": 1710,
+        "van10": 3135,
+        "van18": 4370,
+        "van18Guide": 7600
+      }
+    },
+    {
+      "name": "02 Way Island Hopping Transfer at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 100.0,
+        "van10": 200.0,
+        "van18": 240.0,
+        "van18Guide": 410.0
+      },
+      "inr": {
+        "car": 1900,
+        "van10": 3800,
+        "van18": 4560,
+        "van18Guide": 7790
+      }
+    },
+    {
+      "name": "02 Way Mangrove Transfer at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 90.0,
+        "van10": 165.0,
+        "van18": 230.0,
+        "van18Guide": 400.0
+      },
+      "inr": {
+        "car": 1710,
+        "van10": 3135,
+        "van18": 4370,
+        "van18Guide": 7600
+      }
+    },
+    {
+      "name": "02 Way Mangrove Transfer at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 100.0,
+        "van10": 200.0,
+        "van18": 240.0,
+        "van18Guide": 410.0
+      },
+      "inr": {
+        "car": 1900,
+        "van10": 3800,
+        "van18": 4560,
+        "van18Guide": 7790
+      }
+    },
+    {
+      "name": "02 Way Sunset Dinner Transfer at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 90.0,
+        "van10": 165.0,
+        "van18": 230.0,
+        "van18Guide": 400.0
+      },
+      "inr": {
+        "car": 1710,
+        "van10": 3135,
+        "van18": 4370,
+        "van18Guide": 7600
+      }
+    },
+    {
+      "name": "02 Way SunSet Dinner Transfer at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 100.0,
+        "van10": 200.0,
+        "van18": 240.0,
+        "van18Guide": 410.0
+      },
+      "inr": {
+        "car": 1900,
+        "van10": 3800,
+        "van18": 4560,
+        "van18Guide": 7790
+      }
+    },
+    {
+      "name": "Half Day City Tour ( 4 Hours ) at Langkawi (  from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 145.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 495.0
+      },
+      "inr": {
+        "car": 2755,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9405
+      }
+    },
+    {
+      "name": "Half Day City Tour ( 4 Hours ) at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 170.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 525.0
+      },
+      "inr": {
+        "car": 3230,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9975
+      }
+    },
+    {
+      "name": "Half Day Langkawi Cable Car Tour ( 4 Hours ) at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 145.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 495.0
+      },
+      "inr": {
+        "car": 2755,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9405
+      }
+    },
+    {
+      "name": "Half Day Langkawi Cable Car Tour ( 4 Hours ) at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 170.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 525.0
+      },
+      "inr": {
+        "car": 3230,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9975
+      }
+    },
+    {
+      "name": "Half Day Langkawi Underwater World and Crocodile Farm Tour ( 4 Hours ) at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 145.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 495.0
+      },
+      "inr": {
+        "car": 2755,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9405
+      }
+    },
+    {
+      "name": "Half Day Langkawi Underwater World and Crocodile Farm Tour ( 4 Hours ) at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 170.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 525.0
+      },
+      "inr": {
+        "car": 3230,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9975
+      }
+    },
+    {
+      "name": "Half Day Langkawi Dreamforest ( 4 Hours ) at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 145.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 495.0
+      },
+      "inr": {
+        "car": 2755,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9405
+      }
+    },
+    {
+      "name": "Half Day Langkawi Dreamforest ( 4 Hours ) at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 170.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 525.0
+      },
+      "inr": {
+        "car": 3230,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9975
+      }
+    },
+    {
+      "name": "Half Day Langkawi Vehicle at Disposal ( 4 Hours ) at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 145.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 495.0
+      },
+      "inr": {
+        "car": 2755,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9405
+      }
+    },
+    {
+      "name": "Half Day Langkawi vehicle at Disposal ( 4 Hours ) at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 170.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 525.0
+      },
+      "inr": {
+        "car": 3230,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9975
+      }
+    },
+    {
+      "name": "Full Day Langkawi Vehicle at Disposal ( 8 Hours ) at Langkawi ( from Beach Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 240.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 495.0
+      },
+      "inr": {
+        "car": 4560,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9405
+      }
+    },
+    {
+      "name": "Full Day Langkawi vehicle at Disposal ( 8 Hours ) at Langkawi ( from North Hotel )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 270.0,
+        "van10": 215.0,
+        "van18": 295.0,
+        "van18Guide": 525.0
+      },
+      "inr": {
+        "car": 5130,
+        "van10": 4085,
+        "van18": 5605,
+        "van18Guide": 9975
+      }
+    },
+    {
+      "name": "Additional Hour for Extention - Per Hour ( Beach )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 40.0,
+        "van10": 50.0,
+        "van18": 115.0,
+        "van18Guide": 195.0
+      },
+      "inr": {
+        "car": 760,
+        "van10": 950,
+        "van18": 2185,
+        "van18Guide": 3705
+      }
+    },
+    {
+      "name": "Additional Hour for Extention - Per Hour ( North )",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": {
+        "car": 50.0,
+        "van10": 70.0,
+        "van18": 170.0,
+        "van18Guide": 270.0
+      },
+      "inr": {
+        "car": 950,
+        "van10": 1330,
+        "van18": 3230,
+        "van18Guide": 5130
+      }
+    },
+    {
+      "name": "One Way Transfer from Penang Airport - Penang Hotel or Vice Versa ( City )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 100.0,
+        "van10": 155.0,
+        "van18": 225.0,
+        "van18Guide": 355.0
+      },
+      "inr": {
+        "car": 1900,
+        "van10": 2945,
+        "van18": 4275,
+        "van18Guide": 6745
+      }
+    },
+    {
+      "name": "One Way Transfer from Penang Airport - Penang Hotel or Vice Versa ( Beach )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 115.0,
+        "van10": 185.0,
+        "van18": 270.0,
+        "van18Guide": 400.0
+      },
+      "inr": {
+        "car": 2185,
+        "van10": 3515,
+        "van18": 5130,
+        "van18Guide": 7600
+      }
+    },
+    {
+      "name": "One Way Transfer from Penang Bus Terminal - Penang Hotel or Vice Versa ( City )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 100.0,
+        "van10": 155.0,
+        "van18": 225.0,
+        "van18Guide": 355.0
+      },
+      "inr": {
+        "car": 1900,
+        "van10": 2945,
+        "van18": 4275,
+        "van18Guide": 6745
+      }
+    },
+    {
+      "name": "One Way Transfer from Penang Bus Terminal - Penang Hotel or Vice Versa ( Beach )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 115.0,
+        "van10": 185.0,
+        "van18": 270.0,
+        "van18Guide": 400.0
+      },
+      "inr": {
+        "car": 2185,
+        "van10": 3515,
+        "van18": 5130,
+        "van18Guide": 7600
+      }
+    },
+    {
+      "name": "Inter Hotel Transfer from Penang Beach Hotel - City Hotel or Vice Versa",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 100.0,
+        "van10": 155.0,
+        "van18": 225.0,
+        "van18Guide": 355.0
+      },
+      "inr": {
+        "car": 1900,
+        "van10": 2945,
+        "van18": 4275,
+        "van18Guide": 6745
+      }
+    },
+    {
+      "name": "02 Way Lunch / Dinner Transfer - maximum 03 hours",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 185.0,
+        "van10": 265.0,
+        "van18": 325.0,
+        "van18Guide": 495.0
+      },
+      "inr": {
+        "car": 3515,
+        "van10": 5035,
+        "van18": 6175,
+        "van18Guide": 9405
+      }
+    },
+    {
+      "name": "Penang Half Day Vehicle at Disposal for ( 5 Hours ) - Any tours for 5 Hours",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 290.0,
+        "van10": 440.0,
+        "van18": 515.0,
+        "van18Guide": 765.0
+      },
+      "inr": {
+        "car": 5510,
+        "van10": 8360,
+        "van18": 9785,
+        "van18Guide": 14535
+      }
+    },
+    {
+      "name": "Penang Full Day Vehicle at Disposal for ( 8 Hours ) - Any tours for 8 Hours",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 455.0,
+        "van10": 695.0,
+        "van18": 815.0,
+        "van18Guide": 1215.0
+      },
+      "inr": {
+        "car": 8645,
+        "van10": 13205,
+        "van18": 15485,
+        "van18Guide": 23085
+      }
+    },
+    {
+      "name": "Additional Hour ( Per Hour )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 70.0,
+        "van10": 100.0,
+        "van18": 115.0,
+        "van18Guide": 165.0
+      },
+      "inr": {
+        "car": 1330,
+        "van10": 1900,
+        "van18": 2185,
+        "van18Guide": 3135
+      }
+    },
+    {
+      "name": "Penang Hotel - KL Hotel Transfer ( Per Way )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 915.0,
+        "van10": 1115.0,
+        "van18": 1515.0,
+        "van18Guide": 2015.0
+      },
+      "inr": {
+        "car": 17385,
+        "van10": 21185,
+        "van18": 28785,
+        "van18Guide": 38285
+      }
+    },
+    {
+      "name": "Penang Hotel - KLIA Airport Transfer ( Per Way )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 995.0,
+        "van10": 1215.0,
+        "van18": 1615.0,
+        "van18Guide": 2115.0
+      },
+      "inr": {
+        "car": 18905,
+        "van10": 23085,
+        "van18": 30685,
+        "van18Guide": 40185
+      }
+    },
+    {
+      "name": "Penang Hotel - Kuala Kedah Jetty ( Per Way ) **or Vice Versa",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 565.0,
+        "van10": 745.0,
+        "van18": 995.0,
+        "van18Guide": 1495.0
+      },
+      "inr": {
+        "car": 10735,
+        "van10": 14155,
+        "van18": 18905,
+        "van18Guide": 28405
+      }
+    },
+    {
+      "name": "Penang Hotel - Ipoh Hotel Transfer ( Per Way )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 665.0,
+        "van10": 845.0,
+        "van18": 1095.0,
+        "van18Guide": 1595.0
+      },
+      "inr": {
+        "car": 12635,
+        "van10": 16055,
+        "van18": 20805,
+        "van18Guide": 30305
+      }
+    },
+    {
+      "name": "Penang Hotel - Cameron Highland Hotel Transfer ( Per Way )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 865.0,
+        "van10": 1115.0,
+        "van18": 1365.0,
+        "van18Guide": 1865.0
+      },
+      "inr": {
+        "car": 16435,
+        "van10": 21185,
+        "van18": 25935,
+        "van18Guide": 35435
+      }
+    },
+    {
+      "name": "Penang Hotel - Genting Hotel Transfer ( Per Way )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 995.0,
+        "van10": 1215.0,
+        "van18": 1615.0,
+        "van18Guide": 2115.0
+      },
+      "inr": {
+        "car": 18905,
+        "van10": 23085,
+        "van18": 30685,
+        "van18Guide": 40185
+      }
+    },
+    {
+      "name": "Half Day Penang City Tour ( 5 Hrs )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 290.0,
+        "van10": 440.0,
+        "van18": 515.0,
+        "van18Guide": 765.0
+      },
+      "inr": {
+        "car": 5510,
+        "van10": 8360,
+        "van18": 9785,
+        "van18Guide": 14535
+      }
+    },
+    {
+      "name": "Full Day Penang City Tour ( 8 Hours )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 455.0,
+        "van10": 695.0,
+        "van18": 815.0,
+        "van18Guide": 1215.0
+      },
+      "inr": {
+        "car": 8645,
+        "van10": 13205,
+        "van18": 15485,
+        "van18Guide": 23085
+      }
+    },
+    {
+      "name": "Additional Hour ( Per Hour )",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": {
+        "car": 70.0,
+        "van10": 100.0,
+        "van18": 115.0,
+        "van18Guide": 165.0
+      },
+      "inr": {
+        "car": 1330,
+        "van10": 1900,
+        "van18": 2185,
+        "van18Guide": 3135
+      }
+    }
+  ],
+  "tickets": [
+    {
+      "name": "KL Tower Observation Deck Entrance Ticket",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 74.0,
+      "childMyr": 50.0,
+      "adultInr": 1406,
+      "childInr": 950
+    },
+    {
+      "name": "KL Tower Combo Entrance Ticket - Sky Deck + Observation Deck ( TH01 )",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 154.0,
+      "childMyr": 90.0,
+      "adultInr": 2926,
+      "childInr": 1710
+    },
+    {
+      "name": "Weekday Petronas Twin Tower Entrance Ticket",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 137.0,
+      "childMyr": 75.0,
+      "adultInr": 2603,
+      "childInr": 1425
+    },
+    {
+      "name": "Weekend Petronas Twin Tower Entrance Ticket",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 147.0,
+      "childMyr": 79.0,
+      "adultInr": 2793,
+      "childInr": 1501
+    },
+    {
+      "name": "Genting Skyworld (Outdoor)",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "adultMyr": 150.0,
+      "childMyr": 75.0,
+      "adultInr": 2850,
+      "childInr": 1425
+    },
+    {
+      "name": "Genting Skytropolis (Indoor)",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "adultMyr": 92.0,
+      "childMyr": 92.0,
+      "adultInr": 1748,
+      "childInr": 1748
+    },
+    {
+      "name": "Genting Cable Car 2 way",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "adultMyr": 29.0,
+      "childMyr": 29.0,
+      "adultInr": 551,
+      "childInr": 551
+    },
+    {
+      "name": "Sunway Lagoon 6 Park",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 175.0,
+      "childMyr": 134.0,
+      "adultInr": 3325,
+      "childInr": 2546
+    },
+    {
+      "name": "Sunway Lagoon Quack Xpress",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 82.0,
+      "childMyr": 82.0,
+      "adultInr": 1558,
+      "childInr": 1558
+    },
+    {
+      "name": "Sunway Lagoon Night Park",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 72.0,
+      "childMyr": 66.0,
+      "adultInr": 1368,
+      "childInr": 1254
+    },
+    {
+      "name": "Sunway Lagoon Night Park - Meal Voucher RM10",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 19.0,
+      "childMyr": 19.0,
+      "adultInr": 361,
+      "childInr": 361
+    },
+    {
+      "name": "Ripley's Adventureland - Ripley's Believe It or Not! Odditorium (Single Admission)",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "adultMyr": 39.0,
+      "childMyr": 39.0,
+      "adultInr": 741,
+      "childInr": 741
+    },
+    {
+      "name": "Ripley's Adventureland - Jurassic Research Centre (Single Admission)",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "adultMyr": 39.0,
+      "childMyr": 39.0,
+      "adultInr": 741,
+      "childInr": 741
+    },
+    {
+      "name": "Berjaya Times Square Theme Park",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "adultMyr": 39.0,
+      "childMyr": 39.0,
+      "adultInr": 741,
+      "childInr": 741
+    },
+    {
+      "name": "Ripley's Adventureland - 4D Trick Art Museum (Single Admission)",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "adultMyr": 39.0,
+      "childMyr": 39.0,
+      "adultInr": 741,
+      "childInr": 741
+    },
+    {
+      "name": "Ripley’s Adventure Pass - Infinity Room (Single Admission)",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "adultMyr": 39.0,
+      "childMyr": 39.0,
+      "adultInr": 741,
+      "childInr": 741
+    },
+    {
+      "name": "Ripley’s Adventure Pass - 5 Attractions",
+      "city": "Genting Highlands",
+      "country": "Malaysia",
+      "adultMyr": 78.0,
+      "childMyr": 78.0,
+      "adultInr": 1482,
+      "childInr": 1482
+    },
+    {
+      "name": "Aquaria KLCC Weekdays",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 71.0,
+      "childMyr": 65.0,
+      "adultInr": 1349,
+      "childInr": 1235
+    },
+    {
+      "name": "Aquaria KLCC Weekend",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 77.0,
+      "childMyr": 68.0,
+      "adultInr": 1463,
+      "childInr": 1292
+    },
+    {
+      "name": "Sightseeing Cruise Putrajaya",
+      "city": "Putrajaya",
+      "country": "Malaysia",
+      "adultMyr": 50.0,
+      "childMyr": 50.0,
+      "adultInr": 950,
+      "childInr": 950
+    },
+    {
+      "name": "Berjaya Times Square Theme Park",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 86.0,
+      "childMyr": 74.0,
+      "adultInr": 1634,
+      "childInr": 1406
+    },
+    {
+      "name": "Zoo Negara",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 81.0,
+      "childMyr": 49.0,
+      "adultInr": 1539,
+      "childInr": 931
+    },
+    {
+      "name": "Kuala Selangor Eagle Watching",
+      "city": "Kuala Selangor",
+      "country": "Malaysia",
+      "adultMyr": 31.0,
+      "childMyr": 26.0,
+      "adultInr": 589,
+      "childInr": 494
+    },
+    {
+      "name": "Kuala Selangor Fireflies Tour",
+      "city": "Kuala Selangor",
+      "country": "Malaysia",
+      "adultMyr": 26.0,
+      "childMyr": 26.0,
+      "adultInr": 494,
+      "childInr": 494
+    },
+    {
+      "name": "Kuala Selangor Blue Tears Tour",
+      "city": "Kuala Selangor",
+      "country": "Malaysia",
+      "adultMyr": 31.0,
+      "childMyr": 26.0,
+      "adultInr": 589,
+      "childInr": 494
+    },
+    {
+      "name": "Kuala Selangor Sky Mirror Tour",
+      "city": "Kuala Selangor",
+      "country": "Malaysia",
+      "adultMyr": 78.0,
+      "childMyr": 68.0,
+      "adultInr": 1482,
+      "childInr": 1292
+    },
+    {
+      "name": "Kuala Selangor Fireflies Show + Blue Tears Tour",
+      "city": "Kuala Selangor",
+      "country": "Malaysia",
+      "adultMyr": 52.0,
+      "childMyr": 47.0,
+      "adultInr": 988,
+      "childInr": 893
+    },
+    {
+      "name": "Kuala Selangor Eagle Feeding + Blue Tears Tour",
+      "city": "Kuala Selangor",
+      "country": "Malaysia",
+      "adultMyr": 57.0,
+      "childMyr": 47.0,
+      "adultInr": 1083,
+      "childInr": 893
+    },
+    {
+      "name": "Kuala Selangor Eagle Feeding + Fireflies Show Tour",
+      "city": "Kuala Selangor",
+      "country": "Malaysia",
+      "adultMyr": 52.0,
+      "childMyr": 47.0,
+      "adultInr": 988,
+      "childInr": 893
+    },
+    {
+      "name": "Kuala Selangor Blue Tears + Fireflies + Eagle Feeding with Boat Cruise",
+      "city": "Kuala Selangor",
+      "country": "Malaysia",
+      "adultMyr": 72.0,
+      "childMyr": 67.0,
+      "adultInr": 1368,
+      "childInr": 1273
+    },
+    {
+      "name": "Ferry From Kuala Kedah -> Langkawi",
+      "city": "Kuala Kedah",
+      "country": "Malaysia",
+      "adultMyr": 55.0,
+      "childMyr": 42.0,
+      "adultInr": 1045,
+      "childInr": 798
+    },
+    {
+      "name": "KL Bird Park",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 80.0,
+      "childMyr": 60.0,
+      "adultInr": 1520,
+      "childInr": 1140
+    },
+    {
+      "name": "Lost World of Tambun (Full Day)",
+      "city": "Tambun",
+      "country": "Malaysia",
+      "adultMyr": 102.0,
+      "childMyr": 95.0,
+      "adultInr": 1938,
+      "childInr": 1805
+    },
+    {
+      "name": "Lost World of Tambun (Night Park)",
+      "city": "Tambun",
+      "country": "Malaysia",
+      "adultMyr": 82.0,
+      "childMyr": 66.0,
+      "adultInr": 1558,
+      "childInr": 1254
+    },
+    {
+      "name": "Adventure Waterpark Desaru Johor",
+      "city": "Johor Bahru",
+      "country": "Malaysia",
+      "adultMyr": 86.0,
+      "childMyr": 69.0,
+      "adultInr": 1634,
+      "childInr": 1311
+    },
+    {
+      "name": "Legoland 1 Day Themepark",
+      "city": "Johor Bahru",
+      "country": "Malaysia",
+      "adultMyr": 226.0,
+      "childMyr": 161.0,
+      "adultInr": 4294,
+      "childInr": 3059
+    },
+    {
+      "name": "Legoland 1 Day Waterpark",
+      "city": "Johor Bahru",
+      "country": "Malaysia",
+      "adultMyr": 146.0,
+      "childMyr": 123.0,
+      "adultInr": 2774,
+      "childInr": 2337
+    },
+    {
+      "name": "Legoland 1 Day Sealife",
+      "city": "Johor Bahru",
+      "country": "Malaysia",
+      "adultMyr": 89.0,
+      "childMyr": 74.0,
+      "adultInr": 1691,
+      "childInr": 1406
+    },
+    {
+      "name": "Legoland 1 Day (Themepark + Sealife)",
+      "city": "Johor Bahru",
+      "country": "Malaysia",
+      "adultMyr": 224.0,
+      "childMyr": 186.0,
+      "adultInr": 4256,
+      "childInr": 3534
+    },
+    {
+      "name": "Legoland 1 Day Sealife + Waterpark + Themepark",
+      "city": "Johor Bahru",
+      "country": "Malaysia",
+      "adultMyr": 277.0,
+      "childMyr": 229.0,
+      "adultInr": 5263,
+      "childInr": 4351
+    },
+    {
+      "name": "Legoland 2 Day Theme Park + Sea Life + Water Park",
+      "city": "Johor Bahru",
+      "country": "Malaysia",
+      "adultMyr": 369.0,
+      "childMyr": 314.0,
+      "adultInr": 7011,
+      "childInr": 5966
+    },
+    {
+      "name": "Legoland 2 Day Theme Park + Sea Life",
+      "city": "Johor Bahru",
+      "country": "Malaysia",
+      "adultMyr": 299.0,
+      "childMyr": 253.0,
+      "adultInr": 5681,
+      "childInr": 4807
+    },
+    {
+      "name": "SkyCab Langkawi with Skybridge",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 95.0,
+      "childMyr": 85.0,
+      "adultInr": 1805,
+      "childInr": 1615
+    },
+    {
+      "name": "SkyCab Langkawi with Skybridge by Glide",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 113.0,
+      "childMyr": 101.0,
+      "adultInr": 2147,
+      "childInr": 1919
+    },
+    {
+      "name": "SkyCab Langkawi - Express Lane Add On",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 53.0,
+      "childMyr": 53.0,
+      "adultInr": 1007,
+      "childInr": 1007
+    },
+    {
+      "name": "Langkawi Island Hopping - SIC",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 80.0,
+      "childMyr": 80.0,
+      "adultInr": 1520,
+      "childInr": 1520
+    },
+    {
+      "name": "Langkawi Island Hopping - Pvt Basis - 1-10 Pax",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 400.0,
+      "childMyr": null,
+      "adultInr": 7600,
+      "childInr": null
+    },
+    {
+      "name": "Langkawi Island Hopping - Pvt Basis - 1-20 Pax",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 600.0,
+      "childMyr": null,
+      "adultInr": 11400,
+      "childInr": null
+    },
+    {
+      "name": "Mangrove & Cave Exploring - Morning - SIC",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 195.0,
+      "childMyr": 130.0,
+      "adultInr": 3705,
+      "childInr": 2470
+    },
+    {
+      "name": "Mangrove & Cave Exploring - Afternoon - SIC",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 90.0,
+      "childMyr": 80.0,
+      "adultInr": 1710,
+      "childInr": 1520
+    },
+    {
+      "name": "Mangrove & Cave Exploring - Pvt Basis - 1-10 Pax",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 360.0,
+      "childMyr": null,
+      "adultInr": 6840,
+      "childInr": null
+    },
+    {
+      "name": "Mangrove & Cave Exploring - Pvt Basis - 1-20 Pax",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 500.0,
+      "childMyr": null,
+      "adultInr": 9500,
+      "childInr": null
+    },
+    {
+      "name": "Underwater World Langkawi",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 69.0,
+      "childMyr": 61.0,
+      "adultInr": 1311,
+      "childInr": 1159
+    },
+    {
+      "name": "Langkawi Wildlife Park",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 67.0,
+      "childMyr": 48.0,
+      "adultInr": 1273,
+      "childInr": 912
+    },
+    {
+      "name": "Langkawi Adventure & Xtreme Park: 10in1 Combo Package",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 112.0,
+      "childMyr": 102.0,
+      "adultInr": 2128,
+      "childInr": 1938
+    },
+    {
+      "name": "Langkawi Adventure & Xtreme Park: 6in1 Combo Package",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 72.0,
+      "childMyr": 67.0,
+      "adultInr": 1368,
+      "childInr": 1273
+    },
+    {
+      "name": "Crocodile Adventureland - Adventure Combo",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 52.0,
+      "childMyr": 45.0,
+      "adultInr": 988,
+      "childInr": 855
+    },
+    {
+      "name": "Crocodile Adventureland - Explore Combo",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 61.0,
+      "childMyr": 54.0,
+      "adultInr": 1159,
+      "childInr": 1026
+    },
+    {
+      "name": "Crocodile Adventureland - Croc Encounter Combo",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 80.0,
+      "childMyr": 74.0,
+      "adultInr": 1520,
+      "childInr": 1406
+    },
+    {
+      "name": "Crocodile Adventureland - Snack Bite Combo",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 74.0,
+      "childMyr": 66.0,
+      "adultInr": 1406,
+      "childInr": 1254
+    },
+    {
+      "name": "Dream Forest Langkawi",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 85.0,
+      "childMyr": 64.0,
+      "adultInr": 1615,
+      "childInr": 1216
+    },
+    {
+      "name": "Sunset Cruise Langkawi",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "adultMyr": 220.0,
+      "childMyr": 150.0,
+      "adultInr": 4180,
+      "childInr": 2850
+    },
+    {
+      "name": "Penang Hill Train Upper Station - Normal Lane",
+      "city": "Penang Island",
+      "country": "Malaysia",
+      "adultMyr": 38.0,
+      "childMyr": 24.0,
+      "adultInr": 722,
+      "childInr": 456
+    },
+    {
+      "name": "Penang Hill Train Upper Station - Fast Lane",
+      "city": "Penang Island",
+      "country": "Malaysia",
+      "adultMyr": 70.0,
+      "childMyr": 40.0,
+      "adultInr": 1330,
+      "childInr": 760
+    },
+    {
+      "name": "The Habitat Penang Hill",
+      "city": "Penang Island",
+      "country": "Malaysia",
+      "adultMyr": 55.0,
+      "childMyr": 41.0,
+      "adultInr": 1045,
+      "childInr": 779
+    },
+    {
+      "name": "The Top Penang - 3 Attractions Combo",
+      "city": "Penang Island",
+      "country": "Malaysia",
+      "adultMyr": 67.0,
+      "childMyr": 58.0,
+      "adultInr": 1273,
+      "childInr": 1102
+    },
+    {
+      "name": "The Top Penang - Top Boutique Aquarium (Single Admission)",
+      "city": "Penang Island",
+      "country": "Malaysia",
+      "adultMyr": 43.0,
+      "childMyr": 41.0,
+      "adultInr": 817,
+      "childInr": 779
+    },
+    {
+      "name": "The Top Penang - 5 Attraction Pass",
+      "city": "Penang Island",
+      "country": "Malaysia",
+      "adultMyr": 71.0,
+      "childMyr": 65.0,
+      "adultInr": 1349,
+      "childInr": 1235
+    },
+    {
+      "name": "ESCAPE Themepark Penang",
+      "city": "Penang Island",
+      "country": "Malaysia",
+      "adultMyr": 196.0,
+      "childMyr": 135.0,
+      "adultInr": 3724,
+      "childInr": 2565
+    },
+    {
+      "name": "Entopia by Penang",
+      "city": "Penang Island",
+      "country": "Malaysia",
+      "adultMyr": 73.0,
+      "childMyr": 57.0,
+      "adultInr": 1387,
+      "childInr": 1083
+    },
+    {
+      "name": "Penang 3D Trick Art Museum",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "adultMyr": 28.0,
+      "childMyr": 25.0,
+      "adultInr": 532,
+      "childInr": 475
+    },
+    {
+      "name": "Penang Bird Park",
+      "city": "Mainland Penang",
+      "country": "Malaysia",
+      "adultMyr": 64.0,
+      "childMyr": 48.0,
+      "adultInr": 1216,
+      "childInr": 912
+    },
+    {
+      "name": "Melaka Upside Down House",
+      "city": "Malacca",
+      "country": "Malaysia",
+      "adultMyr": 25.0,
+      "childMyr": 22.0,
+      "adultInr": 475,
+      "childInr": 418
+    },
+    {
+      "name": "Menara Taming Sari",
+      "city": "Malacca",
+      "country": "Malaysia",
+      "adultMyr": 30.0,
+      "childMyr": 24.0,
+      "adultInr": 570,
+      "childInr": 456
+    },
+    {
+      "name": "Melaka River Cruise",
+      "city": "Malacca",
+      "country": "Malaysia",
+      "adultMyr": 47.0,
+      "childMyr": 43.0,
+      "adultInr": 893,
+      "childInr": 817
+    }
+  ],
+  "guides": [
+    {
+      "name": "English-Speaking Guide Usage - KLIA to KL Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 400.0,
+      "inr": 7600
+    },
+    {
+      "name": "English-Speaking Guide Usage - KL Hotel to KLIA",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 400.0,
+      "inr": 7600
+    },
+    {
+      "name": "English-Speaking Guide Usage - within KL City Limit",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 400.0,
+      "inr": 7600
+    },
+    {
+      "name": "English-Speaking Guide Usage - KL and Putrajaya tour from KL Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 400.0,
+      "inr": 7600
+    },
+    {
+      "name": "English-Speaking Guide Usage - Full day Genting Highlands Tour from KL Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 450.0,
+      "inr": 8550
+    },
+    {
+      "name": "English-Speaking Guide Usage - Malacca Day Tour from KL Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 450.0,
+      "inr": 8550
+    },
+    {
+      "name": "English-Speaking Guide Usage - Port Dickson Day Tour from KL Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 450.0,
+      "inr": 8550
+    },
+    {
+      "name": "English-Speaking Guide Usage - KL to Johor Bahru",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "English-Speaking Guide Usage - KL to Singapore",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "English-Speaking Guide Usage - KL to Penang",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "English-Speaking Guide Usage - KLIA to Port Dickson Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "English-Speaking Guide Usage - KLIA to Malacca Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "English-Speaking Guide Usage - KLIA to Genting Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "English-Speaking Guide Usage - KLIA to Ipoh Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "English-Speaking Guide Usage - KLIA to Johor Bahru Hotel",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "Spanish-Speaking Guide Usage",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 950.0,
+      "inr": 18050
+    },
+    {
+      "name": "Russian-Speaking Guide Usage",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 950.0,
+      "inr": 18050
+    },
+    {
+      "name": "Korean-Speaking Guide Usage",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 950.0,
+      "inr": 18050
+    },
+    {
+      "name": "Hindi-Speaking Guide Usage",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 650.0,
+      "inr": 12350
+    },
+    {
+      "name": "Portugese-Speaking Guide Usage",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 950.0,
+      "inr": 18050
+    },
+    {
+      "name": "Bahasa Indonesia-Speaking Guide Usage",
+      "city": "Kuala Lumpur",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "One Way Penang Airport to Penang Hotel Transfer or Vice Versa",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": 170.0,
+      "inr": 3230
+    },
+    {
+      "name": "02 Way Lunch / Dinner Transfer (Max 3 Hours)",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": 200.0,
+      "inr": 3800
+    },
+    {
+      "name": "Half Day Guide Usage ( 5 Hours ) - within City Limit",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": 250.0,
+      "inr": 4750
+    },
+    {
+      "name": "Full Day Guide Usage ( 8 Hours ) - within City Limit",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": 420.0,
+      "inr": 7980
+    },
+    {
+      "name": "Full Day Guide Usage ( 12 Hours ) - within City Limit",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": 580.0,
+      "inr": 11020
+    },
+    {
+      "name": "01 way drop (Overland)",
+      "city": "Penang",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "One Way Langkawi Airport Transfer to Langkawi Beach & City Hotel or Vice Versa",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 130.0,
+      "inr": 2470
+    },
+    {
+      "name": "One Way Langkawi Airport Transfer to Langkawi North Hotel [ Datai, Tg Rhu, St Regis, Four Season & Ritz Carlton ]",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 170.0,
+      "inr": 3230
+    },
+    {
+      "name": "Half Day Guide Usage (4 Hours) - Beach & City Hotel or Vice Versa",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 200.0,
+      "inr": 3800
+    },
+    {
+      "name": "Half Day Guide Usage (4 Hours) - Datai, Tg Rhu, St Regis, Four Season & Ritz Carlton",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 230.0,
+      "inr": 4370
+    },
+    {
+      "name": "Full Day Guide Usage (8 Hours) - Beach & City Hotel or Vice Versa",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 320.0,
+      "inr": 6080
+    },
+    {
+      "name": "Full Day Guide Usage (8 Hours) - Datai, Tg Rhu, St Regis, Four Season & Ritz Carlton",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 360.0,
+      "inr": 6840
+    },
+    {
+      "name": "Full Day Guide Usage (12 Hours) - Beach & City Hotel or Vice Versa",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 400.0,
+      "inr": 7600
+    },
+    {
+      "name": "Full Day Guide Usage (12 Hours) - Datai, Tg Rhu, St Regis, Four Season & Ritz Carlton",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 500.0,
+      "inr": 9500
+    },
+    {
+      "name": "Additional Hour - Beach & City Hotel or Vice Versa",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 80.0,
+      "inr": 1520
+    },
+    {
+      "name": "Additional Hour - Datai, Tg Rhu, St Regis, Four Season & Ritz Carlton",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 100.0,
+      "inr": 1900
+    },
+    {
+      "name": "Mangrove Tour Guiding - Beach & City Hotel or Vice Versa",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 200.0,
+      "inr": 3800
+    },
+    {
+      "name": "Mangrove Tour Guiding - Datai, Tg Rhu, St Regis, Four Season & Ritz Carlton",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 230.0,
+      "inr": 4370
+    },
+    {
+      "name": "Island Hopping Tour Guiding - Beach & City Hotel or Vice Versa",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 200.0,
+      "inr": 3800
+    },
+    {
+      "name": "Island Hopping Tour Guiding - Datai, Tg Rhu, St Regis, Four Season & Ritz Carlton",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 230.0,
+      "inr": 4370
+    },
+    {
+      "name": "02 Way Sunset Dinner Cruise Transfer",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 200.0,
+      "inr": 3800
+    },
+    {
+      "name": "02 Way Lunch / Dinner Transfers - Beach & City Hotel or Vice Versa",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 170.0,
+      "inr": 3230
+    },
+    {
+      "name": "02 Way Lunch / Dinner Transfers - Datai, Tg Rhu, St Regis, Four Season & Ritz Carlton",
+      "city": "Langkawi",
+      "country": "Malaysia",
+      "myr": 210.0,
+      "inr": 3990
+    }
+  ]
+}

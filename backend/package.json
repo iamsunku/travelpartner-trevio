@@ -16,7 +16,9 @@
     "db:deploy": "prisma migrate deploy",
     "db:reset": "prisma migrate reset",
     "db:seed": "tsx prisma/seed.ts",
-    "db:backfill-rates": "tsx scripts/backfill-contracted-rates.ts"
+    "db:backfill-rates": "tsx scripts/backfill-contracted-rates.ts",
+    "db:import-malaysia": "tsx scripts/import-malaysia-catalog.ts",
+    "db:import-malaysia-remaining": "tsx scripts/import-malaysia-remaining.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

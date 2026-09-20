@@ -237,6 +237,7 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
       applyProductListFilters(where, query);
       const city = (req.query.city as string)?.trim();
       const citiesRaw = (req.query.cities as string)?.trim();
+      const country = (req.query.country as string)?.trim();
       const cityList = [
         ...new Set(
           (citiesRaw ? citiesRaw.split(",") : city ? [city] : [])
@@ -253,6 +254,16 @@ function registerHotelRoutes(app: Express, agencyScope: ScopeFn) {
               { address: { contains: c, mode: "insensitive" } },
               { destination: { name: { contains: c, mode: "insensitive" } } },
             ]),
+          },
+        ];
+      } else if (country) {
+        where.AND = [
+          ...((where.AND as unknown[]) || []),
+          {
+            OR: [
+              { country: { contains: country, mode: "insensitive" } },
+              { destination: { country: { contains: country, mode: "insensitive" } } },
+            ],
           },
         ];
       }
@@ -706,9 +717,11 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
       const where: Record<string, unknown> = { ...agencyScope(req) };
       applyProductListFilters(where, query);
       const city = (req.query.city as string)?.trim();
+      const country = (req.query.country as string)?.trim();
       const transferType = (req.query.transferType as string)?.trim();
       if (city) {
         where.AND = [
+          ...((where.AND as unknown[]) || []),
           {
             OR: [
               { city: { contains: city, mode: "insensitive" } },
@@ -717,16 +730,31 @@ function registerTransferRoutes(app: Express, agencyScope: ScopeFn) {
             ],
           },
         ];
+      } else if (country) {
+        where.AND = [
+          ...((where.AND as unknown[]) || []),
+          {
+            OR: [
+              { city: { in: ["Kuala Lumpur", "Langkawi", "Penang", "Genting Highlands"] } },
+              { destination: { country: { contains: country, mode: "insensitive" } } },
+            ],
+          },
+        ];
       }
       if (transferType && transferType !== "All") where.transferType = transferType;
       if (query.q) {
-        where.OR = [
-          { name: { contains: query.q, mode: "insensitive" } },
-          { transferType: { contains: query.q, mode: "insensitive" } },
-          { city: { contains: query.q, mode: "insensitive" } },
-          { pickupLocation: { contains: query.q, mode: "insensitive" } },
-          { dropLocation: { contains: query.q, mode: "insensitive" } },
-          { destination: { name: { contains: query.q, mode: "insensitive" } } },
+        where.AND = [
+          ...((where.AND as unknown[]) || []),
+          {
+            OR: [
+              { name: { contains: query.q, mode: "insensitive" } },
+              { transferType: { contains: query.q, mode: "insensitive" } },
+              { city: { contains: query.q, mode: "insensitive" } },
+              { pickupLocation: { contains: query.q, mode: "insensitive" } },
+              { dropLocation: { contains: query.q, mode: "insensitive" } },
+              { destination: { name: { contains: query.q, mode: "insensitive" } } },
+            ],
+          },
         ];
       }
       const [items, total] = await Promise.all([

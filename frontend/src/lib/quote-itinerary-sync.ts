@@ -4,8 +4,9 @@
  */
 
 import { addDaysYmd, type TripCityStayWindow } from "./quote-trip-stays";
+import { vehicleCapacityMax } from "./transfer-catalog";
 
-export type ItineraryItemType = "FLIGHT" | "HOTEL" | "TRANSFER" | "ACTIVITY" | "MEAL" | "MANUAL";
+export type ItineraryItemType = "FLIGHT" | "HOTEL" | "TRANSFER" | "ACTIVITY" | "MEAL" | "MISC" | "MANUAL";
 
 const AUTO_FLAGS = [
   "autoFromHotel",
@@ -13,6 +14,7 @@ const AUTO_FLAGS = [
   "autoFromTransfer",
   "autoFromActivity",
   "autoFromMeal",
+  "autoFromMisc",
 ] as const;
 
 const TYPE_ORDER: Record<string, number> = {
@@ -21,6 +23,7 @@ const TYPE_ORDER: Record<string, number> = {
   HOTEL: 30,
   MEAL: 40,
   ACTIVITY: 50,
+  MISC: 55,
   MANUAL: 60,
 };
 
@@ -30,6 +33,7 @@ export type ItinerarySyncInput = {
   transfers?: Record<string, unknown>[];
   activities?: Record<string, unknown>[];
   meals?: Record<string, unknown>[];
+  addOns?: Record<string, unknown>[];
   stayWindows?: TripCityStayWindow[];
   travelStartDate?: string;
 };
@@ -83,7 +87,10 @@ function mergePreserved(
   prev: Record<string, unknown> | undefined,
 ): Record<string, unknown> {
   if (!prev) return next;
-  const keep = ["description", "remarks", "pickupTime", "duration", "vehicle", "guide", "voucher"] as const;
+  // Transfers always rebuild route / vehicle / capacity from package rows (avoids stale "Vehicle: …" dupes).
+  const keep = next.autoFromTransfer
+    ? (["pickupTime", "duration", "guide", "voucher"] as const)
+    : (["description", "remarks", "pickupTime", "duration", "vehicle", "guide", "voucher"] as const);
   const out = { ...next };
   for (const k of keep) {
     if (prev[k] != null && String(prev[k]).trim() !== "") out[k] = prev[k];
@@ -172,6 +179,22 @@ function hotelItemsForStay(
     .join(" · ");
 
   const items: Record<string, unknown>[] = [];
+  const imageUrl = String(hotel.imageUrl || "").trim();
+  const starCategory = String(hotel.starCategory || "").trim();
+  const refundable = hotel.refundable === true
+    || /refundable|free\s*cancel/i.test(String(hotel.cancellationPolicy || ""));
+  const hotelMeta = {
+    imageUrl,
+    roomType: room,
+    mealPlan: meal,
+    starCategory,
+    checkIn,
+    checkOut,
+    nights: hotel.nights,
+    refundable,
+    onRequest: true,
+    hotelName: name,
+  };
   if (isCheckoutMorning) {
     items.push({
       itemType: "HOTEL",
@@ -186,12 +209,13 @@ function hotelItemsForStay(
       autoFromHotel: true,
       hotelLineId: id,
       sourceKey: `hotel:${id}:checkout`,
+      ...hotelMeta,
     });
   }
   if (isCheckIn) {
     items.push({
       itemType: "HOTEL",
-      activityName: `Hotel check-in — ${name}`,
+      activityName: name,
       description: detail,
       pickupTime: String(hotel.checkInTime || "14:00"),
       duration: "",
@@ -202,11 +226,12 @@ function hotelItemsForStay(
       autoFromHotel: true,
       hotelLineId: id,
       sourceKey: `hotel:${id}:checkin`,
+      ...hotelMeta,
     });
   } else if (!isCheckoutMorning) {
     items.push({
       itemType: "HOTEL",
-      activityName: `Stay — ${name}`,
+      activityName: name,
       description: detail,
       pickupTime: "",
       duration: "",
@@ -217,6 +242,7 @@ function hotelItemsForStay(
       autoFromHotel: true,
       hotelLineId: id,
       sourceKey: `hotel:${id}:stay:${date}`,
+      ...hotelMeta,
     });
   }
   return items;
@@ -262,20 +288,31 @@ function transferItem(row: Record<string, unknown>, index: number): Record<strin
   const pickup = String(row.pickup || "").trim();
   const drop = String(row.drop || "").trim();
   const route = pickup && drop ? `${pickup} → ${drop}` : pickup || drop;
-  const paxBit = row.pax != null && String(row.pax).trim() !== "" ? `${row.pax} pax` : "";
+  const vehicle = String(row.vehicleType || "").trim();
+  const qty = Math.max(1, Number(row.vehicleQty || 1));
+  const capacity = vehicleCapacityMax(vehicle, Number(row.seats ?? row.capacity) || undefined);
+  const vehicleBit = vehicle
+    ? (qty > 1 ? `Vehicle: ${vehicle} × ${qty}` : `Vehicle: ${vehicle}`)
+    : "";
+  const capacityBit = capacity != null ? `${capacity} max` : "";
+  const remarks = String(row.remarks || "").trim();
+  // Drop remarks that only repeat the selected vehicle.
+  const remarksClean = remarks && !/^vehicle\s*:/i.test(remarks) && remarks.toLowerCase() !== vehicle.toLowerCase()
+    ? remarks
+    : "";
   return {
     itemType: "TRANSFER",
     activityName: type,
-    description: [route, row.vehicleType, paxBit, row.remarks]
+    description: [route, vehicleBit, capacityBit, remarksClean]
       .map((v) => String(v || "").trim())
       .filter(Boolean)
       .join(" · "),
     pickupTime: String(row.pickupTime || row.time || "").trim(),
     duration: String(row.duration || ""),
-    vehicle: String(row.vehicleType || ""),
+    vehicle,
     guide: "",
     voucher: String(row.voucher || ""),
-    remarks: String(row.remarks || ""),
+    remarks: remarksClean,
     autoFromTransfer: true,
     transferLineId: id,
     sourceKey: row.autoKey ? `transfer:${row.autoKey}` : `transfer:${id}`,
@@ -298,7 +335,14 @@ function activityItem(row: Record<string, unknown>, index: number): Record<strin
       .filter(Boolean)
       .join(" · "),
     pickupTime: String(row.timeSlot || row.startTime || row.time || "").trim(),
+    timeSlot: String(row.timeSlot || row.startTime || row.time || "").trim(),
     duration: String(row.duration || ""),
+    city,
+    ticketType: String(row.ticketType || row.activityCategory || ""),
+    activityCategory: String(row.activityCategory || row.ticketType || ""),
+    imageUrl: String(row.imageUrl || ""),
+    inclusions: row.inclusions,
+    exclusions: row.exclusions,
     vehicle: "",
     guide: "",
     voucher: String(row.voucher || ""),
@@ -311,8 +355,10 @@ function activityItem(row: Record<string, unknown>, index: number): Record<strin
 
 function mealItem(row: Record<string, unknown>, index: number): Record<string, unknown> {
   const id = lineKey(row, "meal", index);
-  const type = String(row.mealType || row.name || "Meal").trim();
+  const name = String(row.restaurant || row.name || row.mealType || "Meal").trim();
   const city = String(row.city || row.tripCity || "").trim();
+  const transferBadge = String(row.transferBadge || "").trim()
+    || (row.transferInclusion === "PRIVATE" ? "Private Transfer" : row.transferInclusion === "NONE" ? "No Transfer" : "");
   const pax = [
     row.adults != null ? `${row.adults} adult(s)` : "",
     row.children != null && Number(row.children) > 0 ? `${row.children} child(ren)` : "",
@@ -321,10 +367,10 @@ function mealItem(row: Record<string, unknown>, index: number): Record<string, u
   const dietary = String(row.dietary || "").trim();
   return {
     itemType: "MEAL",
-    activityName: type,
+    activityName: name,
     description: [
+      transferBadge,
       city ? `City: ${city}` : "",
-      row.restaurant,
       row.location,
       row.cuisine,
       row.description,
@@ -337,9 +383,36 @@ function mealItem(row: Record<string, unknown>, index: number): Record<string, u
     guide: "",
     voucher: String(row.voucher || ""),
     remarks: String(row.remarks || ""),
+    transferBadge,
     autoFromMeal: true,
     mealLineId: id,
     sourceKey: `meal:${id}`,
+  };
+}
+
+function miscItem(row: Record<string, unknown>, index: number): Record<string, unknown> {
+  const id = lineKey(row, "misc", index);
+  const name = String(row.name || row.title || "Add-on").trim();
+  const category = String(row.category || row.addOnType || "").trim();
+  const qty = Number(row.quantity ?? 1) || 1;
+  return {
+    itemType: "MISC",
+    activityName: name,
+    description: [
+      category,
+      row.description,
+      qty > 1 ? `Qty ${qty}` : "",
+    ].map((v) => String(v || "").trim()).filter(Boolean).join(" · "),
+    pickupTime: "",
+    duration: "",
+    vehicle: "",
+    guide: "",
+    voucher: String(row.voucher || ""),
+    remarks: String(row.remarks || ""),
+    category,
+    autoFromMisc: true,
+    miscLineId: id,
+    sourceKey: `misc:${id}`,
   };
 }
 
@@ -559,6 +632,20 @@ export function syncPackageItinerary(
     day.items = items;
   });
 
+  // Miscellaneous / add-ons
+  (input.addOns || []).forEach((a, i) => {
+    if (!a || typeof a !== "object") return;
+    if (a.enabled === false) return;
+    const date = String(a.date || "").trim();
+    if (!date) return;
+    const day = ensureDay(days, date, String(a.city || a.tripCity || "").trim());
+    const raw = miscItem(a, i);
+    const item = mergePreserved(raw, preserved.get(String(raw.sourceKey)));
+    const items = asItems(day);
+    if (!items.some((it) => String(it.sourceKey) === String(item.sourceKey))) items.push(item);
+    day.items = items;
+  });
+
   return finalizeDays(days);
 }
 
@@ -597,5 +684,6 @@ export function itemTypeLabel(type: unknown): string {
   if (t === "TRANSFER") return "Transfer";
   if (t === "ACTIVITY") return "Activity";
   if (t === "MEAL") return "Meal";
+  if (t === "MISC") return "Misc";
   return "Manual";
 }

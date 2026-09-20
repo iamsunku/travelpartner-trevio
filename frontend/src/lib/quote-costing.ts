@@ -440,6 +440,9 @@ function previewLineCost(line: Record<string, unknown>, nights: number | null, a
     const vehicles = capacity > 0 ? Math.max(1, Math.ceil(pax / capacity)) * qty : qty;
     return unit * vehicles;
   }
+  if (rateUnit === "PER_ACTIVITY" || rateUnit === "PER_MEAL" || rateUnit === "PER_SERVICE") {
+    return unit * qty;
+  }
   if (!snap && (line.source === "AMADEUS_API" || line.source === "API" || line.source === "MANUAL")) return unit;
   const meta = asRecord(snap?.metadata);
   const childRate = typeof meta?.childCost === "number" ? meta.childCost : 0;

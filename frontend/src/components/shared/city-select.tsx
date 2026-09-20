@@ -22,6 +22,10 @@ type CitySelectProps = {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /** When set, only these city names can be chosen (exact / contains match on search list). */
+  allowedCities?: string[];
+  /** Prefer cities whose country matches (e.g. "Malaysia"). */
+  preferredCountry?: string;
 };
 
 export function CitySelect({
@@ -30,6 +34,8 @@ export function CitySelect({
   placeholder = "Select City",
   disabled,
   className,
+  allowedCities,
+  preferredCountry,
 }: CitySelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -75,10 +81,19 @@ export function CitySelect({
     };
   }, [open, cities]);
 
-  const results = useMemo(
-    () => (cities ? searchWorldCities(cities, query, 50) : []),
-    [cities, query],
-  );
+  const results = useMemo(() => {
+    if (allowedCities?.length) {
+      const q = query.trim().toLowerCase();
+      return allowedCities
+        .filter((name) => !q || name.toLowerCase().includes(q))
+        .map((name) => ({
+          name,
+          country: preferredCountry || "Malaysia",
+          popular: true,
+        } satisfies WorldCity));
+    }
+    return cities ? searchWorldCities(cities, query, 50) : [];
+  }, [cities, query, allowedCities, preferredCountry]);
 
   function pick(city: WorldCity) {
     onChange(city.name, city);
@@ -158,9 +173,9 @@ export function CitySelect({
           </div>
         </div>
         <div className="max-h-72 overflow-y-auto py-1">
-          {loading && !cities ? (
+          {loading && !cities && !allowedCities?.length ? (
             <p className="px-3 py-6 text-sm text-center text-muted-foreground">Loading world cities…</p>
-          ) : error && !cities ? (
+          ) : error && !cities && !allowedCities?.length ? (
             <div className="px-3 py-4 space-y-2 text-center">
               <p className="text-sm text-destructive">{error}</p>
               <button

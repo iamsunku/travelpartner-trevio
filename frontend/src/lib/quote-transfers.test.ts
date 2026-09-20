@@ -70,7 +70,72 @@ describe("MODULE 05A — transfers & activities", () => {
     expect(item.duration).toBe("45 min");
     expect(item.remarks).toBe("Name board");
     expect(item.voucher).toBe("V-100");
-    expect(String(item.description)).toContain("3 pax");
+    expect(String(item.description)).toContain("Vehicle: Private Car");
+    expect(String(item.description)).toContain("3 max");
+    expect(String(item.description)).not.toContain("pax");
+  });
+
+  it("airport pickup shows selected vehicle once with capacity max", () => {
+    const windows = buildTripCityStayWindows([{ city: "Kuala Lumpur", nights: 2, order: 1 }], start);
+    const days = syncPackageItinerary([], {
+      stayWindows: windows,
+      travelStartDate: start,
+      transfers: [{
+        lineId: "t-kl",
+        transferType: "Airport Pickup",
+        date: start,
+        pickup: "Kuala Lumpur Airport",
+        drop: "Trigo Kuala Lumpur",
+        pickupTime: "11:09",
+        vehicleType: "Van 10-seater",
+        pax: 4,
+        remarks: "Vehicle: Van 10-seater",
+      }],
+    });
+    const item = (days.find((d) => d.date === start)!.items as Record<string, unknown>[])
+      .find((i) => i.itemType === "TRANSFER")!;
+    expect(String(item.description)).toBe(
+      "Kuala Lumpur Airport → Trigo Kuala Lumpur · Vehicle: Van 10-seater · 10 max",
+    );
+    expect(item.remarks).toBe("");
+    expect(item.vehicle).toBe("Van 10-seater");
+  });
+
+  it("transfer sync refreshes stale duplicate vehicle description", () => {
+    const windows = buildTripCityStayWindows([{ city: "Kuala Lumpur", nights: 2, order: 1 }], start);
+    const stale = syncPackageItinerary([], {
+      stayWindows: windows,
+      travelStartDate: start,
+      transfers: [{
+        lineId: "t-kl",
+        transferType: "Airport Pickup",
+        date: start,
+        pickup: "Kuala Lumpur Airport",
+        drop: "Trigo Kuala Lumpur",
+        vehicleType: "Van 10-seater",
+        pax: 4,
+      }],
+    });
+    const staleItem = (stale[0].items as Record<string, unknown>[]).find((i) => i.itemType === "TRANSFER")!;
+    staleItem.description = "Kuala Lumpur Airport → Trigo Kuala Lumpur · Van 10-seater · 4 pax · Vehicle: Van 10-seater";
+
+    const refreshed = syncPackageItinerary(stale, {
+      stayWindows: windows,
+      travelStartDate: start,
+      transfers: [{
+        lineId: "t-kl",
+        transferType: "Airport Pickup",
+        date: start,
+        pickup: "Kuala Lumpur Airport",
+        drop: "Trigo Kuala Lumpur",
+        vehicleType: "Van 10-seater",
+        pax: 4,
+      }],
+    });
+    const item = (refreshed[0].items as Record<string, unknown>[]).find((i) => i.itemType === "TRANSFER")!;
+    expect(String(item.description)).toBe(
+      "Kuala Lumpur Airport → Trigo Kuala Lumpur · Vehicle: Van 10-seater · 10 max",
+    );
   });
 
   it("7–9. activity city + editable duration + city/date consistency helpers", () => {

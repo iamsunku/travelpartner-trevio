@@ -83,6 +83,15 @@ function agencyScope(req: AuthRequest): Record<string, unknown> {
   return { agencyId: req.auth?.agencyId ?? "__no_agency__" };
 }
 
+/** Shared catalogue products (agencyId null) + the caller's own agency inventory. */
+function catalogAgencyScope(req: AuthRequest): Record<string, unknown> {
+  if (req.auth?.role === "super_admin") return {};
+  const agencyId = req.auth?.agencyId ?? "__no_agency__";
+  return {
+    OR: [{ agencyId }, { agencyId: null }],
+  };
+}
+
 // The agencyId a create/write should be stamped with — always the caller's own
 // agency for non-super_admin roles, ignoring whatever the client body claims.
 function ownAgencyId(req: AuthRequest, fallback?: string): string | undefined {
@@ -3725,8 +3734,8 @@ app.patch("/api/payroll/:id", requireAuth, requireAnyPermission("employees", "fi
   }
 });
 
-mountProductRoutes(app, agencyScope);
-mountContractedRateRoutes(app, agencyScope);
+mountProductRoutes(app, catalogAgencyScope);
+mountContractedRateRoutes(app, catalogAgencyScope);
 mountTaxRuleRoutes(app, agencyScope);
 mountSupplierRoutes(app, agencyScope);
 mountDestinationRoutes(app, agencyScope);

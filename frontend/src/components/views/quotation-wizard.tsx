@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  BadgeCheck, Check, ChevronDown, ChevronLeft, ChevronRight, Coffee, Copy, Crosshair, FileDown, Headphones, Home, Hotel,
-  ImageIcon, Loader2, Mail, MapPin, MessageCircle, Plus, Printer, Search, ShieldCheck, Star, Trash2, X,
+  BadgeCheck, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Coffee, Copy, Crosshair, FileDown, Headphones, Home, Hotel,
+  ImageIcon, Info as InfoIcon, Loader2, Mail, MapPin, MessageCircle, Minus, Pencil, Plus, Printer, Search, ShieldCheck, Star, Trash2, X,
 } from "lucide-react";
 import { api, apiFetch, ApiError } from "@/lib/api";
 import { mapApiQuotation, mapApiUser } from "@/lib/api-mappers";
@@ -63,8 +63,66 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { placeholderHotelImage, placeholderRoomImage } from "@/lib/hotel-placeholder-images";
+import {
+  activityLineTotal,
+  activityMatchesTripCity,
+  activityPlaceholderImage,
+  ACTIVITY_TRANSFER_ROUTE,
+  ACTIVITY_TRANSFER_VEHICLES,
+  formatActivitySchedule,
+  formatActivityTimingBar,
+  isTourActivity,
+  resolveActivityLocationCity,
+} from "@/lib/activity-catalog";
+import {
+  defaultMealVehicleQty,
+  mealFoodOnlyPrice,
+  mealTimeSlotsForType,
+  mealTransferVehicleTotal,
+  MEAL_TRANSFER_ROUTE,
+  MEAL_TRANSFER_VEHICLES,
+  selectedMealVehicles,
+} from "@/lib/meal-catalog";
+import {
+  MISC_CATALOG,
+  OPTIONAL_ADDON_PRESETS,
+  miscLineCost,
+  miscLineSelling,
+  miscUnitLabel,
+  type MiscCatalogItem,
+} from "@/lib/misc-catalog";
+import {
+  AIRPORT_EXIT_BUFFER_MINUTES,
+  earliestAirportPickupTime,
+  formatTransferDestination,
+  formatTransferRoute,
+  getTransferVehicleOptions,
+  bindAirportTransfersToSelectedHotels,
+  isAirportGuideMandatory,
+  isGenericCityHotelAirportTransfer,
+  isMalaysiaHotelCatalogueCity,
+  matchesAirportPickupForHotel,
+  MALAYSIA_HOTEL_CITIES,
+  MALAYSIA_TRANSFER_CITIES,
+  matchesMalaysiaKlAirportTransferList,
+  normalizeMalaysiaHotelCity,
+  parseClockToMinutes,
+  requiredVehicleBandForPax,
+  resolveFlightArrivalForPickup,
+  resolveTransferHubCity,
+  transferPlaceholderImage,
+  vehicleCapacityMax,
+} from "@/lib/transfer-catalog";
+import { QuoteTripBuilder } from "@/components/views/quote-trip-builder";
+import { ActivityDetailsDialog } from "@/components/shared/activity-details-dialog";
 
 /** Client Create Quote uses demonyms (e.g. Indian), not country names. */
 const NATIONALITY_OPTIONS = [
@@ -205,6 +263,7 @@ function syncItineraryFromPackage(
     transfers?: unknown;
     activities?: unknown;
     meals?: unknown;
+    addOns?: unknown;
   },
   opts: {
     stayWindows?: TripCityStayWindow[];
@@ -217,6 +276,7 @@ function syncItineraryFromPackage(
     transfers: Array.isArray(pkg.transfers) ? (pkg.transfers as Record<string, unknown>[]) : [],
     activities: Array.isArray(pkg.activities) ? (pkg.activities as Record<string, unknown>[]) : [],
     meals: Array.isArray(pkg.meals) ? (pkg.meals as Record<string, unknown>[]) : [],
+    addOns: Array.isArray(pkg.addOns) ? (pkg.addOns as Record<string, unknown>[]) : [],
     stayWindows: opts.stayWindows,
     travelStartDate: opts.travelStartDate,
   });
@@ -245,7 +305,17 @@ export function QuotationWizardView() {
     if (!v) onClose();
   };
   const [step, setStep] = useState(0);
+  const [wizardPhase, setWizardPhase] = useState<"basics" | "trip">("basics");
+  const [servicePicker, setServicePicker] = useState<{
+    service: "Hotel" | "Transfers" | "Activities" | "Meals" | "Miscellaneous";
+    dayNumber: number;
+    date: string;
+    city: string;
+    transferKind?: "transfer" | "airport_pickup";
+  } | null>(null);
   const [busy, setBusy] = useState(false);
+  const tripPersistChain = useRef(Promise.resolve<Quotation | null>(null));
+  const tripPersistEpoch = useRef(0);
   const [requireFinanceApproval, setRequireFinanceApproval] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [id, setId] = useState<string | null>(quotationId || null);
@@ -341,7 +411,8 @@ export function QuotationWizardView() {
           setId(q.id);
           setLeadId((q.leadId as string) || null);
           setQuoteNo(q.quoteNo);
-          setStep(Math.max(0, Number(q.wizardStep || 1) - 1));
+          setStep(0);
+          setWizardPhase("trip");
           setForm((f) => ({
             ...f,
             customerName: q.customerName || "",
@@ -412,6 +483,7 @@ export function QuotationWizardView() {
       setId(null);
       setQuoteNo("");
       setStep(0);
+      setWizardPhase("basics");
       setPackages([emptyPackage("Standard", true)]);
       setTripCities([{ city: "", nights: 1, order: 1, destinationId: null }]);
       setDestinationId("");
@@ -755,22 +827,40 @@ export function QuotationWizardView() {
     });
   }
 
-  async function persist(nextStep = step, opts?: { submitApproval?: boolean; approveNow?: boolean; financeApprovalRequired?: boolean }) {
-    const hasTripPlan = tripCities.some((c) => c.city.trim() && Number(c.nights) > 0);
-    if (!form.customerName.trim() || (!form.destination.trim() && !hasTripPlan)) {
-      toast({ title: "Customer and destination (or trip cities) are required", variant: "destructive" });
+  async function persist(nextStep = step, opts?: {
+    submitApproval?: boolean;
+    approveNow?: boolean;
+    financeApprovalRequired?: boolean;
+    /** Use when calling persist immediately after setPackages — React state is still stale. */
+    packagesOverride?: QuotationPackage[];
+    tripCitiesOverride?: Array<{ city: string; nights: number; order?: number; destinationId?: string | null }>;
+    formOverride?: Partial<typeof form>;
+    /** Trip-builder auto-save: skip busy spinner and success toast. */
+    quiet?: boolean;
+    /** Ignore hydrating packages from response when a newer trip persist superseded this one. */
+    hydrateEpoch?: number;
+  }) {
+    const formSrc = opts?.formOverride ? { ...form, ...opts.formOverride } : form;
+    const citiesSrc = opts?.tripCitiesOverride ?? tripCities;
+    const packagesSrc = opts?.packagesOverride ?? packages;
+    const hasTripPlan = citiesSrc.some((c) => c.city.trim() && Number(c.nights) > 0);
+    if (!formSrc.customerName.trim() || (!formSrc.destination.trim() && !hasTripPlan)) {
+      if (!opts?.quiet) {
+        toast({ title: "Customer and destination (or trip cities) are required", variant: "destructive" });
+      }
       return null;
     }
-    if (form.travelEndDate && form.travelStartDate && nights == null) {
+    if (formSrc.travelEndDate && formSrc.travelStartDate && nights == null && !opts?.tripCitiesOverride) {
       toast({ title: "End date cannot be before start date", variant: "destructive" });
       return null;
     }
     const submitApproval = Boolean(opts?.submitApproval || opts?.approveNow);
     const approveNow = Boolean(opts?.approveNow);
-    setBusy(true);
+    const quiet = Boolean(opts?.quiet);
+    if (!quiet) setBusy(true);
     setSaveError(null);
     try {
-      const normalizedTripCities = tripCities
+      const normalizedTripCities = citiesSrc
         .filter((c) => c.city.trim() && Number(c.nights) > 0)
         .map((c, i) => ({
           city: c.city.trim(),
@@ -779,35 +869,35 @@ export function QuotationWizardView() {
           destinationId: c.destinationId || null,
         }));
       const payload = {
-        ...form,
-        adults: Number(form.adults) || 2,
-        children: Number(form.children) || 0,
-        infants: Number(form.infants) || 0,
-        rooms: Math.max(1, Number(form.rooms) || 1),
-        hotelStarPreference: form.hotelStarPreference || undefined,
-        nationality: form.nationality || undefined,
-        landOnly: Boolean(form.landOnly),
-        estimatedBookingDate: form.estimatedBookingDate || null,
-        departureCity: form.departureCity || undefined,
+        ...formSrc,
+        adults: Number(formSrc.adults) || 2,
+        children: Number(formSrc.children) || 0,
+        infants: Number(formSrc.infants) || 0,
+        rooms: Math.max(1, Number(formSrc.rooms) || 1),
+        hotelStarPreference: formSrc.hotelStarPreference || undefined,
+        nationality: formSrc.nationality || undefined,
+        landOnly: Boolean(formSrc.landOnly),
+        estimatedBookingDate: formSrc.estimatedBookingDate || null,
+        departureCity: formSrc.departureCity || undefined,
         tripCities: normalizedTripCities,
         nights: nights ?? undefined,
         days: tripDays ?? undefined,
-        travelDates: form.travelStartDate,
+        travelDates: formSrc.travelStartDate,
         destination: normalizedTripCities.length
           ? normalizedTripCities.map((c) => c.city).join(" · ")
-          : form.destination,
+          : formSrc.destination,
         wizardStep: nextStep + 1,
-        packages: !id && !packages.some((p) =>
+        packages: !id && !packagesSrc.some((p) =>
           [p.hotels, p.flights, p.transfers, p.activities, p.meals].some((rows) => Array.isArray(rows) && rows.length > 0)
         )
           ? undefined
-          : packages.map((p, i) => ({ ...p, sortOrder: i })),
-        service: form.service || (form.isInternational ? "International" : "Holiday"),
+          : packagesSrc.map((p, i) => ({ ...p, sortOrder: i })),
+        service: formSrc.service || (formSrc.isInternational ? "International" : "Holiday"),
         leadId: leadId || undefined,
-        budget: form.budget || undefined,
-        agentCode: form.agentCode || user?.agentCode || undefined,
-        agencyCode: form.agencyCode || user?.agencyCode || undefined,
-        agentId: form.agentId || user?.id || undefined,
+        budget: formSrc.budget || undefined,
+        agentCode: formSrc.agentCode || user?.agentCode || undefined,
+        agencyCode: formSrc.agencyCode || user?.agencyCode || undefined,
+        agentId: formSrc.agentId || user?.id || undefined,
       };
       let quotation: Quotation;
       if (!id) {
@@ -840,8 +930,9 @@ export function QuotationWizardView() {
         approveReady = Boolean(approved.readyToSend) || quotation.approvalStatus === "Approved";
       }
       upsertQuotation(quotation);
-      if (quotation.packages?.length) setPackages(quotation.packages);
-      if (Array.isArray(quotation.tripCities)) {
+      const canHydratePackages = opts?.hydrateEpoch == null || opts.hydrateEpoch === tripPersistEpoch.current;
+      if (quotation.packages?.length && canHydratePackages) setPackages(quotation.packages);
+      if (Array.isArray(quotation.tripCities) && canHydratePackages) {
         setTripCities(
           quotation.tripCities
             .map((c, i) => ({
@@ -854,23 +945,25 @@ export function QuotationWizardView() {
         );
       }
       onSaved(quotation);
-      const disc = latestDiscountApproval(quotation.approvals);
-      const discountNote = disc?.status === "Pending"
-        ? " · Discount approval requested"
-        : disc?.status === "Approved" && discountRequiresApproval("sales_executive", form.discountType || null, form.discountValue)
-          ? " · Discount approved"
-          : "";
-      toast({
-        title: approveNow
-          ? (approveReady ? "Approved & ready to send" : "Approval incomplete")
-          : submitApproval
-            ? "Submitted for approval"
-            : "Draft saved",
-        description: approveNow && !approveReady
-          ? `${quotation.quoteNo} — complete Team Lead / Finance approval or fix discount before sending.`
-          : `${quotation.quoteNo}${discountNote}`,
-        variant: approveNow && !approveReady ? "destructive" : "default",
-      });
+      if (!quiet) {
+        const disc = latestDiscountApproval(quotation.approvals);
+        const discountNote = disc?.status === "Pending"
+          ? " · Discount approval requested"
+          : disc?.status === "Approved" && discountRequiresApproval("sales_executive", formSrc.discountType || null, formSrc.discountValue)
+            ? " · Discount approved"
+            : "";
+        toast({
+          title: approveNow
+            ? (approveReady ? "Approved & ready to send" : "Approval incomplete")
+            : submitApproval
+              ? "Submitted for approval"
+              : "Draft saved",
+          description: approveNow && !approveReady
+            ? `${quotation.quoteNo} — complete Team Lead / Finance approval or fix discount before sending.`
+            : `${quotation.quoteNo}${discountNote}`,
+          variant: approveNow && !approveReady ? "destructive" : "default",
+        });
+      }
       return quotation;
     } catch (e) {
       const message = e instanceof ApiError ? e.message : "Could not save quotation";
@@ -882,15 +975,102 @@ export function QuotationWizardView() {
       });
       return null;
     } finally {
-      setBusy(false);
+      if (!quiet) setBusy(false);
     }
   }
 
+  function buildSelectedPackagePatch(patch: Partial<QuotationPackage>): QuotationPackage[] {
+    const idx = packages.findIndex((p) => p.isSelected);
+    const i = idx >= 0 ? idx : 0;
+    return packages.map((p, j) => (j === i ? { ...p, ...patch } : p));
+  }
+
+  /** Persist trip-builder package lines via existing PUT /wizard (avoids stale React packages). */
+  async function persistTripPackage(nextPackages: QuotationPackage[]) {
+    const epoch = ++tripPersistEpoch.current;
+    setPackages(nextPackages);
+    const run = tripPersistChain.current.then(() =>
+      persist(step, { packagesOverride: nextPackages, quiet: true, hydrateEpoch: epoch }),
+    );
+    tripPersistChain.current = run.then(
+      () => null,
+      () => null,
+    );
+    return run;
+  }
+
   async function next() {
+    // Basic Details Create → trip builder shell (replaces old multi-step continuation).
+    if (step === 0 || wizardPhase === "basics") {
+      const q = await persist(0);
+      if (q) {
+        setStep(0);
+        setWizardPhase("trip");
+      }
+      return;
+    }
     let target = Math.min(step + 1, STEPS.length - 1);
     if (form.landOnly && target === 2) target = 3;
     const q = await persist(target);
     if (q) setStep(target);
+  }
+
+  async function createTripPdf() {
+    if (!form.customerName.trim() || (!form.destination.trim() && !tripCities.some((c) => c.city.trim()))) {
+      toast({ title: "Customer and destination are required for the client PDF", variant: "destructive" });
+      return;
+    }
+    try {
+      const preview = buildReviewQuote();
+      const ok = await downloadQuotationPdf(preview, undefined, { mode: id ? "preview" : "customer" });
+      toast({
+        title: ok ? "Client PDF ready" : "PDF failed",
+        description: ok
+          ? id
+            ? "Branded quotation PDF downloaded."
+            : "Brochure opened. Save the quote to generate a stored server PDF."
+          : "Could not open the PDF.",
+        variant: ok ? "default" : "destructive",
+      });
+    } catch (e) {
+      toast({
+        title: "PDF blocked",
+        description: e instanceof Error ? e.message : "Could not generate PDF",
+        variant: "destructive",
+      });
+    }
+  }
+
+  async function sendTripQuotation() {
+    const quote = await ensureSavedForDelivery();
+    if (!quote) return;
+    if (quote.contactEmail?.trim()) {
+      const res = await deliverQuotationEmail(quote);
+      toast({
+        title: res.ok ? "Email sent" : "Email failed",
+        description: res.ok
+          ? `Quotation PDF emailed to ${quote.contactEmail}.`
+          : res.error || "Could not send email",
+        variant: res.ok ? "default" : "destructive",
+      });
+      return;
+    }
+    if (quote.contactPhone?.trim()) {
+      const res = await deliverQuotationWhatsApp(quote);
+      toast({
+        title: res.ok ? "WhatsApp sent" : "WhatsApp failed",
+        description: res.ok
+          ? `Quotation PDF sent to ${quote.contactPhone}.`
+          : res.error || "Could not send WhatsApp",
+        variant: res.ok ? "default" : "destructive",
+      });
+      return;
+    }
+    toast({
+      title: "Add contact email or phone",
+      description: "Update trip details to add email or phone before sending.",
+      variant: "destructive",
+    });
   }
 
   async function back() {
@@ -970,6 +1150,726 @@ export function QuotationWizardView() {
 
   const progressPct = Math.round(((step + 1) / STEPS.length) * 100);
 
+  function appendTripHotel(
+    item: ProductRecord,
+    rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null },
+    stayCity?: string,
+    room?: Record<string, unknown> | null,
+  ) {
+    const preferredCity = (stayCity || servicePicker?.city || "").trim();
+    const stay = findStayWindowForCity(stayWindows, preferredCity) || stayWindows[0] || null;
+    const base = hotelFromCatalog(item, Math.max(1, form.rooms || 1), room);
+    const selling = Number(base.sellingPrice || rate.displayPrice || 0);
+    const hasInternalCost = rate.contractedCost != null && Number.isFinite(Number(rate.contractedCost));
+    const cost = hasInternalCost ? Number(rate.contractedCost) : undefined;
+    const cin = stay?.checkIn || form.travelStartDate || "";
+    const cout = stay?.checkOut || form.travelEndDate || "";
+    const tripCity = stay?.city || preferredCity || String(base.city || "");
+    const row: Record<string, unknown> = {
+      ...base,
+      lineId: newHotelLineId(),
+      checkIn: cin,
+      checkOut: cout,
+      nights: stay?.nights ?? stayNights(cin, cout) ?? "",
+      rooms: Math.max(1, Number(base.rooms || form.rooms || 1)),
+      city: tripCity,
+      tripCity,
+      stayDatesLocked: false,
+      selfBooked: false,
+      source: "CONTRACTED_PRODUCT",
+      productType: "HOTEL",
+      rateId: rate.rateId,
+      rateValidFrom: rate.validFrom,
+      rateValidTo: rate.validTo,
+      rateSelectedAt: new Date().toISOString(),
+      rateTravelDate: cin || form.travelStartDate,
+      rateUnresolved: false,
+      sellingPrice: selling || (cost ?? 0),
+      markup: hasInternalCost ? Math.round((selling || cost || 0) - (cost || 0)) : undefined,
+    };
+    if (hasInternalCost) row.costPrice = cost;
+
+    const prevHotels = (selected?.hotels || []) as Record<string, unknown>[];
+    const hotels = [...prevHotels, row];
+    const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+      ...selected,
+      hotels,
+    }, {
+      stayWindows,
+      travelStartDate: form.travelStartDate,
+    });
+    const nextPackages = buildSelectedPackagePatch({ hotels, itinerary });
+    void persistTripPackage(nextPackages);
+    setServicePicker(null);
+    toast({
+      title: "Hotel added",
+      description: `${String(item.name || "Hotel")} · ${tripCity || "trip"}`,
+    });
+  }
+
+  function addTripSelfBookedHotel(
+    preferredCity?: string,
+    details?: { hotelName: string; address: string },
+  ) {
+    const city = (preferredCity || servicePicker?.city || "").trim();
+    const stay = findStayWindowForCity(stayWindows, city) || stayWindows[0] || null;
+    const cin = stay?.checkIn || form.travelStartDate || "";
+    const cout = stay?.checkOut || form.travelEndDate || "";
+    const tripCity = stay?.city || city || form.destination || "";
+    const hotelName = String(details?.hotelName || "").trim();
+    const address = String(details?.address || "").trim();
+    if (!hotelName) {
+      toast({ title: "Enter hotel name", variant: "destructive" });
+      return;
+    }
+    const row: Record<string, unknown> = {
+      lineId: newHotelLineId(),
+      hotelName,
+      starCategory: form.hotelStarPreference || "",
+      roomType: "Deluxe",
+      mealPlan: "Breakfast",
+      address,
+      city: tripCity,
+      tripCity,
+      checkIn: cin,
+      checkOut: cout,
+      checkInTime: "14:00",
+      checkOutTime: "11:00",
+      nights: stay?.nights ?? stayNights(cin, cout) ?? "",
+      rooms: Math.max(1, form.rooms || 1),
+      selfBooked: true,
+      source: "MANUAL",
+      productType: "HOTEL",
+      hotelDocuments: [],
+      stayDatesLocked: false,
+      confirmationNo: "",
+      remarks: "",
+    };
+    const prevHotels = (selected?.hotels || []) as Record<string, unknown>[];
+    const hotels = [...prevHotels, row];
+    const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+      ...selected,
+      hotels,
+    }, {
+      stayWindows,
+      travelStartDate: form.travelStartDate,
+    });
+    void persistTripPackage(buildSelectedPackagePatch({ hotels, itinerary }));
+    setServicePicker(null);
+    toast({
+      title: "Self-booked hotel added",
+      description: hotelName + (tripCity ? ` · ${tripCity}` : ""),
+    });
+  }
+
+  function appendTripTransfer(
+    item: ProductRecord,
+    rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null },
+  ) {
+    const city = (servicePicker?.city || "").trim();
+    const date = servicePicker?.date || form.travelStartDate || "";
+    const selling = Number(rate.displayPrice ?? item.privatePrice ?? item.sharedPrice ?? 0);
+    const hasInternalCost = rate.contractedCost != null && Number.isFinite(Number(rate.contractedCost));
+    const preferredType = servicePicker?.transferKind === "airport_pickup"
+      ? "Airport Pickup"
+      : String(item.transferType || item.name || "Private Transfer");
+    const vehicleType = String(item.vehicleType || "Sedan / Car");
+    const vehicleQty = Math.max(1, Number((item as ProductRecord & { vehicleQty?: number }).vehicleQty || 1));
+    const vehicleCapacity = vehicleCapacityMax(
+      vehicleType,
+      Number((item as ProductRecord & { seats?: number; capacity?: number }).seats
+        ?? (item as ProductRecord & { capacity?: number }).capacity)
+        || undefined,
+    );
+    const pickup = String(item.pickupLocation || "");
+    const drop = String(item.dropLocation || "");
+    const pickupTime = String((item as ProductRecord & { pickupTime?: string }).pickupTime || "");
+    const pax = Math.max(
+      1,
+      Number((item as ProductRecord & { pax?: number }).pax || 0)
+        || ((form.adults || 0) + (form.children || 0))
+        || 1,
+    );
+    if (preferredType === "Airport Pickup") {
+      if (!drop.trim()) {
+        toast({
+          title: "Destination required",
+          description: "Transfer drop-off location is missing for this destination.",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    const row: Record<string, unknown> = {
+      lineId: newHotelLineId(),
+      productId: item.id,
+      productType: "TRANSFER",
+      source: "CONTRACTED_PRODUCT",
+      selfBooked: false,
+      transferType: preferredType,
+      vehicleType,
+      vehicleQty,
+      capacity: vehicleCapacity != null ? vehicleCapacity : undefined,
+      pickup,
+      drop,
+      date,
+      city,
+      pickupTime,
+      pax,
+      duration: "",
+      currency: form.currency || "INR",
+      voucher: "",
+      remarks: preferredType === "Airport Pickup"
+        ? ""
+        : (vehicleQty > 1 ? `Vehicle: ${vehicleType} × ${vehicleQty}` : `Vehicle: ${vehicleType}`),
+      sellingPrice: selling,
+      supplier: item.supplier?.name || "",
+      rateId: rate.rateId,
+      rateValidFrom: rate.validFrom,
+      rateValidTo: rate.validTo,
+      rateSelectedAt: new Date().toISOString(),
+      rateTravelDate: date,
+      rateUnresolved: false,
+    };
+    if (hasInternalCost) row.costPrice = Number(rate.contractedCost);
+    const prev = (selected?.transfers || []) as Record<string, unknown>[];
+    const transfers = [...prev, row];
+    const itinerary = syncItineraryFromPackage(selected?.itinerary, { ...selected, transfers }, {
+      stayWindows,
+      travelStartDate: form.travelStartDate,
+    });
+    const nextPackages = buildSelectedPackagePatch({ transfers, itinerary });
+    void persistTripPackage(nextPackages);
+    setServicePicker(null);
+    const routeLabel = pickup && drop ? `${pickup} → ${drop}` : String(item.name || "Transfer");
+    toast({
+      title: preferredType === "Airport Pickup" ? "Airport pickup added" : "Transfer added",
+      description: `${routeLabel} · ${vehicleType}${vehicleQty > 1 ? ` ×${vehicleQty}` : ""}${pickupTime ? ` · ${pickupTime}` : ""}`,
+    });
+  }
+
+  function appendTripActivity(
+    item: ProductRecord,
+    rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null },
+  ) {
+    const city = (servicePicker?.city || String(item.city || item.location || "")).trim();
+    const date = servicePicker?.date || form.travelStartDate || "";
+    const adults = Math.max(0, form.adults || 0);
+    const children = Math.max(0, form.children || 0);
+    const adultRate = Number(item.adultPrice || 0);
+    const childRate = Number(item.childPrice || 0);
+    const computed = activityLineTotal(item, adults, children);
+    const selling = Number(rate.displayPrice ?? (computed > 0 ? computed : item.adultPrice ?? 0));
+    const hasInternalCost = rate.contractedCost != null && Number.isFinite(Number(rate.contractedCost));
+    const startTime = String(
+      (item as ProductRecord & { pickupTime?: string }).pickupTime
+      || item.startTime
+      || "",
+    ).trim();
+    const row: Record<string, unknown> = {
+      lineId: newHotelLineId(),
+      productId: item.id,
+      productType: "ACTIVITY",
+      source: "CONTRACTED_PRODUCT",
+      selfBooked: false,
+      activityCategory: String(item.ticketType || "Attraction"),
+      activityName: String(item.name || ""),
+      description: String(item.description || ""),
+      city,
+      date,
+      duration: String(item.duration || ""),
+      timeSlot: startTime,
+      ticketType: String(item.ticketType || "Standard"),
+      adults,
+      children,
+      adultRate,
+      childRate,
+      currency: form.currency || "INR",
+      voucher: "",
+      remarks: "",
+      sellingPrice: selling,
+      supplier: item.supplier?.name || "",
+      imageUrl: Array.isArray(item.images) && item.images[0] ? String(item.images[0]) : "",
+      inclusions: item.inclusions,
+      exclusions: item.exclusions,
+      rateId: rate.rateId,
+      rateValidFrom: rate.validFrom,
+      rateValidTo: rate.validTo,
+      rateSelectedAt: new Date().toISOString(),
+      rateTravelDate: date,
+      rateUnresolved: false,
+    };
+    if (hasInternalCost) row.costPrice = Number(rate.contractedCost);
+
+    const transferExtra = (item as ProductRecord & {
+      activityTransfer?: {
+        vehicleType: string;
+        vehicleQty: number;
+        sellingPrice: number;
+        route: string;
+      };
+    }).activityTransfer;
+
+    const prevActivities = (selected?.activities || []) as Record<string, unknown>[];
+    const activities = [...prevActivities, row];
+    let transfers = (selected?.transfers || []) as Record<string, unknown>[];
+
+    if (transferExtra && transferExtra.sellingPrice > 0 && !isTourActivity(item)) {
+      transfers = [
+        ...transfers,
+        {
+          lineId: newHotelLineId(),
+          productType: "TRANSFER",
+          source: "CONTRACTED_PRODUCT",
+          selfBooked: false,
+          transferType: "Activity Transfer",
+          vehicleType: transferExtra.vehicleType,
+          vehicleQty: transferExtra.vehicleQty,
+          pickup: "Hotel",
+          drop: String(item.name || "Activity"),
+          date,
+          city,
+          pickupTime: startTime,
+          pax: Math.max(1, adults + children),
+          duration: "",
+          currency: form.currency || "INR",
+          voucher: "",
+          remarks: transferExtra.route,
+          sellingPrice: transferExtra.sellingPrice,
+          costPrice: transferExtra.sellingPrice,
+          rateUnresolved: true,
+        },
+      ];
+      row.remarks = `With private transfer · ${transferExtra.vehicleType}`;
+    }
+
+    const itinerary = syncItineraryFromPackage(selected?.itinerary, { ...selected, activities, transfers }, {
+      stayWindows,
+      travelStartDate: form.travelStartDate,
+    });
+    void persistTripPackage(buildSelectedPackagePatch({ activities, transfers, itinerary }));
+    setServicePicker(null);
+    toast({
+      title: "Activity added",
+      description: `${String(item.name || "Activity")}${startTime ? ` · ${startTime}` : ""}`,
+    });
+  }
+
+  function appendTripMeal(
+    item: ProductRecord,
+    rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null },
+  ) {
+    const city = (servicePicker?.city || String(item.city || item.destination?.name || "")).trim();
+    const date = servicePicker?.date || form.travelStartDate || "";
+    const adults = Math.max(0, form.adults || 0);
+    const children = Math.max(0, form.children || 0);
+    const transferInclusion = item.transferInclusion === "PRIVATE" ? "PRIVATE" : "NONE";
+    const extras = (item as ProductRecord & {
+      mealExtras?: {
+        timeSlot?: string;
+        foodPrice?: number;
+        transferTotal?: number;
+        sellingPrice?: number;
+        vehicles?: Array<{ label: string; qty: number; price: number }>;
+        route?: string;
+      };
+    }).mealExtras;
+    const adultPrice = Number(item.adultPrice || 0);
+    const selling = Number(
+      extras?.sellingPrice
+      ?? rate.displayPrice
+      ?? (adultPrice > 0 ? adultPrice : 0),
+    );
+    const hasInternalCost = rate.contractedCost != null && Number.isFinite(Number(rate.contractedCost));
+    const timeSlot = String(extras?.timeSlot || "").trim();
+    const vehicleSummary = (extras?.vehicles || [])
+      .map((v) => `${v.label}×${v.qty}`)
+      .join(", ");
+    const row: Record<string, unknown> = {
+      lineId: newHotelLineId(),
+      productId: item.id,
+      productType: "MEAL",
+      source: "CONTRACTED_PRODUCT",
+      selfBooked: false,
+      restaurant: String(item.restaurant || item.name || ""),
+      name: String(item.name || ""),
+      mealType: String(item.mealType || "Dinner"),
+      cuisine: String(item.cuisine || ""),
+      city,
+      location: "",
+      dietary: "",
+      date,
+      dateSource: "AUTO",
+      time: timeSlot,
+      timeSlot,
+      duration: String(item.duration || (transferInclusion === "PRIVATE" ? "6 Hours" : "")),
+      description: String(item.description || ""),
+      transferInclusion,
+      transferBadge: transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer",
+      adults,
+      children,
+      infants: Math.max(0, form.infants || 0),
+      currency: String(item.currency || form.currency || "INR"),
+      voucher: "",
+      remarks: [
+        timeSlot ? `Meal time ${timeSlot}` : "",
+        transferInclusion === "PRIVATE" ? (extras?.route || MEAL_TRANSFER_ROUTE) : "",
+        vehicleSummary ? `Vehicle: ${vehicleSummary}` : "",
+      ].filter(Boolean).join(" · "),
+      sellingPrice: selling,
+      supplier: item.supplier?.name || "",
+      rateId: rate.rateId,
+      rateValidFrom: rate.validFrom,
+      rateValidTo: rate.validTo,
+      rateSelectedAt: new Date().toISOString(),
+      rateTravelDate: date,
+      rateUnresolved: false,
+    };
+    if (hasInternalCost) row.costPrice = Number(rate.contractedCost);
+    else if (selling > 0) row.costPrice = selling;
+
+    const prevMeals = (selected?.meals || []) as Record<string, unknown>[];
+    const meals = [...prevMeals, row];
+    const itinerary = syncItineraryFromPackage(selected?.itinerary, { ...selected, meals }, {
+      stayWindows,
+      travelStartDate: form.travelStartDate,
+    });
+    void persistTripPackage(buildSelectedPackagePatch({ meals, itinerary }));
+    setServicePicker(null);
+    toast({
+      title: "Meal added",
+      description: `${String(item.name || "Meal")}${timeSlot ? ` · ${timeSlot}` : ""}${
+        transferInclusion === "PRIVATE" ? " · Private Transfer" : ""
+      }`,
+    });
+  }
+
+  function appendTripMisc(item: MiscCatalogItem) {
+    const city = (servicePicker?.city || "").trim();
+    const date = servicePicker?.date || form.travelStartDate || "";
+    const adults = Math.max(1, form.adults || 1);
+    const children = Math.max(0, form.children || 0);
+    const selling = miscLineSelling(item, adults, children);
+    const cost = miscLineCost(item, adults, children);
+    const row: Record<string, unknown> = {
+      lineId: newHotelLineId(),
+      productId: item.id,
+      productType: "MISC",
+      source: "CATALOG",
+      enabled: true,
+      name: item.name,
+      category: item.category,
+      description: item.description,
+      unit: item.unit,
+      city,
+      date,
+      quantity: 1,
+      adults,
+      children,
+      currency: form.currency || "INR",
+      remarks: "",
+      costPrice: cost,
+      sellingPrice: selling,
+    };
+    const prev = (selected?.addOns || []) as Record<string, unknown>[];
+    const addOns = [...prev, row];
+    const itinerary = syncItineraryFromPackage(selected?.itinerary, { ...selected, addOns }, {
+      stayWindows,
+      travelStartDate: form.travelStartDate,
+    });
+    void persistTripPackage(buildSelectedPackagePatch({ addOns, itinerary }));
+    setServicePicker(null);
+    toast({
+      title: "Add-on added",
+      description: `${item.name} · ${formatFullINR(selling)}`,
+    });
+  }
+
+  if (wizardPhase === "trip") {
+    const pickerCity = servicePicker?.city || "";
+    const isMiscPicker = servicePicker?.service === "Miscellaneous";
+    const pickerKind =
+      servicePicker?.service === "Transfers"
+        ? "transfers" as const
+        : servicePicker?.service === "Activities"
+          ? "activities" as const
+          : servicePicker?.service === "Meals"
+            ? "meals" as const
+            : "hotels" as const;
+    const pickerTitle =
+      servicePicker?.service === "Transfers"
+        ? servicePicker.transferKind === "airport_pickup"
+          ? `Add Airport Pickup in ${pickerCity || "your trip"}`
+          : `Add Transfer in ${pickerCity || "your trip"}`
+        : servicePicker?.service === "Activities"
+          ? `Add Activity in ${pickerCity || "your trip"}`
+          : servicePicker?.service === "Meals"
+            ? "Add Meal to your Package"
+            : servicePicker?.service === "Miscellaneous"
+              ? "Add Miscellaneous to your Package"
+              : `Add Hotel in ${pickerCity || "your trip"}`;
+    return (
+      <div className="-mx-4 sm:-mx-6 lg:-mx-8 -mt-4 sm:-mt-6 lg:-mt-8 mb-[-1.5rem] sm:mb-[-2rem] lg:mb-[-2rem] min-h-[calc(100vh-3.5rem)] flex flex-col bg-background border-y border-border/60 relative">
+        <QuoteTripBuilder
+          form={form}
+          stayWindows={stayWindows}
+          quoteNo={quoteNo}
+          quoteId={id}
+          total={liveCosting.total}
+          itinerary={selected?.itinerary}
+          hotels={(selected?.hotels || []) as Record<string, unknown>[]}
+          busy={busy}
+          onBack={onClose}
+          onUpdateTripDetails={() => {
+            setStep(0);
+            setWizardPhase("basics");
+          }}
+          onCreatePdf={createTripPdf}
+          onSendQuotation={sendTripQuotation}
+          onBookNow={() =>
+            toast({
+              title: "Book Now",
+              description: "Booking from the trip builder will be available in a later step.",
+            })
+          }
+          onServiceCharge={() =>
+            toast({
+              title: "Service Charge",
+              description: "Service charge editing will be available in a later step.",
+            })
+          }
+          onRemoveHotel={(lineId) => {
+            const prev = (selected?.hotels || []) as Record<string, unknown>[];
+            const hotels = prev.filter((h) => String(h.lineId || h.productId || "") !== lineId);
+            const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+              ...selected,
+              hotels,
+            }, {
+              stayWindows,
+              travelStartDate: form.travelStartDate,
+            });
+            void persistTripPackage(buildSelectedPackagePatch({ hotels, itinerary }));
+          }}
+          onRemoveTransfer={(transferLineId) => {
+            const prev = (selected?.transfers || []) as Record<string, unknown>[];
+            const transfers = prev.filter((t, i) => {
+              const key = String(t.lineId || t.id || `transfer-${i}`);
+              return key !== transferLineId;
+            });
+            const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+              ...selected,
+              transfers,
+            }, {
+              stayWindows,
+              travelStartDate: form.travelStartDate,
+            });
+            void persistTripPackage(buildSelectedPackagePatch({ transfers, itinerary }));
+          }}
+          onRemoveActivity={(activityLineId) => {
+            const prev = (selected?.activities || []) as Record<string, unknown>[];
+            const activities = prev.filter((a, i) => {
+              const key = String(a.lineId || a.id || `activity-${i}`);
+              return key !== activityLineId;
+            });
+            const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+              ...selected,
+              activities,
+            }, {
+              stayWindows,
+              travelStartDate: form.travelStartDate,
+            });
+            void persistTripPackage(buildSelectedPackagePatch({ activities, itinerary }));
+          }}
+          onRemoveMeal={(mealLineId) => {
+            const prev = (selected?.meals || []) as Record<string, unknown>[];
+            const meals = prev.filter((m, i) => {
+              const key = String(m.lineId || m.id || `meal-${i}`);
+              return key !== mealLineId;
+            });
+            const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+              ...selected,
+              meals,
+            }, {
+              stayWindows,
+              travelStartDate: form.travelStartDate,
+            });
+            void persistTripPackage(buildSelectedPackagePatch({ meals, itinerary }));
+          }}
+          onRemoveMisc={(miscLineId) => {
+            const prev = (selected?.addOns || []) as Record<string, unknown>[];
+            const addOns = prev.filter((a, i) => {
+              const key = String(a.lineId || a.id || `misc-${i}`);
+              return key !== miscLineId;
+            });
+            const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+              ...selected,
+              addOns,
+            }, {
+              stayWindows,
+              travelStartDate: form.travelStartDate,
+            });
+            void persistTripPackage(buildSelectedPackagePatch({ addOns, itinerary }));
+          }}
+          onUpdateHotel={(lineId, patch) => {
+            const prev = (selected?.hotels || []) as Record<string, unknown>[];
+            const hotels = prev.map((h) => {
+              const key = String(h.lineId || h.productId || "");
+              if (key !== lineId) return h;
+              return {
+                ...h,
+                ...(patch.roomType != null ? { roomType: patch.roomType } : {}),
+                ...(patch.mealPlan != null ? { mealPlan: patch.mealPlan } : {}),
+                ...(patch.remarks != null ? { remarks: patch.remarks } : {}),
+              };
+            });
+            const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+              ...selected,
+              hotels,
+            }, {
+              stayWindows,
+              travelStartDate: form.travelStartDate,
+            });
+            void persistTripPackage(buildSelectedPackagePatch({ hotels, itinerary }));
+          }}
+          onUpdateTransfer={(lineId, patch) => {
+            const prev = (selected?.transfers || []) as Record<string, unknown>[];
+            const transfers = prev.map((t, i) => {
+              const key = String(t.lineId || t.id || `transfer-${i}`);
+              if (key !== lineId) return t;
+              return {
+                ...t,
+                ...(patch.pickupTime != null ? { pickupTime: patch.pickupTime } : {}),
+                ...(patch.remarks != null ? { remarks: patch.remarks } : {}),
+              };
+            });
+            const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+              ...selected,
+              transfers,
+            }, {
+              stayWindows,
+              travelStartDate: form.travelStartDate,
+            });
+            void persistTripPackage(buildSelectedPackagePatch({ transfers, itinerary }));
+          }}
+          onUpdateActivity={(lineId, patch) => {
+            const prev = (selected?.activities || []) as Record<string, unknown>[];
+            const activities = prev.map((a, i) => {
+              const key = String(a.lineId || a.id || `activity-${i}`);
+              if (key !== lineId) return a;
+              return {
+                ...a,
+                ...(patch.timeSlot != null ? { timeSlot: patch.timeSlot } : {}),
+                ...(patch.remarks != null ? { remarks: patch.remarks } : {}),
+              };
+            });
+            const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+              ...selected,
+              activities,
+            }, {
+              stayWindows,
+              travelStartDate: form.travelStartDate,
+            });
+            void persistTripPackage(buildSelectedPackagePatch({ activities, itinerary }));
+          }}
+          onOpenService={(target) => {
+            if (
+              target.service === "Hotel"
+              || target.service === "Transfers"
+              || target.service === "Activities"
+              || target.service === "Meals"
+              || target.service === "Miscellaneous"
+            ) {
+              setServicePicker({
+                service: target.service,
+                dayNumber: target.dayNumber,
+                date: target.date,
+                city: target.city,
+                transferKind: target.transferKind,
+              });
+            }
+          }}
+        />
+
+        {servicePicker && (
+          <div className="fixed inset-0 z-50 flex flex-col bg-background">
+            <div className="shrink-0 flex items-center justify-between gap-3 px-4 sm:px-6 py-3 bg-brand-blue text-white shadow-md">
+              <h2 className="text-base sm:text-lg font-semibold tracking-tight truncate">
+                {pickerTitle}
+              </h2>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-9 w-9 text-white hover:bg-white/15 hover:text-white shrink-0"
+                aria-label="Close catalogue"
+                onClick={() => setServicePicker(null)}
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden p-3 sm:p-4">
+              {isMiscPicker ? (
+                <MiscCatalogPanel
+                  adults={Math.max(1, form.adults || 1)}
+                  childrenCount={Math.max(0, form.children || 0)}
+                  onPick={(item) => appendTripMisc(item)}
+                  onClose={() => setServicePicker(null)}
+                />
+              ) : (
+              <CatalogPicker
+                kind={pickerKind}
+                travelDate={form.travelStartDate}
+                travelEndDate={form.travelEndDate}
+                destinationId={destinationId || undefined}
+                destination={pickerCity || form.destination}
+                country={form.country || undefined}
+                tripCities={pickerCity ? [pickerCity] : hotelTripCities}
+                stayWindows={stayWindows}
+                initialStar={form.hotelStarPreference || undefined}
+                defaultRooms={Math.max(1, form.rooms || 1)}
+                adults={Math.max(1, form.adults || 1)}
+                children={Math.max(0, form.children || 0)}
+                trevioMarkupType={form.trevioMarkupType}
+                trevioMarkupValue={Number(form.trevioMarkupValue || 0)}
+                transferKind={servicePicker?.transferKind}
+                selectedHotels={(selected?.hotels || []) as Record<string, unknown>[]}
+                selectedFlights={(selected?.flights || []) as Record<string, unknown>[]}
+                serviceDate={servicePicker?.date}
+                open={Boolean(servicePicker)}
+                onOpenChange={(open) => {
+                  if (!open) setServicePicker(null);
+                }}
+                variant="inline"
+                fillViewport
+                onAddSelfBooked={
+                  pickerKind === "hotels"
+                    ? (city, details) => addTripSelfBookedHotel(city || pickerCity, details)
+                    : undefined
+                }
+                onPick={(item, rate, stayCity, room) => {
+                  if (pickerKind === "hotels") {
+                    appendTripHotel(item, rate, stayCity || pickerCity, room);
+                    return;
+                  }
+                  if (pickerKind === "transfers") {
+                    appendTripTransfer(item, rate);
+                    return;
+                  }
+                  if (pickerKind === "meals") {
+                    appendTripMeal(item, rate);
+                    return;
+                  }
+                  appendTripActivity(item, rate);
+                }}
+              />
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="-mx-4 sm:-mx-6 lg:-mx-8 -mt-4 sm:-mt-6 lg:-mt-8 mb-[-1.5rem] sm:mb-[-2rem] lg:mb-[-2rem] min-h-[calc(100vh-3.5rem)] flex flex-col bg-background border-y border-border/60">
         <header className="px-4 sm:px-6 lg:px-8 pt-4 pb-3 border-b shrink-0 space-y-3 bg-card">
@@ -989,10 +1889,9 @@ export function QuotationWizardView() {
                   {quoteNo || "New quotation"}
                 </h1>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  {STEPS[step].label}
+                  Basic Details
                   {nights != null ? ` · ${nights}N / ${tripDays}D` : ""}
-                  {" · "}
-                  Step {step + 1} of {STEPS.length}
+                  {id ? " · Update trip details" : " · Create quote"}
                 </p>
               </div>
             </div>
@@ -1004,103 +1903,15 @@ export function QuotationWizardView() {
           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
             <div
               className="h-full rounded-full bg-teal-600 transition-all duration-300"
-              style={{ width: `${progressPct}%` }}
+              style={{ width: id ? "100%" : `${Math.max(progressPct, 9)}%` }}
             />
           </div>
         </header>
 
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          <nav className="hidden md:flex w-56 shrink-0 flex-col gap-4 border-r bg-muted/20 p-3 overflow-y-auto">
-            {STEP_GROUPS.map((group) => (
-              <div key={group.title} className="space-y-1">
-                <p className="px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {group.title}
-                </p>
-                {STEPS.slice(group.from, group.to + 1).map((s, idx) => {
-                  const i = group.from + idx;
-                  const done = i < step;
-                  const active = i === step;
-                  return (
-                    <button
-                      key={s.label}
-                      type="button"
-                      onClick={() => {
-                        if (form.landOnly && i === 2) {
-                          toast({
-                            title: "Land-only package",
-                            description: "Flights step is skipped. Change Basic Details to Air + Land to edit flights.",
-                          });
-                          return;
-                        }
-                        setStep(i);
-                      }}
-                      className={cn(
-                        "w-full flex items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
-                        active && "bg-teal-600 text-white shadow-sm",
-                        done && !active && "text-teal-800 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/40",
-                        !done && !active && "text-muted-foreground hover:bg-muted hover:text-foreground",
-                        form.landOnly && i === 2 && "opacity-50",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold",
-                          active && "bg-white/20",
-                          done && !active && "bg-teal-100 text-teal-800 dark:bg-teal-900/50",
-                          !done && !active && "bg-muted",
-                        )}
-                      >
-                        {done ? <Check className="w-3.5 h-3.5" /> : i + 1}
-                      </span>
-                      <span className="min-w-0 leading-tight">
-                        <span className="block font-medium truncate">{s.label}</span>
-                        <span className={cn("block text-[10px] truncate", active ? "text-white/80" : "text-muted-foreground")}>
-                          {s.hint}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </nav>
-
           <div className="flex-1 min-w-0 flex flex-col min-h-0 relative">
-            <div className="md:hidden shrink-0 px-3 py-2 border-b bg-background">
-              <div className="flex gap-1.5 overflow-x-auto">
-                {STEPS.map((s, i) => (
-                  <button
-                    key={s.label}
-                    type="button"
-                    onClick={() => {
-                      if (form.landOnly && i === 2) {
-                        toast({
-                          title: "Land-only package",
-                          description: "Flights step is skipped. Change Basic Details to Air + Land to edit flights.",
-                        });
-                        return;
-                      }
-                      setStep(i);
-                    }}
-                    className={cn(
-                      "shrink-0 rounded-full px-2.5 py-1 text-xs whitespace-nowrap",
-                      i === step ? "bg-teal-600 text-white" : i < step ? "bg-teal-100 text-teal-800" : "bg-muted text-muted-foreground",
-                      form.landOnly && i === 2 && "opacity-50",
-                    )}
-                  >
-                    {i + 1}. {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div
-              className={cn(
-                "flex-1 min-h-0 px-4 sm:px-6 lg:px-8",
-                step === 1
-                  ? "overflow-y-auto py-3"
-                  : "overflow-y-auto py-5 space-y-4",
-              )}
+              className="flex-1 min-h-0 px-4 sm:px-6 lg:px-8 overflow-y-auto py-5 space-y-4"
             >
         {step === 0 && (
           <div className="space-y-4 max-w-3xl">
@@ -1203,24 +2014,79 @@ export function QuotationWizardView() {
                   <div key={idx} className="grid grid-cols-[1fr_100px_36px] gap-2 items-start">
                     <CitySelect
                       value={row.city}
+                      allowedCities={
+                        looksLikeMalaysiaPlace(form.country)
+                          ? [...MALAYSIA_HOTEL_CITIES]
+                          : undefined
+                      }
+                      preferredCountry={looksLikeMalaysiaPlace(form.country) ? "Malaysia" : undefined}
                       onChange={(cityName, city) => {
-                        setTripCities((prev) => {
-                          const next = prev.map((c, i) => (
-                            i === idx
-                              ? { ...c, city: cityName, destinationId: null }
-                              : c
-                          ));
-                          const label = next.map((c) => c.city.trim()).filter(Boolean).join(" · ");
-                          setForm((f) => ({
-                            ...f,
-                            destination: label || f.destination,
-                            country: city?.country || f.country,
-                            isInternational: city?.country
-                              ? !["india"].includes(city.country.trim().toLowerCase())
-                              : f.isInternational,
-                          }));
-                          return next;
-                        });
+                        const nextCities = tripCities.map((c, i) => (
+                          i === idx
+                            ? { ...c, city: cityName, destinationId: null }
+                            : c
+                        ));
+                        const label = nextCities.map((c) => c.city.trim()).filter(Boolean).join(" · ");
+                        const nextCountry = city?.country || form.country;
+                        const formPatch = {
+                          destination: label || form.destination,
+                          country: nextCountry || form.country,
+                          isInternational: nextCountry
+                            ? !["india"].includes(nextCountry.trim().toLowerCase())
+                            : form.isInternational,
+                        };
+                        setTripCities(nextCities);
+                        setForm((f) => ({ ...f, ...formPatch }));
+                        // City change: drop hotels/transfers that no longer match the trip cities.
+                        const cityKey = cityName.trim().toLowerCase();
+                        const prevHotels = (selected?.hotels || []) as Record<string, unknown>[];
+                        const prevTransfers = (selected?.transfers || []) as Record<string, unknown>[];
+                        const hotels = cityKey
+                          ? prevHotels.filter((h) => {
+                            const hc = String(h.tripCity || h.city || "").toLowerCase();
+                            return !hc || hc.includes(cityKey) || cityKey.includes(hc)
+                              || (cityKey.includes("genting") && hc.includes("genting"))
+                              || (cityKey.includes("langkawi") && hc.includes("langkawi"));
+                          })
+                          : prevHotels;
+                        // Always clear airport pickups when city changes — destination must re-bind to new hotel.
+                        const transfers = cityKey
+                          ? prevTransfers.filter((t) => {
+                            const tt = String(t.transferType || "").toLowerCase();
+                            return !tt.includes("airport");
+                          })
+                          : prevTransfers;
+                        const packagesChanged =
+                          hotels.length !== prevHotels.length || transfers.length !== prevTransfers.length;
+                        const nextPackages = packagesChanged
+                          ? buildSelectedPackagePatch({
+                            hotels,
+                            transfers,
+                            itinerary: syncItineraryFromPackage(selected?.itinerary, {
+                              ...selected,
+                              hotels,
+                              transfers,
+                            }, {
+                              stayWindows,
+                              travelStartDate: form.travelStartDate,
+                            }),
+                          })
+                          : packages;
+                        if (packagesChanged) setPackages(nextPackages);
+                        const epoch = ++tripPersistEpoch.current;
+                        const run = tripPersistChain.current.then(() =>
+                          persist(step, {
+                            packagesOverride: nextPackages,
+                            tripCitiesOverride: nextCities,
+                            formOverride: formPatch,
+                            quiet: true,
+                            hydrateEpoch: epoch,
+                          }),
+                        );
+                        tripPersistChain.current = run.then(
+                          () => null,
+                          () => null,
+                        );
                       }}
                       placeholder="Select City"
                     />
@@ -1448,6 +2314,7 @@ export function QuotationWizardView() {
             }
             destinationId={destinationId || tripCities[0]?.destinationId || ""}
             destination={tripCities[0]?.city || form.destination}
+            country={form.country || undefined}
             tripCities={hotelTripCities}
             stayWindows={stayWindows}
             initialStar={form.hotelStarPreference || undefined}
@@ -2746,56 +3613,17 @@ export function QuotationWizardView() {
               )}
               <div className="flex flex-wrap gap-2 justify-between">
                 <div className="flex gap-2">
-                  <Button variant="outline" disabled={busy || step === 0} onClick={back}>
+                  <Button variant="outline" disabled={busy} onClick={onClose}>
                     <ChevronLeft className="w-4 h-4 mr-0.5" /> Back
                   </Button>
-                  <Button variant="outline" disabled={busy} onClick={() => persist(step)}>
+                  <Button variant="outline" disabled={busy} onClick={() => persist(0)}>
                     {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save draft"}
                   </Button>
                 </div>
                 <div className="flex gap-2">
-                  {step < STEPS.length - 1 ? (
-                    <Button disabled={busy} onClick={next} className="bg-teal-600 hover:bg-teal-700">
-                      {step === 0 && !id ? "Create" : "Save & continue"} <ChevronRight className="w-4 h-4 ml-0.5" />
-                    </Button>
-                  ) : (
-                    <>
-                      <label className="flex items-center gap-2 text-xs text-muted-foreground mr-auto">
-                        <input
-                          type="checkbox"
-                          checked={requireFinanceApproval}
-                          onChange={(e) => setRequireFinanceApproval(e.target.checked)}
-                        />
-                        Require Finance approval
-                      </label>
-                      <Button variant="outline" disabled={busy} onClick={async () => { await persist(step); onOpenChange(false); }}>
-                        Finish later
-                      </Button>
-                      <Button
-                        variant={["super_admin", "agency_admin"].includes(String(user?.role || "")) ? "outline" : "default"}
-                        disabled={busy}
-                        className={["super_admin", "agency_admin"].includes(String(user?.role || "")) ? undefined : "bg-teal-600 hover:bg-teal-700"}
-                        onClick={async () => {
-                          const q = await persist(step, { submitApproval: true, financeApprovalRequired: requireFinanceApproval });
-                          if (q) onOpenChange(false);
-                        }}
-                      >
-                        Submit for approval
-                      </Button>
-                      {["super_admin", "agency_admin"].includes(String(user?.role || "")) && (
-                        <Button
-                          disabled={busy}
-                          className="bg-teal-600 hover:bg-teal-700"
-                          onClick={async () => {
-                            const q = await persist(step, { approveNow: true, financeApprovalRequired: false });
-                            if (q) onOpenChange(false);
-                          }}
-                        >
-                          Approve & finish
-                        </Button>
-                      )}
-                    </>
-                  )}
+                  <Button disabled={busy} onClick={next} className="bg-teal-600 hover:bg-teal-700">
+                    {id ? "Save & open trip" : "Create"} <ChevronRight className="w-4 h-4 ml-0.5" />
+                  </Button>
                 </div>
               </div>
             </div>
@@ -2833,7 +3661,11 @@ function firstProductImage(item: ProductRecord): string {
   if (typeof item.thumbnail === "string" && item.thumbnail) return item.thumbnail;
   if (item.destination?.heroImage) return String(item.destination.heroImage);
   if (item.destination?.thumbnail) return String(item.destination.thumbnail);
-  return "";
+  return placeholderHotelImage({
+    name: item.name,
+    city: String(item.city || item.destination?.name || ""),
+    country: String(item.country || item.destination?.country || ""),
+  });
 }
 
 function isImageField(name: string) {
@@ -3010,14 +3842,18 @@ function hotelFromCatalog(
     contactPerson: String(item.contactPerson || ""),
     contactPhone: String(item.contactPhone || ""),
     contactEmail: String(item.contactEmail || ""),
-    imageUrl: roomImage,
+    imageUrl: roomImage || placeholderHotelImage({
+      name: item.name,
+      city: String(item.city || item.destination?.name || ""),
+      country: String(item.country || item.destination?.country || ""),
+    }),
     sellingPrice: selling,
     rooms: Math.max(1, defaultRooms || 1),
     supplier: item.supplier?.name,
     confirmationNo: "",
     remarks: "",
     cancellationPolicy: cancellation || undefined,
-    refundable: selected?.refundable === true || undefined,
+    refundable: selected?.refundable === true || selected?.refundable !== false,
     hotelDocuments: [],
     source: "CONTRACTED_PRODUCT",
     selfBooked: false,
@@ -3173,23 +4009,122 @@ function toTimeValue(value?: string | null, fallback = ""): string {
   return fallback;
 }
 
-const OPTIONAL_ADDON_PRESETS: Array<{
-  name: string;
-  description: string;
-  costPrice: number;
-  sellingPrice: number;
-}> = [
-  { name: "International SIM Card", description: "Local SIM with data for the trip", costPrice: 400, sellingPrice: 799 },
-  { name: "eSIM", description: "Instant digital SIM — activate on arrival", costPrice: 500, sellingPrice: 899 },
-  { name: "Airport Lounge Access", description: "Departure lounge pass", costPrice: 1500, sellingPrice: 2499 },
-  { name: "Early Check-in", description: "Subject to hotel availability", costPrice: 800, sellingPrice: 1500 },
-  { name: "Late Check-out", description: "Subject to hotel availability", costPrice: 800, sellingPrice: 1500 },
-  { name: "Extra Excursions", description: "Optional day trip / sightseeing add-on", costPrice: 2000, sellingPrice: 3500 },
-  { name: "Private Guide", description: "Dedicated local guide for selected days", costPrice: 3000, sellingPrice: 4999 },
-  { name: "Birthday Decorations", description: "Room / venue birthday setup", costPrice: 1200, sellingPrice: 2499 },
-  { name: "Honeymoon Setup", description: "Romantic room décor & amenities", costPrice: 1500, sellingPrice: 2999 },
-  { name: "Travel Accessories", description: "Travel kit / adapters / essentials", costPrice: 300, sellingPrice: 699 },
-];
+function MiscCatalogPanel({
+  adults,
+  childrenCount,
+  onPick,
+  onClose,
+}: {
+  adults: number;
+  childrenCount: number;
+  onPick: (item: MiscCatalogItem) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [category, setCategory] = useState("all");
+  const categories = useMemo(
+    () => [...new Set(MISC_CATALOG.map((item) => item.category))],
+    [],
+  );
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return MISC_CATALOG.filter((item) => {
+      if (category !== "all" && item.category !== category) return false;
+      if (!needle) return true;
+      return (
+        item.name.toLowerCase().includes(needle)
+        || item.description.toLowerCase().includes(needle)
+        || item.category.toLowerCase().includes(needle)
+      );
+    });
+  }, [q, category]);
+  const paxLabel = `${adults} Adult${adults === 1 ? "" : "s"}${
+    childrenCount > 0 ? ` · ${childrenCount} Child${childrenCount === 1 ? "" : "ren"}` : ""
+  }`;
+
+  return (
+    <div className="rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col h-full min-h-0">
+      <div className="px-4 py-3 border-b bg-muted/10 shrink-0 grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3">
+        <div className="space-y-1">
+          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Category</Label>
+          <select
+            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="all">All</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Search</Label>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              className="h-10 pl-8 text-sm"
+              placeholder="Search add-ons…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 py-3 space-y-2.5 bg-slate-50/80">
+        {filtered.length === 0 ? (
+          <div className="rounded-xl border bg-background p-8 text-center text-sm text-muted-foreground">
+            No miscellaneous items match your filters.
+          </div>
+        ) : (
+          filtered.map((item) => {
+            const lineTotal = miscLineSelling(item, adults, childrenCount);
+            return (
+              <div
+                key={item.id}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 hover:border-slate-300 transition-colors"
+              >
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-sm text-slate-900 leading-snug">{item.name}</p>
+                    <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-800 px-2 py-0.5 text-[10px] font-semibold">
+                      {item.category}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 line-clamp-2">{item.description}</p>
+                  <p className="text-[11px] text-slate-400">{miscUnitLabel(item.unit)}</p>
+                </div>
+                <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0 sm:min-w-[120px]">
+                  <div className="text-left sm:text-right">
+                    <p className="text-sm font-bold text-emerald-600 tabular-nums">
+                      {formatFullINR(lineTotal)}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {item.unit === "PER_PAX" ? paxLabel : "1 booking"}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-slate-900 hover:bg-slate-800 text-white shrink-0 min-w-[88px] rounded-lg"
+                    onClick={() => onPick(item)}
+                  >
+                    Select
+                  </Button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+      <div className="sr-only">
+        <button type="button" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
 
 function AddOnsEditor({
   rows,
@@ -3401,7 +4336,7 @@ function newHotelLineId(): string {
 
 function ServiceEditor({
   title, rows, fields, selfBookedFields, onChange, onHotelAdded, template, catalogKind, catalogToRow, travelDate, travelEndDate, quotationId, destinationId, destination,
-  tripCities, stayWindows, initialStar, defaultRooms, defaultFlightFrom, defaultFlightTo, flightAdults, flightChildren, flightInfants, hotelTransferLocations, packageHotels,
+  country, tripCities, stayWindows, initialStar, defaultRooms, defaultFlightFrom, defaultFlightTo, flightAdults, flightChildren, flightInfants, hotelTransferLocations, packageHotels,
 }: {
   title: string;
   rows: Record<string, unknown>[];
@@ -3419,6 +4354,7 @@ function ServiceEditor({
   quotationId?: string | null;
   destinationId?: string;
   destination?: string;
+  country?: string;
   /** Cities from Basic Details trip plan — hotels are recommended/filtered by these. */
   tripCities?: string[];
   stayWindows?: TripCityStayWindow[];
@@ -3533,7 +4469,10 @@ function ServiceEditor({
     return row;
   }
 
-  function addSelfBooked(preferredCity?: string) {
+  function addSelfBooked(
+    preferredCity?: string,
+    details?: { hotelName: string; address: string },
+  ) {
     setCatalogOpen(false);
     const row = { ...template };
     if (catalogKind === "hotels") {
@@ -3542,6 +4481,8 @@ function ServiceEditor({
       row.selfBooked = true;
       row.source = "MANUAL";
       row.productType = "HOTEL";
+      if (details?.hotelName) row.hotelName = details.hotelName;
+      if (details?.address != null) row.address = details.address;
       if (stay) {
         row.checkIn = stay.checkIn;
         row.checkOut = stay.checkOut;
@@ -3650,6 +4591,7 @@ function ServiceEditor({
           travelEndDate={travelEndDate}
           destinationId={destinationId}
           destination={destination}
+          country={country}
           tripCities={tripCities}
           stayWindows={windows}
           initialStar={initialStar}
@@ -3657,7 +4599,7 @@ function ServiceEditor({
           open={catalogOpen}
           onOpenChange={setCatalogOpen}
           variant="inline"
-          onAddSelfBooked={(city) => addSelfBooked(city)}
+          onAddSelfBooked={(city, details) => addSelfBooked(city, details)}
           onPick={(item, rate, stayCity, room) => {
             appendHotelPick(item, rate, stayCity, room);
           }}
@@ -3683,13 +4625,14 @@ function ServiceEditor({
               travelEndDate={travelEndDate}
               destinationId={destinationId}
               destination={destination}
+              country={catalogKind === "hotels" ? country : undefined}
               tripCities={catalogKind === "hotels" ? tripCities : undefined}
               stayWindows={catalogKind === "hotels" ? windows : undefined}
               initialStar={catalogKind === "hotels" ? initialStar : undefined}
               defaultRooms={catalogKind === "hotels" ? defaultRooms : undefined}
               open={catalogOpen}
               onOpenChange={setCatalogOpen}
-              onAddSelfBooked={(city) => addSelfBooked(city)}
+              onAddSelfBooked={(city, details) => addSelfBooked(city, details)}
               onPick={(item, rate, stayCity, room) => {
                 if (catalogKind === "hotels") {
                   appendHotelPick(item, rate, stayCity, room);
@@ -4941,6 +5884,8 @@ function hotelStarNumber(item: ProductRecord): number {
 function hotelMatchesTripCity(item: ProductRecord, city: string): boolean {
   const needle = city.trim().toLowerCase();
   if (!needle) return false;
+  const normalized = normalizeMalaysiaHotelCity(city);
+  const needles = [needle, normalized?.toLowerCase()].filter(Boolean) as string[];
   const hay = [
     item.city,
     item.address,
@@ -4950,7 +5895,33 @@ function hotelMatchesTripCity(item: ProductRecord, city: string): boolean {
   ]
     .map((v) => String(v || "").toLowerCase())
     .join(" ");
-  return hay.includes(needle);
+  return needles.some((n) => hay.includes(n) || (n.includes("genting") && hay.includes("genting")));
+}
+
+/** Cities present in Malaysia contracted Excel import. */
+const MALAYSIA_HOTEL_CITY_OPTIONS = [...MALAYSIA_HOTEL_CITIES];
+
+function normalizeCityKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isMalaysiaHotelCity(city: string): boolean {
+  return isMalaysiaHotelCatalogueCity(city);
+}
+
+function looksLikeMalaysiaPlace(value: string): boolean {
+  const key = normalizeCityKey(value);
+  if (!key) return false;
+  if (key.includes("malaysia") || key === "my") return true;
+  if (isMalaysiaHotelCity(key)) return true;
+  // Common Malaysia trip cities that are not in the Excel hotel sheet.
+  const extras = [
+    "alor gajah", "melaka", "malacca", "penang", "georgetown", "george town",
+    "johor", "johor bahru", "jb", "ipoh", "kota kinabalu", "kuching",
+    "cameron highlands", "putrajaya", "cyberjaya", "petaling jaya", "shah alam",
+    "klang", "malacca city", "port dickson", "tioman", "redang",
+  ];
+  return extras.some((c) => key === c || key.includes(c));
 }
 
 function mealPlanKey(raw: unknown): string {
@@ -4984,7 +5955,12 @@ function roomNightUnitPrice(room: Record<string, unknown>): number {
 
 function roomThumb(room: Record<string, unknown>, hotel: ProductRecord): string {
   if (Array.isArray(room.images) && room.images[0]) return String(room.images[0]);
-  return firstProductImage(hotel);
+  if (Array.isArray(hotel.images) && hotel.images[0]) return String(hotel.images[0]);
+  return placeholderRoomImage({
+    hotelName: hotel.name,
+    roomName: String(room.name || ""),
+    city: String(hotel.city || hotel.destination?.name || ""),
+  });
 }
 
 function formatStayLabel(checkIn?: string, checkOut?: string, nights?: number | null): string {
@@ -5022,14 +5998,19 @@ function HotelRoomSelectionPanel({
     : [];
   const rooms = roomsRaw.length
     ? roomsRaw
-    : [{ name: "Standard Room", mealPlan: "Breakfast", pricing: {} }];
+    : [{ name: "Standard Room", mealPlan: "Breakfast", pricing: {}, refundable: true }];
   const [filter, setFilter] = useState<"all" | "room_only" | "breakfast" | "free_cancel">("all");
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [descOpen, setDescOpen] = useState(false);
   const submitLock = useRef(false);
   const hero = firstProductImage(hotel);
   const stars = hotelStarNumber(hotel);
-  const address = String(hotel.address || hotel.location || "");
+  const address = String(hotel.address || hotel.location || `${hotel.city || ""}, ${hotel.country || "Malaysia"}`.replace(/^, |, $/g, ""));
+  const description = String(
+    hotel.description
+    || `${hotel.name} is a contracted stay in ${hotel.city || "Malaysia"}. Choose a room category below to add it to your trip.`,
+  );
   const nights = stay.nights && stay.nights > 0
     ? stay.nights
     : stayNights(stay.checkIn, stay.checkOut);
@@ -5051,9 +6032,10 @@ function HotelRoomSelectionPanel({
 
   const selected = filtered[selectedIdx] || filtered[0] || rooms[0] || null;
 
-  async function confirm() {
+  async function confirm(roomOverride?: Record<string, unknown>) {
     if (submitLock.current || busy) return;
-    if (!selected) {
+    const chosen = roomOverride || selected;
+    if (!chosen) {
       toast({ title: "No room options available for this hotel", variant: "destructive" });
       return;
     }
@@ -5073,7 +6055,7 @@ function HotelRoomSelectionPanel({
         checkOut: stay.checkOut,
         rooms: String(quoteRooms),
       });
-      if (selected.name) availParams.set("roomType", String(selected.name));
+      if (chosen.name) availParams.set("roomType", String(chosen.name));
       const avail = await apiFetch<{ ok: boolean; message?: string | null }>(
         `/api/products/hotels/${hotel.id}/catalogue-availability?${availParams.toString()}`,
       );
@@ -5092,8 +6074,8 @@ function HotelRoomSelectionPanel({
         productId: hotel.id,
         travelDate: stay.checkIn,
       });
-      if (selected.name) params.set("roomType", String(selected.name));
-      if (selected.mealPlan) params.set("mealPlan", String(selected.mealPlan));
+      if (chosen.name) params.set("roomType", String(chosen.name));
+      if (chosen.mealPlan) params.set("mealPlan", String(chosen.mealPlan));
       const rate = await apiFetch<{
         applicable: boolean;
         message?: string;
@@ -5114,7 +6096,7 @@ function HotelRoomSelectionPanel({
         return;
       }
       await onConfirm({
-        room: selected,
+        room: chosen,
         rate: {
           rateId: rate.rateId,
           validFrom: rate.validFrom || "",
@@ -5124,7 +6106,6 @@ function HotelRoomSelectionPanel({
         },
         stayCity: stay.city,
       });
-      // Keep lock held after success — panel unmounts; prevents a late second confirm.
     } catch {
       toast({ title: NO_VALID_RATE, variant: "destructive" });
       submitLock.current = false;
@@ -5132,60 +6113,55 @@ function HotelRoomSelectionPanel({
     }
   }
 
-  const filters: Array<{ key: typeof filter; label: string }> = [
+  const filters: Array<{ key: typeof filter; label: string; icon?: typeof Coffee }> = [
     { key: "all", label: "All" },
-    { key: "room_only", label: "Room Only" },
-    { key: "breakfast", label: "Breakfast Included" },
-    { key: "free_cancel", label: "Free Cancellation" },
+    { key: "room_only", label: "Room Only", icon: Hotel },
+    { key: "breakfast", label: "Breakfast Included", icon: Coffee },
+    { key: "free_cancel", label: "Free Cancellation", icon: ShieldCheck },
   ];
 
   return (
-    <div className="rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col min-h-[min(70vh,720px)] max-h-[min(75vh,780px)]">
+    <div className="rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col h-full min-h-0 max-h-none">
       <div className="px-4 py-3 border-b bg-muted/20 shrink-0 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">Room selection</p>
-          <p className="text-base sm:text-lg font-semibold text-foreground mt-0.5 truncate">
-            {hotel.name}{hotel.city ? `, ${hotel.city}` : hotel.destination?.name ? `, ${hotel.destination.name}` : ""}
-          </p>
+          <p className="text-base sm:text-lg font-semibold text-foreground mt-0.5 truncate">{hotel.name}</p>
         </div>
-        <Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 shrink-0" onClick={onBack}>
+        <Button type="button" size="sm" variant="ghost" className="h-8 w-8 p-0 shrink-0" onClick={onBack} aria-label="Close room selection">
           <X className="w-4 h-4" />
         </Button>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="relative h-36 sm:h-44 bg-muted">
-          {hero ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={hero} alt="" className="absolute inset-0 w-full h-full object-cover" />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-teal-100 to-primary/20">
-              <Hotel className="w-12 h-12 text-teal-600/70" />
-            </div>
-          )}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={hero} alt="" className="absolute inset-0 w-full h-full object-cover" />
         </div>
         <div className="px-4 py-3 space-y-2 border-b">
-          <div className="flex items-center gap-2 flex-wrap">
-            {stars > 0 && (
-              <span className="flex items-center gap-0.5">
-                {Array.from({ length: Math.min(stars, 5) }).map((_, i) => (
-                  <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                ))}
-              </span>
-            )}
-            <p className="font-semibold text-sm">{hotel.name}</p>
-          </div>
           {address && (
-            <p className="text-xs text-muted-foreground flex items-start gap-1">
+            <p className="text-xs text-muted-foreground flex items-start gap-1.5">
               <MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0 text-teal-600" />
               <span>{address}</span>
             </p>
           )}
-          <p className="text-xs text-muted-foreground">
-            {[stars ? `${stars}* hotel` : null, hotel.city || hotel.destination?.name || null]
-              .filter(Boolean)
-              .join(" · ") || "Catalogue hotel"}
+          {stars > 0 && (
+            <span className="flex items-center gap-0.5">
+              {Array.from({ length: Math.min(stars, 5) }).map((_, i) => (
+                <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+              ))}
+            </span>
+          )}
+          <p className={cn("text-xs text-muted-foreground leading-relaxed", !descOpen && "line-clamp-2")}>
+            {description}
           </p>
+          <button
+            type="button"
+            className="text-xs font-medium text-teal-700 inline-flex items-center gap-1"
+            onClick={() => setDescOpen((v) => !v)}
+          >
+            {descOpen ? "Show less" : "Show more"}
+            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", descOpen && "rotate-180")} />
+          </button>
         </div>
 
         <div className="px-4 py-3 flex flex-wrap gap-2 border-b">
@@ -5195,30 +6171,22 @@ function HotelRoomSelectionPanel({
               type="button"
               onClick={() => setFilter(f.key)}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-medium border transition-colors",
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-colors",
                 filter === f.key
-                  ? "bg-teal-600 text-white border-teal-600"
+                  ? "bg-sky-50 text-sky-800 border-sky-400"
                   : "bg-background text-foreground border-border hover:bg-muted/50",
               )}
             >
-              {filter === f.key && f.key === "breakfast" ? (
-                <span className="inline-flex items-center gap-1"><Coffee className="w-3 h-3" />{f.label}</span>
-              ) : f.label}
+              {f.icon ? <f.icon className="w-3.5 h-3.5" /> : null}
+              {f.label}
             </button>
           ))}
-          <button
-            type="button"
-            onClick={() => setFilter("all")}
-            className="rounded-full px-3 py-1.5 text-xs font-medium border border-border text-muted-foreground hover:bg-muted/50"
-          >
-            Reset
-          </button>
         </div>
 
-        <div className="px-4 py-3 space-y-3 pb-24">
+        <div className="px-4 py-3 space-y-3 pb-28">
           {filtered.length === 0 && (
             <div className="rounded-xl border bg-background p-6 text-center text-sm text-muted-foreground">
-              No rooms match this filter. Try All or Reset.
+              No rooms match this filter. Try All.
             </div>
           )}
           {filtered.map((room, idx) => {
@@ -5229,80 +6197,96 @@ function HotelRoomSelectionPanel({
             const thumb = roomThumb(room, hotel);
             const isSelected = selected === room;
             return (
-              <button
+              <div
                 key={`${String(room.name || "room")}-${idx}`}
-                type="button"
-                onClick={() => setSelectedIdx(idx)}
                 className={cn(
-                  "w-full text-left rounded-xl border bg-background p-3 grid grid-cols-[96px_1fr] gap-3 transition-all",
-                  isSelected ? "border-teal-600 shadow-sm" : "border-border hover:border-teal-600/40",
+                  "rounded-xl border bg-background overflow-hidden transition-all",
+                  isSelected ? "border-emerald-500 shadow-sm ring-1 ring-emerald-500/30" : "border-border",
                 )}
               >
-                <div className="relative h-24 rounded-lg overflow-hidden bg-muted">
-                  {thumb ? (
-                    // eslint-disable-next-line @next/next/no-img-element
+                <div className="grid grid-cols-1 sm:grid-cols-[112px_1fr_auto] gap-0">
+                  <div className="relative h-28 sm:h-auto sm:min-h-[120px] bg-muted">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={thumb} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Hotel className="w-8 h-8 text-muted-foreground/40" />
+                  </div>
+                  <div className="p-3 sm:p-4 min-w-0 space-y-1.5 sm:border-l sm:border-emerald-200/70">
+                    <p className="font-semibold text-sm text-foreground">{String(room.name || "Room")}</p>
+                    <p className="text-[11px] text-muted-foreground">Room info · Booking policy</p>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                      {meal ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-700">
+                          <Coffee className="w-3 h-3" /> {meal}
+                        </span>
+                      ) : null}
+                      {refundable ? (
+                        <span className="text-emerald-600 font-medium">Refundable</span>
+                      ) : (
+                        <span className="text-rose-600 font-medium">Non-Refundable</span>
+                      )}
+                      <span className="inline-flex items-center rounded-md bg-amber-100 text-amber-800 px-1.5 py-0.5 font-medium">
+                        On Request
+                      </span>
                     </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex flex-col gap-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-semibold text-sm leading-snug">{String(room.name || "Room")}</p>
-                    {isSelected && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-emerald-600 text-white text-[10px] font-semibold px-2 py-1 shrink-0">
-                        <Check className="w-3 h-3" /> Selected
-                      </span>
-                    )}
+                    <p className="text-sm font-semibold text-foreground pt-1">
+                      {stayTotal > 0
+                        ? `${formatFullINR(stayTotal)}${nights ? ` for ${nights} night${nights === 1 ? "" : "s"}` : ""}`
+                        : "Rate on confirm"}
+                    </p>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Room Info · Booking Policy
-                  </p>
-                  <div className="flex flex-wrap gap-2 text-[11px]">
-                    {meal && (
-                      <span className="inline-flex items-center gap-1 text-muted-foreground">
-                        <Coffee className="w-3 h-3" /> {meal}
-                      </span>
-                    )}
-                    {refundable ? (
-                      <span className="text-emerald-600 font-medium">Refundable</span>
-                    ) : (
-                      <span className="text-muted-foreground">Cancellation as per policy</span>
-                    )}
-                    <span className="text-amber-600 font-medium">On Request</span>
+                  <div className="p-3 sm:p-4 flex sm:flex-col items-center justify-end gap-2 sm:border-l border-border/60 bg-emerald-50/40">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={busy}
+                      className={cn(
+                        "min-w-[110px]",
+                        isSelected
+                          ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                          : "bg-teal-600 hover:bg-teal-700 text-white",
+                      )}
+                      onClick={() => {
+                        setSelectedIdx(idx);
+                        void confirm(room);
+                      }}
+                    >
+                      {busy && isSelected ? (
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5 mr-1.5" />
+                      )}
+                      {busy && isSelected ? "Adding..." : isSelected ? "Selected" : "Select"}
+                    </Button>
                   </div>
-                  <p className="text-sm font-semibold text-teal-700 dark:text-teal-400 mt-auto pt-1">
-                    {stayTotal > 0
-                      ? `${formatFullINR(stayTotal)}${nights ? ` for ${nights} night${nights === 1 ? "" : "s"}` : ""}`
-                      : "Rate on confirm"}
-                  </p>
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
       </div>
 
       <div className="shrink-0 border-t bg-slate-900 text-white px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold truncate">
-            {quoteRooms} Room(s){selected ? ` · ${String(selected.name || "Room")}` : ""}
-          </p>
-          <p className="text-[11px] text-white/70">
-            {formatStayLabel(stay.checkIn, stay.checkOut, nights)}
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold">{quoteRooms} Room(s)</p>
+            {selected ? (
+              <span className="rounded-full bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 px-2.5 py-0.5 text-[11px] font-medium truncate max-w-[220px]">
+                {String(selected.name || "Room")}
+              </span>
+            ) : null}
+          </div>
+          <p className="text-[11px] text-white/70 flex items-center gap-1.5">
+            <span>{formatStayLabel(stay.checkIn, stay.checkOut, nights)}</span>
           </p>
         </div>
         <Button
           type="button"
           size="sm"
           disabled={busy || !selected}
-          className="bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+          className="bg-teal-600 hover:bg-teal-700 text-white shrink-0 min-w-[140px]"
           onClick={() => void confirm()}
         >
           {busy ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-1.5" />}
-          Confirm & Add Hotel
+          {busy ? "Adding Hotel..." : "Add Hotel"}
         </Button>
       </div>
     </div>
@@ -5320,30 +6304,57 @@ function CatalogPicker({
   travelEndDate,
   destinationId,
   destination,
+  country: countryProp,
   tripCities: tripCitiesProp,
   stayWindows = [],
   initialStar,
   defaultRooms,
+  adults = 2,
+  children = 0,
+  trevioMarkupType = "Percentage",
+  trevioMarkupValue = 0,
+  transferKind,
+  selectedHotels = [],
+  selectedFlights = [],
+  serviceDate,
   open,
   onOpenChange,
   onAddSelfBooked,
   onPick,
   variant = "dropdown",
+  fillViewport = false,
 }: {
   kind: keyof typeof CATALOG_TYPE;
   travelDate?: string;
   travelEndDate?: string;
   destinationId?: string;
   destination?: string;
+  /** Quote / destination country — broadens hotel search when city has no inventory. */
+  country?: string;
   /** Cities selected in Basic Details trip plan. */
   tripCities?: string[];
   stayWindows?: TripCityStayWindow[];
   /** Quote hotel star preference — initializes filter when catalogue opens; user may change. */
   initialStar?: string;
   defaultRooms?: number;
+  adults?: number;
+  children?: number;
+  trevioMarkupType?: "Percentage" | "Fixed";
+  trevioMarkupValue?: number;
+  /** Transfers dropdown choice from trip day actions. */
+  transferKind?: "transfer" | "airport_pickup";
+  /** Hotels already on the trip — used to scope Airport Pickup to the selected hotel. */
+  selectedHotels?: Array<Record<string, unknown>>;
+  /** Flights on the quote — arrival time gates earliest airport pickup. */
+  selectedFlights?: Array<Record<string, unknown>>;
+  /** Day date from trip builder when opening a service picker. */
+  serviceDate?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddSelfBooked?: (preferredCity?: string) => void;
+  onAddSelfBooked?: (
+    preferredCity?: string,
+    details?: { hotelName: string; address: string },
+  ) => void;
   onPick: (
     item: ProductRecord,
     rate: { rateId: string; validFrom: string; validTo: string; contractedCost?: number; displayPrice?: number | null },
@@ -5352,6 +6363,8 @@ function CatalogPicker({
   ) => void;
   /** Hotels: "inline" fills the Hotels step; other catalogs keep dropdown. */
   variant?: "dropdown" | "inline";
+  /** Stretch to parent height (trip-builder modal). */
+  fillViewport?: boolean;
 }) {
   const { toast } = useToast();
   const [q, setQ] = useState("");
@@ -5359,13 +6372,32 @@ function CatalogPicker({
   const [supplierId, setSupplierId] = useState("all");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
-  const [availableOnly, setAvailableOnly] = useState(true);
+  const [availableOnly, setAvailableOnly] = useState(false);
   const [priceSort, setPriceSort] = useState<"low" | "high">("low");
-  const [hotelTab, setHotelTab] = useState<"recommended" | "all">("recommended");
+  const [hotelTab, setHotelTab] = useState<"recommended" | "all" | "self">("recommended");
   const [cityFilter, setCityFilter] = useState<string>("all");
+  const [catalogCityFilter, setCatalogCityFilter] = useState<string>("all");
+  const [countryFallback, setCountryFallback] = useState<string | null>(null);
+  const [transferCity, setTransferCity] = useState<string>("Kuala Lumpur");
   const [pickingId, setPickingId] = useState<string | null>(null);
+  const [vehiclePickItem, setVehiclePickItem] = useState<ProductRecord | null>(null);
+  const [vehicleQtyById, setVehicleQtyById] = useState<Record<string, number>>({});
+  const [airportPickupTime, setAirportPickupTime] = useState("");
+  const [activityPickItem, setActivityPickItem] = useState<ProductRecord | null>(null);
+  const [activityStep, setActivityStep] = useState<"time" | "details" | null>(null);
+  const [activityStartTime, setActivityStartTime] = useState("09:00");
+  const [activityIncludeTransfer, setActivityIncludeTransfer] = useState(true);
+  const [activityVehicleQty, setActivityVehicleQty] = useState<Record<string, number>>({});
+  const [activityCity, setActivityCity] = useState<string>("Kuala Lumpur");
+  const [activityDetailsItem, setActivityDetailsItem] = useState<ProductRecord | null>(null);
+  const [mealDetailsItem, setMealDetailsItem] = useState<ProductRecord | null>(null);
+  const [mealExpandId, setMealExpandId] = useState<string | null>(null);
+  const [mealTimeSlot, setMealTimeSlot] = useState("12:00 - 13:00");
+  const [mealVehicleQty, setMealVehicleQty] = useState<Record<string, number>>(() => defaultMealVehicleQty());
   const [roomSelectHotel, setRoomSelectHotel] = useState<ProductRecord | null>(null);
   const [confirmingRoom, setConfirmingRoom] = useState(false);
+  const [selfHotelName, setSelfHotelName] = useState("");
+  const [selfHotelAddress, setSelfHotelAddress] = useState("");
   const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
   const [items, setItems] = useState<ProductRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -5376,8 +6408,53 @@ function CatalogPicker({
     [tripCityKey],
   );
   const destLabel = (destination || "").trim();
+  const countryLabel = (countryProp || "").trim();
   const isHotels = kind === "hotels";
+  const isTransfers = kind === "transfers";
+  const isActivities = kind === "activities";
+  const isMeals = kind === "meals";
   const quoteRooms = Math.max(1, Number(defaultRooms) || 1);
+  const quoteAdults = Math.max(1, Number(adults) || 1);
+  const quoteChildren = Math.max(0, Number(children) || 0);
+  const quoteTotalPax = Math.max(1, quoteAdults + quoteChildren);
+
+  /** Hotel covering this day — Airport Pickup is scoped to this hotel. */
+  const dayHotel = useMemo(() => {
+    if (!isTransfers || !selectedHotels.length) return null;
+    const date = (serviceDate || travelDate || "").trim();
+    const cityNeedle = destLabel.toLowerCase();
+    const covering = selectedHotels.find((h) => {
+      const cin = String(h.checkIn || "");
+      const cout = String(h.checkOut || "");
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(cin)) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(cout)) return date >= cin && date < cout;
+        return date === cin;
+      }
+      return false;
+    });
+    if (covering) return covering;
+    if (cityNeedle) {
+      const byCity = selectedHotels.find((h) => {
+        const hc = String(h.tripCity || h.city || "").toLowerCase();
+        return hc === cityNeedle || hc.includes(cityNeedle) || cityNeedle.includes(hc);
+      });
+      if (byCity) return byCity;
+    }
+    return selectedHotels[0] || null;
+  }, [isTransfers, selectedHotels, serviceDate, travelDate, destLabel]);
+
+  const dayHotelName = String(dayHotel?.hotelName || dayHotel?.name || "").trim();
+  const dayHotelCity = String(dayHotel?.tripCity || dayHotel?.city || destLabel || "").trim();
+
+  const flightArrival = useMemo(
+    () => resolveFlightArrivalForPickup(selectedFlights, serviceDate || travelDate),
+    [selectedFlights, serviceDate, travelDate],
+  );
+  const earliestPickup = useMemo(
+    () => (flightArrival ? earliestAirportPickupTime(flightArrival.arrTime) : null),
+    [flightArrival],
+  );
+
   const activeCities = useMemo(() => {
     if (!isHotels) return [] as string[];
     if (cityFilter !== "all") return [cityFilter];
@@ -5394,6 +6471,18 @@ function CatalogPicker({
   const stayCheckIn = activeStay?.checkIn || travelDate || "";
   const stayCheckOut = activeStay?.checkOut || travelEndDate || "";
 
+  const malaysiaContext = useMemo(() => {
+    if (!isHotels) return false;
+    if (looksLikeMalaysiaPlace(countryLabel) || looksLikeMalaysiaPlace(destLabel)) return true;
+    return activeCities.some((c) => looksLikeMalaysiaPlace(c));
+  }, [isHotels, countryLabel, destLabel, activeCities]);
+
+  const useCountryHotelScope = useMemo(() => {
+    // Malaysia demo: NEVER broaden to all Malaysia hotels — exact city only.
+    if (!isHotels || !malaysiaContext) return false;
+    return false;
+  }, [isHotels, malaysiaContext]);
+
   useEffect(() => {
     if (!open) return;
     const pref = (initialStar || "").trim();
@@ -5402,8 +6491,30 @@ function CatalogPicker({
     setPriceSort("low");
     setQ("");
     setCityFilter(tripCities[0] || "all");
+    setCatalogCityFilter("all");
+    setCountryFallback(null);
+    const hubCity = dayHotelCity || tripCities[0] || destLabel || "Kuala Lumpur";
+    setTransferCity(resolveTransferHubCity(hubCity));
+    setVehiclePickItem(null);
+    setVehicleQtyById({});
+    setAirportPickupTime("");
+    setActivityPickItem(null);
+    setActivityStep(null);
+    setActivityStartTime("09:00");
+    setActivityIncludeTransfer(true);
+    setActivityVehicleQty(
+      Object.fromEntries(ACTIVITY_TRANSFER_VEHICLES.map((v) => [v.id, 0])),
+    );
+    setActivityCity(resolveActivityLocationCity(tripCities[0] || destLabel || "Kuala Lumpur"));
+    setMealDetailsItem(null);
+    setMealExpandId(null);
+    setMealTimeSlot("12:00 - 13:00");
+    setMealVehicleQty(defaultMealVehicleQty());
     setRoomSelectHotel(null);
-  }, [open, initialStar, tripCities]);
+    setSelfHotelName("");
+    setSelfHotelAddress("");
+    setAvailableOnly(false);
+  }, [open, initialStar, tripCities, destLabel, transferKind, dayHotelCity]);
 
   useEffect(() => {
     if (!open || !isHotels) return;
@@ -5413,33 +6524,136 @@ function CatalogPicker({
   }, [open, isHotels]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || hotelTab === "self") return;
     setLoading(true);
     const t = setTimeout(() => {
       void (async () => {
         try {
-          const params = new URLSearchParams({ liveOnly: "true", pageSize: isHotels ? "80" : "20" });
+          const params = new URLSearchParams({ liveOnly: "true", pageSize: isHotels || isTransfers || isActivities || isMeals ? "80" : "40" });
           if (q.trim()) params.set("q", q.trim());
+          let broadenedCountry: string | null = null;
           if (isHotels) {
-            // Prefer trip-plan cities over a single destinationId so multi-city quotes match correctly.
-            if (activeCities.length > 1) params.set("cities", activeCities.join(","));
-            else if (activeCities.length === 1) params.set("city", activeCities[0]);
-            else if (destinationId) params.set("destinationId", destinationId);
-            else if (destLabel) params.set("city", destLabel);
+            // Malaysia: exact city only — never country-wide fallback.
+            const malaysiaExact = malaysiaContext
+              || activeCities.some((c) => isMalaysiaHotelCity(c))
+              || looksLikeMalaysiaPlace(countryLabel);
+            if (catalogCityFilter !== "all" && isMalaysiaHotelCity(catalogCityFilter)) {
+              params.set("city", normalizeMalaysiaHotelCity(catalogCityFilter) || catalogCityFilter);
+            } else if (malaysiaExact && activeCities.length === 1 && isMalaysiaHotelCity(activeCities[0])) {
+              params.set("city", normalizeMalaysiaHotelCity(activeCities[0]) || activeCities[0]);
+            } else if (malaysiaExact && activeCities.length > 1) {
+              const myCities = activeCities
+                .map((c) => normalizeMalaysiaHotelCity(c) || (isMalaysiaHotelCity(c) ? c : null))
+                .filter(Boolean) as string[];
+              if (myCities.length) params.set("cities", myCities.join(","));
+              else params.set("city", activeCities[0]);
+            } else if (activeCities.length > 1) {
+              params.set("cities", activeCities.join(","));
+            } else if (activeCities.length === 1) {
+              params.set("city", activeCities[0]);
+            } else if (destinationId) {
+              params.set("destinationId", destinationId);
+            } else if (destLabel) {
+              params.set("city", destLabel);
+            }
             if (supplierId !== "all") params.set("supplierId", supplierId);
             if (travelDate) params.set("travelDate", travelDate);
             const cityStayPayload = encodeCityStayDates(stayWindows);
             if (cityStayPayload) params.set("cityStayDates", cityStayPayload);
             if (hotelTab === "recommended") params.set("recommendedOnly", "true");
+          } else if (isTransfers) {
+            if (transferKind === "airport_pickup") {
+              // Pull KTH one-ways that mention KL Airport, then keep the curated DESTINATION list.
+              params.set("q", "Kuala Lumpur Airport");
+              params.set("pageSize", "120");
+              if (travelDate) params.set("travelDate", travelDate);
+            } else {
+              const hubCity = dayHotelCity || transferCity || destLabel || tripCities[0] || "Kuala Lumpur";
+              const hub = transferCity || resolveTransferHubCity(hubCity);
+              params.set("city", hub);
+              if (travelDate) params.set("travelDate", travelDate);
+            }
+          } else if (isActivities) {
+            const loc = activityCity || resolveActivityLocationCity(destLabel || tripCities[0] || "Kuala Lumpur");
+            params.set("city", loc);
+            if (travelDate) params.set("travelDate", travelDate);
+          } else if (isMeals) {
+            // Meal catalogue is destination-agnostic (Indian lunch/dinner options).
+            if (travelDate) params.set("travelDate", travelDate);
           } else {
             if (destinationId) params.set("destinationId", destinationId);
             else if (destLabel) params.set("city", destLabel);
           }
-          const res = await apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${params.toString()}`);
+          let res = await apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${params.toString()}`);
           let next = res.items || [];
+
+          // Transfers: if hub city empty and Malaysia trip, broaden then re-filter client-side.
+          if (isTransfers && next.length === 0 && looksLikeMalaysiaPlace(destLabel || tripCities[0] || countryLabel || dayHotelCity || "")) {
+            const broad = new URLSearchParams(params);
+            broad.delete("city");
+            broad.delete("destinationId");
+            broad.set("country", "Malaysia");
+            broad.set("pageSize", "80");
+            res = await apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${broad.toString()}`);
+            next = (res.items || []).filter((item) =>
+              String(item.city || "").toLowerCase() === String(transferCity || "Kuala Lumpur").toLowerCase()
+              || String(item.pickupLocation || "").toLowerCase().includes("airport"),
+            );
+          }
+
+          // Activities: empty city → fetch broader list then filter by mapped location.
+          if (isActivities && next.length === 0) {
+            const broad = new URLSearchParams(params);
+            broad.delete("city");
+            broad.delete("destinationId");
+            broad.set("pageSize", "80");
+            res = await apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${broad.toString()}`);
+            const loc = activityCity || resolveActivityLocationCity(destLabel || tripCities[0] || "");
+            next = (res.items || []).filter((item) => activityMatchesTripCity(item, loc || destLabel || ""));
+          } else if (isActivities && next.length && activityCity) {
+            next = next.filter((item) => activityMatchesTripCity(item, activityCity));
+          }
+
+          // Exact city empty → broaden to country — EXCEPT Malaysia (demo: exact city only).
+          if (isHotels && next.length === 0 && !params.has("country")) {
+            const malaysiaLocked = looksLikeMalaysiaPlace(countryLabel)
+              || activeCities.some((c) => isMalaysiaHotelCity(c) || looksLikeMalaysiaPlace(c))
+              || looksLikeMalaysiaPlace(destLabel);
+            if (!malaysiaLocked) {
+              let country = countryLabel;
+              if (!country) {
+                const needle = activeCities[0] || destLabel;
+                if (needle) {
+                  try {
+                    const destRes = await apiFetch<{ items: Array<{ country?: string }> }>(
+                      `/api/destinations?q=${encodeURIComponent(needle)}&pageSize=5`,
+                    );
+                    country = String(destRes.items?.[0]?.country || "").trim();
+                  } catch {
+                    country = "";
+                  }
+                }
+              }
+              if (country && !looksLikeMalaysiaPlace(country)) {
+                const broad = new URLSearchParams(params);
+                broad.delete("city");
+                broad.delete("cities");
+                broad.delete("destinationId");
+                broad.set("country", country);
+                res = await apiFetch<{ items: ProductRecord[] }>(`/api/products/${kind}?${broad.toString()}`);
+                next = res.items || [];
+                if (next.length) broadenedCountry = country;
+              }
+            }
+          }
+
+          setCountryFallback(broadenedCountry);
+
           if (isHotels) {
-            // Keep only hotels that match selected trip cities when API returns broader results.
-            if (activeCities.length) {
+            // Always post-filter to selected trip city for Malaysia (and generally).
+            if (catalogCityFilter !== "all") {
+              next = next.filter((item) => hotelMatchesTripCity(item, catalogCityFilter));
+            } else if (activeCities.length) {
               next = next.filter((item) => activeCities.some((c) => hotelMatchesTripCity(item, c)));
             }
             const min = Number(minPrice);
@@ -5474,8 +6688,17 @@ function CatalogPicker({
               next = checked.filter(Boolean) as ProductRecord[];
             }
           }
+
+          if (isTransfers) {
+            if (transferKind === "airport_pickup") {
+              // Curated Airport → Hotel destinations, then bind booked hotel names on top.
+              next = next.filter((item) => matchesMalaysiaKlAirportTransferList(item));
+              next = bindAirportTransfersToSelectedHotels(next, selectedHotels) as ProductRecord[];
+            }
+          }
           setItems(next);
         } catch {
+          setCountryFallback(null);
           setItems([]);
         } finally {
           setLoading(false);
@@ -5483,7 +6706,7 @@ function CatalogPicker({
       })();
     }, 250);
     return () => clearTimeout(t);
-  }, [open, q, kind, destinationId, destLabel, supplierId, minPrice, maxPrice, availableOnly, travelDate, travelEndDate, isHotels, activeCities, stayWindows, stayCheckIn, stayCheckOut, activeStay, quoteRooms, hotelTab]);
+  }, [open, q, kind, destinationId, destLabel, countryLabel, supplierId, minPrice, maxPrice, availableOnly, travelDate, travelEndDate, isHotels, isTransfers, isActivities, isMeals, activeCities, stayWindows, stayCheckIn, stayCheckOut, activeStay, quoteRooms, hotelTab, useCountryHotelScope, catalogCityFilter, transferCity, transferKind, tripCities, dayHotel, dayHotelCity, activityCity, selectedHotels]);
 
   useEffect(() => {
     if (!open) return;
@@ -5560,6 +6783,28 @@ function CatalogPicker({
       setRoomSelectHotel(item);
       return;
     }
+    // Airport Pickup: open vehicle table (qty / capacity / total) + pickup time.
+    if (kind === "transfers" && transferKind === "airport_pickup") {
+      const options = getTransferVehicleOptions(item);
+      const qtyInit: Record<string, number> = {};
+      for (const v of options) qtyInit[v.id] = 0;
+      setVehicleQtyById(qtyInit);
+      setAirportPickupTime(earliestPickup || "");
+      setVehiclePickItem(item);
+      return;
+    }
+    // Activities: start time first, then other details (transport).
+    // Tours already include vehicle — do not auto-add a separate Activity Transfer.
+    if (kind === "activities") {
+      setActivityPickItem(item);
+      setActivityStep("time");
+      setActivityStartTime(String(item.startTime || "09:00").slice(0, 5) || "09:00");
+      setActivityIncludeTransfer(!isTourActivity(item));
+      setActivityVehicleQty(
+        Object.fromEntries(ACTIVITY_TRANSFER_VEHICLES.map((v) => [v.id, v.id === "car" ? 1 : 0])),
+      );
+      return;
+    }
     setPickingId(item.id);
     try {
       const params = new URLSearchParams({
@@ -5606,6 +6851,266 @@ function CatalogPicker({
     }
   }
 
+  async function submitAirportPickup() {
+    if (!vehiclePickItem || !travelDate) {
+      toast({ title: "Select a travel start date before choosing a contracted product.", variant: "destructive" });
+      return;
+    }
+    const pax = quoteTotalPax;
+    const allOptions = getTransferVehicleOptions(vehiclePickItem);
+
+    let selectedRows = allOptions
+      .map((v) => ({ vehicle: v, qty: Math.max(0, Math.floor(Number(vehicleQtyById[v.id] || 0))) }))
+      .filter((row) => row.qty > 0);
+
+    if (!selectedRows.length) {
+      toast({
+        title: "Select a vehicle",
+        description: "Choose qty for at least one vehicle option.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!airportPickupTime.trim()) {
+      toast({ title: "Pickup time required", description: "Enter when the vehicle should meet guests.", variant: "destructive" });
+      return;
+    }
+
+    if (earliestPickup) {
+      const chosen = parseClockToMinutes(airportPickupTime);
+      const min = parseClockToMinutes(earliestPickup);
+      if (chosen == null) {
+        toast({ title: "Invalid pickup time", variant: "destructive" });
+        return;
+      }
+      if (min != null && chosen < min) {
+        toast({
+          title: "Pickup too early",
+          description: flightArrival
+            ? `Flight lands at ${flightArrival.arrTime}. Earliest pickup is ${earliestPickup} (${AIRPORT_EXIT_BUFFER_MINUTES} min after landing).`
+            : `Earliest pickup is ${earliestPickup}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
+    const destinationTitle = formatTransferDestination(vehiclePickItem);
+    const boundHotel = String(
+      (vehiclePickItem as ProductRecord & { boundHotelName?: string }).boundHotelName || "",
+    ).trim();
+    const pickupFrom = String(vehiclePickItem.pickupLocation || "").trim()
+      || destinationTitle.match(/from\s+(.+?)\s+-\s+/i)?.[1]?.trim()
+      || "Kuala Lumpur Airport";
+    // Always prefer the booked hotel name when Airport Pickup is tied to a trip hotel.
+    const dropTo = boundHotel
+      || dayHotelName
+      || String(vehiclePickItem.dropLocation || "").trim()
+      || destinationTitle.match(/\s+-\s+(.+)$/i)?.[1]?.trim()
+      || "";
+    if (!dropTo) {
+      toast({
+        title: "Destination required",
+        description: selectedHotels.length === 0
+          ? "Add a hotel on this trip first, then choose Airport Pickup."
+          : "Could not resolve the transfer drop-off from this destination.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setPickingId(vehiclePickItem.id);
+    try {
+      const tryFetchRate = async (vehicleType: string) => {
+        const params = new URLSearchParams({
+          productType: "TRANSFER",
+          productId: vehiclePickItem.id,
+          travelDate,
+          vehicleType,
+        });
+        if (vehiclePickItem.transferType) params.set("transferType", String(vehiclePickItem.transferType));
+        return apiFetch<{
+          applicable: boolean;
+          message?: string;
+          rateId?: string;
+          validFrom?: string;
+          validTo?: string;
+          contractedCost?: number;
+          displayPrice?: number | null;
+        }>(`/api/contracted-rates/applicable?${params.toString()}`);
+      };
+
+      let baseRate = await tryFetchRate(selectedRows[0].vehicle.vehicleType);
+      if (!baseRate.applicable || !baseRate.rateId) {
+        baseRate = await tryFetchRate("Sedan / Car");
+      }
+      if (!baseRate.applicable || !baseRate.rateId) {
+        const params = new URLSearchParams({
+          productType: "TRANSFER",
+          productId: vehiclePickItem.id,
+          travelDate,
+        });
+        baseRate = await apiFetch(`/api/contracted-rates/applicable?${params.toString()}`);
+      }
+      if (!baseRate.applicable || !baseRate.rateId) {
+        toast({
+          title: baseRate.message || NO_VALID_RATE,
+          description: `${vehiclePickItem.name} needs an active contracted rate covering ${travelDate}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const contractedTotal = selectedRows.reduce((sum, row) => sum + row.vehicle.price * row.qty, 0);
+      const vehicleQty = selectedRows.reduce((sum, row) => sum + row.qty, 0);
+      // Persist catalogue vehicleType (e.g. "Sedan / Car") so rate freeze can match metadata.
+      const vehicleLabel = selectedRows
+        .map(({ vehicle, qty }) => {
+          const name = String(vehicle.vehicleType || vehicle.label || "Sedan / Car");
+          return qty > 1 ? `${name} ×${qty}` : name;
+        })
+        .join(", ");
+
+      onPick(
+        {
+          ...vehiclePickItem,
+          vehicleType: vehicleLabel,
+          vehicleQty,
+          privatePrice: contractedTotal,
+          pickupLocation: pickupFrom,
+          dropLocation: dropTo,
+          pickupTime: airportPickupTime,
+          name: boundHotel
+            ? `One Way Transfer from ${pickupFrom} - ${boundHotel || dropTo}`
+            : destinationTitle,
+          pax,
+          boundHotelName: boundHotel || dropTo,
+        } as ProductRecord,
+        {
+          rateId: baseRate.rateId,
+          validFrom: baseRate.validFrom || "",
+          validTo: baseRate.validTo || "",
+          // Staff-only path may see contractedCost; agents get it stripped by presentApplicableRate.
+          // Persist catalogue/applicable display INR — package markup is applied by the pricing engine.
+          contractedCost: contractedTotal,
+          displayPrice: contractedTotal,
+        },
+      );
+      setVehiclePickItem(null);
+      setVehicleQtyById({});
+      setAirportPickupTime("");
+      onOpenChange(false);
+    } catch {
+      toast({ title: NO_VALID_RATE, variant: "destructive" });
+    } finally {
+      setPickingId(null);
+    }
+  }
+
+  async function submitActivityFinal() {
+    if (!activityPickItem || !travelDate) {
+      toast({ title: "Select a travel start date before choosing a contracted product.", variant: "destructive" });
+      return;
+    }
+    if (!activityStartTime.trim()) {
+      toast({ title: "Start time required", variant: "destructive" });
+      return;
+    }
+
+    let activityTransfer: {
+      vehicleType: string;
+      vehicleQty: number;
+      sellingPrice: number;
+      route: string;
+    } | undefined;
+
+    if (activityIncludeTransfer && !isTourActivity(activityPickItem)) {
+      const selectedVehicles = ACTIVITY_TRANSFER_VEHICLES
+        .map((v) => ({ vehicle: v, qty: Math.max(0, Math.floor(Number(activityVehicleQty[v.id] || 0))) }))
+        .filter((row) => row.qty > 0);
+      if (!selectedVehicles.length) {
+        toast({
+          title: "Select a vehicle or turn off transfer",
+          description: "Set Qty for at least one vehicle, or uncheck private transfer.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const sellingPrice = selectedVehicles.reduce((s, row) => s + row.vehicle.price * row.qty, 0);
+      const vehicleQty = selectedVehicles.reduce((s, row) => s + row.qty, 0);
+      const vehicleType = selectedVehicles
+        .map(({ vehicle, qty }) => (qty > 1 ? `${vehicle.label} ×${qty}` : vehicle.label))
+        .join(", ");
+      activityTransfer = {
+        vehicleType,
+        vehicleQty,
+        sellingPrice,
+        route: ACTIVITY_TRANSFER_ROUTE,
+      };
+    }
+
+    setPickingId(activityPickItem.id);
+    try {
+      const params = new URLSearchParams({
+        productType: "ACTIVITY",
+        productId: activityPickItem.id,
+        travelDate,
+      });
+      if (activityPickItem.ticketType) params.set("ticketType", String(activityPickItem.ticketType));
+      const rate = await apiFetch<{
+        applicable: boolean;
+        message?: string;
+        rateId?: string;
+        validFrom?: string;
+        validTo?: string;
+        contractedCost?: number;
+        displayPrice?: number | null;
+      }>(`/api/contracted-rates/applicable?${params.toString()}`);
+      if (!rate.applicable || !rate.rateId) {
+        toast({
+          title: rate.message || NO_VALID_RATE,
+          description: `${activityPickItem.name} needs an active contracted rate covering ${travelDate}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const lineTotal = activityLineTotal(activityPickItem, quoteAdults, quoteChildren);
+      // Cost basis: flat tour rate, or adult contracted × adults + child list × children for tickets.
+      const adultCost = Number(rate.contractedCost ?? activityPickItem.adultPrice ?? 0);
+      const childCost = Number(activityPickItem.childPrice ?? adultCost);
+      const costTotal = isTourActivity(activityPickItem)
+        ? adultCost
+        : adultCost * quoteAdults + childCost * quoteChildren;
+
+      onPick(
+        {
+          ...activityPickItem,
+          pickupTime: activityStartTime,
+          startTime: activityStartTime,
+          adultPrice: Number(activityPickItem.adultPrice || 0),
+          childPrice: Number(activityPickItem.childPrice || 0),
+          activityTransfer,
+        } as ProductRecord,
+        {
+          rateId: rate.rateId,
+          validFrom: rate.validFrom || "",
+          validTo: rate.validTo || "",
+          contractedCost: costTotal > 0 ? costTotal : rate.contractedCost,
+          displayPrice: lineTotal > 0 ? lineTotal : rate.displayPrice,
+        },
+      );
+      setActivityPickItem(null);
+      setActivityStep(null);
+      onOpenChange(false);
+    } catch {
+      toast({ title: NO_VALID_RATE, variant: "destructive" });
+    } finally {
+      setPickingId(null);
+    }
+  }
+
   function hotelStayForItem(item: ProductRecord) {
     const productCity = String(
       item.city || item.destination?.name || (cityFilter !== "all" ? cityFilter : ""),
@@ -5628,13 +7133,15 @@ function CatalogPicker({
     setSupplierId("all");
     setMinPrice("");
     setMaxPrice("");
-    setAvailableOnly(true);
+    setAvailableOnly(false);
     setPriceSort("low");
     setHotelTab("recommended");
     setCityFilter(tripCities[0] || "all");
+    setCatalogCityFilter("all");
   }
 
   const isInlineHotels = isHotels && variant === "inline";
+  const isInlineService = !isHotels && variant === "inline";
 
   if (isInlineHotels && open && roomSelectHotel) {
     const stay = hotelStayForItem(roomSelectHotel);
@@ -5661,7 +7168,14 @@ function CatalogPicker({
 
   if (isInlineHotels && open) {
     return (
-      <div className="rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col min-h-[min(70vh,720px)] max-h-[min(75vh,780px)]">
+      <div
+        className={cn(
+          "rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col",
+          fillViewport
+            ? "h-full min-h-0 max-h-none"
+            : "min-h-[min(70vh,720px)] max-h-[min(75vh,780px)]",
+        )}
+      >
             <div className="px-4 py-3 border-b bg-muted/20 shrink-0">
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
                 <div>
@@ -5675,21 +7189,31 @@ function CatalogPicker({
                       {cityFilter === "all" && tripCities.length > 1
                         ? `: ${tripCities.join(" · ")}`
                         : `: ${activeCities.join(" · ")}`}
+                      {countryFallback ? ` · showing ${countryFallback} contracted hotels` : ""}
                     </p>
                   ) : (
                     <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
                       Add cities in Basic Details to recommend hotels for your trip.
                     </p>
                   )}
-                  {tripCities.length > 0 && (
+                  {countryFallback && (
+                    <p className="text-xs text-teal-700 dark:text-teal-400 mt-1">
+                      No Excel hotels in {activeCities[0] || destLabel || "this city"}. Showing Malaysia contracted rates
+                      (Kuala Lumpur, Genting Highlands, Langkawi).
+                    </p>
+                  )}
+                  {(tripCities.length > 0 || countryFallback || malaysiaContext) && (
                     <div className="flex flex-wrap gap-1.5 mt-2.5">
                       {tripCities.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => setCityFilter("all")}
+                          onClick={() => {
+                            setCityFilter("all");
+                            setCatalogCityFilter("all");
+                          }}
                           className={cn(
                             "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
-                            cityFilter === "all"
+                            cityFilter === "all" && catalogCityFilter === "all"
                               ? "bg-teal-600 text-white border-teal-600"
                               : "bg-background border-border text-muted-foreground hover:bg-muted/50",
                           )}
@@ -5701,10 +7225,13 @@ function CatalogPicker({
                         <button
                           key={city}
                           type="button"
-                          onClick={() => setCityFilter(city)}
+                          onClick={() => {
+                            setCityFilter(city);
+                            setCatalogCityFilter("all");
+                          }}
                           className={cn(
                             "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
-                            cityFilter === city
+                            cityFilter === city && catalogCityFilter === "all"
                               ? "bg-teal-600 text-white border-teal-600"
                               : "bg-background border-border text-muted-foreground hover:bg-muted/50",
                           )}
@@ -5712,6 +7239,37 @@ function CatalogPicker({
                           {city}
                         </button>
                       ))}
+                      {(countryFallback || malaysiaContext) && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setCatalogCityFilter("all")}
+                            className={cn(
+                              "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+                              catalogCityFilter === "all" && (countryFallback || useCountryHotelScope)
+                                ? "bg-teal-600 text-white border-teal-600"
+                                : "bg-background border-border text-muted-foreground hover:bg-muted/50",
+                            )}
+                          >
+                            All Malaysia hotels
+                          </button>
+                          {MALAYSIA_HOTEL_CITY_OPTIONS.map((city) => (
+                            <button
+                              key={city}
+                              type="button"
+                              onClick={() => setCatalogCityFilter(city)}
+                              className={cn(
+                                "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+                                catalogCityFilter === city
+                                  ? "bg-teal-600 text-white border-teal-600"
+                                  : "bg-background border-border text-muted-foreground hover:bg-muted/50",
+                              )}
+                            >
+                              {city}
+                            </button>
+                          ))}
+                        </>
+                      )}
                     </div>
                   )}
                   <div className="flex flex-wrap gap-2 mt-3">
@@ -5843,10 +7401,14 @@ function CatalogPicker({
 
               <div className="flex flex-col min-h-0 bg-muted/10 overflow-hidden">
                 <div className="px-4 pt-4 pb-2 flex flex-wrap items-center gap-2 shrink-0">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mr-1">
+                    Sort by
+                  </span>
                   {(
                     [
                       { key: "recommended" as const, label: "Recommended", icon: Star },
-                      { key: "all" as const, label: "All hotels", icon: Hotel },
+                      { key: "all" as const, label: "All Hotel", icon: Hotel },
+                      { key: "self" as const, label: "Self Booked", icon: Home },
                     ]
                   ).map((tab) => (
                     <button
@@ -5864,21 +7426,59 @@ function CatalogPicker({
                       {tab.label}
                     </button>
                   ))}
-                  {onAddSelfBooked && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onOpenChange(false);
-                        onAddSelfBooked(cityFilter !== "all" ? cityFilter : undefined);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium border bg-background text-foreground border-border hover:bg-muted/50"
-                    >
-                      <Home className="w-3.5 h-3.5" />
-                      Self booked
-                    </button>
-                  )}
                 </div>
 
+                {hotelTab === "self" ? (
+                  <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
+                    <div className="max-w-lg mx-auto mt-4 rounded-2xl border bg-background p-5 space-y-4 shadow-sm">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Self Booked Hotel</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Enter hotel name and address only. Stay dates follow this city’s trip plan.
+                        </p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Hotel Name</Label>
+                        <Input
+                          className="h-10"
+                          value={selfHotelName}
+                          onChange={(e) => setSelfHotelName(e.target.value)}
+                          placeholder="e.g. Grand Livio Kuta Hotel"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-sm">Address</Label>
+                        <Textarea
+                          className="min-h-[88px] resize-y"
+                          value={selfHotelAddress}
+                          onChange={(e) => setSelfHotelAddress(e.target.value)}
+                          placeholder="Full hotel address"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        className="w-full bg-teal-600 hover:bg-teal-700 text-white"
+                        disabled={!selfHotelName.trim() || !onAddSelfBooked}
+                        onClick={() => {
+                          if (!onAddSelfBooked) return;
+                          onAddSelfBooked(
+                            cityFilter !== "all" ? cityFilter : destLabel || undefined,
+                            {
+                              hotelName: selfHotelName.trim(),
+                              address: selfHotelAddress.trim(),
+                            },
+                          );
+                          onOpenChange(false);
+                        }}
+                      >
+                        <Check className="w-3.5 h-3.5 mr-1.5" />
+                        Add Self Booked Hotel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 <p className="px-4 pb-2 text-xs text-muted-foreground shrink-0">
                   <span className="inline-block w-1.5 h-1.5 rounded-full bg-teal-500 mr-1.5 align-middle" />
                   {loading ? "Loading hotels…" : `${hotelList.length} hotels found`}
@@ -5903,19 +7503,14 @@ function CatalogPicker({
                       <p className="text-sm text-muted-foreground">
                         {destLabel ? `No hotels found for ${destLabel}.` : "No live hotels found."}
                       </p>
-                      {onAddSelfBooked && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            onOpenChange(false);
-                            onAddSelfBooked(cityFilter !== "all" ? cityFilter : undefined);
-                          }}
-                        >
-                          <Plus className="w-3.5 h-3.5 mr-1" /> Add self-booked instead
-                        </Button>
-                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Malaysia Excel hotels are under Kuala Lumpur, Genting Highlands, or Langkawi.
+                        Try{" "}
+                        <button type="button" className="underline text-teal-700" onClick={() => { setHotelTab("all"); setCatalogCityFilter("all"); }}>
+                          All Malaysia hotels
+                        </button>
+                        {" "}or Self Booked.
+                      </p>
                     </div>
                   )}
                   {!loading && hotelList.map((item) => {
@@ -5989,7 +7584,7 @@ function CatalogPicker({
                               <div>
                                 {price > 0 ? (
                                   <>
-                                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">From</p>
+                                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Starting from</p>
                                     <p className="text-sm font-semibold text-teal-700 dark:text-teal-400">{formatFullINR(price)}</p>
                                   </>
                                 ) : (
@@ -6013,8 +7608,1306 @@ function CatalogPicker({
                     );
                   })}
                 </div>
+                  </>
+                )}
               </div>
             </div>
+      </div>
+    );
+  }
+
+  if (isInlineService && open && isTransfers) {
+    const isAirportPickup = transferKind === "airport_pickup";
+    const boundHotelItems = items.filter((item) =>
+      Boolean(String((item as ProductRecord & { boundHotelName?: string }).boundHotelName || "").trim()),
+    );
+    const dayNeedle = dayHotelName.toLowerCase();
+    const dayBound = dayNeedle
+      ? boundHotelItems.filter((item) =>
+        String((item as ProductRecord & { boundHotelName?: string }).boundHotelName || "")
+          .trim()
+          .toLowerCase() === dayNeedle,
+      )
+      : boundHotelItems;
+    const otherBound = boundHotelItems.filter((item) => !dayBound.includes(item));
+    const outstation = items.filter((item) => {
+      const hasBound = Boolean(
+        String((item as ProductRecord & { boundHotelName?: string }).boundHotelName || "").trim(),
+      );
+      if (hasBound) return false;
+      return !isGenericCityHotelAirportTransfer(item);
+    });
+    const transferItems = isAirportPickup && boundHotelItems.length
+      ? [...dayBound, ...otherBound, ...outstation]
+      : items;
+    const allVehicleOptions = vehiclePickItem ? getTransferVehicleOptions(vehiclePickItem) : [];
+    // Always show all 4 KTH columns (CAR / 10 / 18 / 18+GUIDE); pax rules still gate selection.
+    const vehicleOptions = allVehicleOptions;
+    const paxBand = requiredVehicleBandForPax(quoteTotalPax);
+    const guideMandatory = isAirportGuideMandatory(quoteTotalPax);
+
+    if (vehiclePickItem && isAirportPickup) {
+      const routeLabel = formatTransferDestination(vehiclePickItem);
+      const img = Array.isArray(vehiclePickItem.images) && vehiclePickItem.images[0]
+        ? String(vehiclePickItem.images[0])
+        : transferPlaceholderImage();
+      const selectionContracted = vehicleOptions.reduce(
+        (sum, v) => sum + v.price * Math.max(0, Number(vehicleQtyById[v.id] || 0)),
+        0,
+      );
+      const selectionTotal = selectionContracted;
+      const busySubmit = pickingId === vehiclePickItem.id;
+
+      return (
+        <div
+          className={cn(
+            "rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col",
+            fillViewport ? "h-full min-h-0 max-h-none" : "min-h-[min(60vh,560px)] max-h-[min(70vh,640px)]",
+          )}
+        >
+          <div className="px-4 py-3 border-b bg-slate-900 text-white shrink-0 flex items-center justify-between gap-3">
+            <p className="text-sm sm:text-base font-semibold tracking-tight">Add Airport Pickup</p>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/10"
+              onClick={() => {
+                setVehiclePickItem(null);
+                setVehicleQtyById({});
+                setAirportPickupTime("");
+              }}
+              aria-label="Back to routes"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
+            <div className="rounded-xl border bg-background shadow-sm grid grid-cols-1 sm:grid-cols-[140px_1fr_auto] overflow-hidden">
+              <div className="relative h-28 sm:h-auto sm:min-h-[112px] bg-muted">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
+              </div>
+              <div className="p-3 sm:p-4 min-w-0 space-y-1">
+                <p className="font-semibold text-sm text-foreground leading-snug">{routeLabel}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  One way · {quoteTotalPax} passenger{quoteTotalPax === 1 ? "" : "s"}
+                  {guideMandatory ? " · Guide mandatory" : ""}
+                </p>
+              </div>
+              <div className="p-3 sm:p-4 sm:border-l border-border/60 text-right space-y-0.5">
+                <p className="text-sm font-bold text-emerald-600 tabular-nums">
+                  {selectionTotal > 0 ? formatFullINR(selectionTotal) : "—"}
+                </p>
+                <p className="text-[11px] text-muted-foreground">Customer price (INR)</p>
+              </div>
+            </div>
+
+            {paxBand === "over_capacity" ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-sm text-amber-900">
+                No vehicle available for {quoteTotalPax} passengers. KTH airport transfer vehicles support a maximum of 13 passengers.
+              </div>
+            ) : vehicleOptions.length === 0 ? (
+              <div className="rounded-xl border bg-background p-6 text-center text-sm text-muted-foreground">
+                No vehicle options on this route.
+              </div>
+            ) : (
+              <div className="rounded-xl border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <th className="px-3 py-2.5 text-left font-semibold w-10">#</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">Vehicle</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">Capacity</th>
+                        <th className="px-3 py-2.5 text-right font-semibold">Price</th>
+                        <th className="px-3 py-2.5 text-center font-semibold">Qty</th>
+                        <th className="px-3 py-2.5 text-right font-semibold">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vehicleOptions.map((vehicle, index) => {
+                        const qty = Math.max(0, Number(vehicleQtyById[vehicle.id] || 0));
+                        const unitCustomer = vehicle.price;
+                        const rowTotal = unitCustomer * qty;
+                        const active = qty > 0;
+                        return (
+                          <tr
+                            key={vehicle.id}
+                            className={cn(
+                              "border-t border-border/60",
+                              active ? "bg-emerald-50/70" : "bg-background",
+                            )}
+                          >
+                            <td className="px-3 py-3 text-muted-foreground tabular-nums">{index + 1}</td>
+                            <td className="px-3 py-3">
+                              <p className="font-medium text-foreground">{vehicle.label}</p>
+                              {guideMandatory && /guide/i.test(vehicle.vehicleType) ? (
+                                <p className="text-[10px] text-amber-800 mt-0.5">Guide included / recommended for 8+ Pax</p>
+                              ) : null}
+                            </td>
+                            <td className="px-3 py-3 text-muted-foreground">{vehicle.paxLabel}</td>
+                            <td className="px-3 py-3 text-right tabular-nums text-foreground">
+                              {formatFullINR(unitCustomer)}
+                            </td>
+                            <td className="px-3 py-3">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7"
+                                  disabled={qty <= 0 || Boolean(pickingId)}
+                                  onClick={() =>
+                                    setVehicleQtyById((prev) => ({
+                                      ...prev,
+                                      [vehicle.id]: Math.max(0, (prev[vehicle.id] || 0) - 1),
+                                    }))
+                                  }
+                                  aria-label={`Decrease ${vehicle.label}`}
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </Button>
+                                <Input
+                                  className="h-7 w-12 text-center text-sm px-1 tabular-nums"
+                                  type="number"
+                                  min={0}
+                                  max={20}
+                                  value={qty}
+                                  disabled={Boolean(pickingId)}
+                                  onChange={(e) => {
+                                    const n = Math.max(0, Math.min(20, Math.floor(Number(e.target.value) || 0)));
+                                    setVehicleQtyById((prev) => ({ ...prev, [vehicle.id]: n }));
+                                  }}
+                                />
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="outline"
+                                  className="h-7 w-7"
+                                  disabled={Boolean(pickingId)}
+                                  onClick={() =>
+                                    setVehicleQtyById((prev) => ({
+                                      ...prev,
+                                      [vehicle.id]: Math.min(20, (prev[vehicle.id] || 0) + 1),
+                                    }))
+                                  }
+                                  aria-label={`Increase ${vehicle.label}`}
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-right font-semibold tabular-nums text-foreground">
+                              {formatFullINR(rowTotal)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-xl border bg-muted/10 px-4 py-4 space-y-3">
+              <div className="space-y-1.5 max-w-xs">
+                <Label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  Pickup time
+                </Label>
+                <Input
+                  type="time"
+                  className="h-10"
+                  value={airportPickupTime}
+                  min={earliestPickup || undefined}
+                  onChange={(e) => setAirportPickupTime(e.target.value)}
+                />
+                {flightArrival && earliestPickup ? (
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    {flightArrival.label} lands at {flightArrival.arrTime}. Earliest pickup{" "}
+                    <span className="font-medium text-foreground">{earliestPickup}</span>
+                    {" "}({AIRPORT_EXIT_BUFFER_MINUTES} min after landing — not before).
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                <p className="text-sm font-semibold tabular-nums">
+                  Total: <span className="text-emerald-600">{formatFullINR(selectionTotal)}</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busySubmit}
+                    onClick={() => {
+                      setVehiclePickItem(null);
+                      setVehicleQtyById({});
+                      setAirportPickupTime("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    className="bg-slate-900 hover:bg-slate-800 text-white min-w-[100px]"
+                    disabled={busySubmit || paxBand === "over_capacity" || !vehicleOptions.length}
+                    onClick={() => void submitAirportPickup()}
+                  >
+                    {busySubmit ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={cn(
+          "rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col",
+          fillViewport ? "h-full min-h-0 max-h-none" : "min-h-[min(60vh,560px)] max-h-[min(70vh,640px)]",
+        )}
+      >
+        <div className="px-4 py-3 border-b bg-slate-900 text-white shrink-0 flex items-center justify-between gap-3">
+          <p className="text-sm sm:text-base font-semibold tracking-tight">
+            {isAirportPickup ? "Add Airport Pickup" : "Add Transfers"}
+          </p>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/10"
+            onClick={() => onOpenChange(false)}
+            aria-label="Close transfers"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {isAirportPickup ? (
+          <div className="px-4 py-3 border-b bg-teal-50/80 shrink-0">
+            <p className="text-[10px] uppercase tracking-wide text-teal-800/70 font-semibold">
+              Destination · Airport → Hotel
+            </p>
+            <p className="text-sm font-semibold text-teal-950 mt-0.5">
+              {dayHotelName
+                ? `${dayHotelName}${dayHotelCity ? ` · ${dayHotelCity}` : ""}`
+                : "Kuala Lumpur Airport → Hotel (KTH)"}
+            </p>
+          </div>
+        ) : null}
+
+        <div className="px-4 py-3 border-b bg-muted/10 shrink-0 grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3">
+          {!isAirportPickup ? (
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">City</Label>
+              <select
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                value={transferCity}
+                onChange={(e) => setTransferCity(e.target.value)}
+              >
+                {MALAYSIA_TRANSFER_CITIES.map((city) => (
+                  <option key={city} value={city}>{city}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Hub</Label>
+              <div className="h-10 w-full rounded-lg border border-border bg-muted/40 px-3 text-sm flex items-center text-foreground">
+                {resolveTransferHubCity(dayHotelCity || transferCity)}
+              </div>
+            </div>
+          )}
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Search</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                className="h-10 pl-8 text-sm"
+                placeholder={isAirportPickup ? "Search airport pickup…" : "Search transfer…"}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading transfers…
+            </div>
+          )}
+          {!loading && isAirportPickup && selectedHotels.length === 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              Add a hotel on this trip first — Airport Pickup will then show{" "}
+              <span className="font-medium">Airport → your hotel name</span>.
+            </div>
+          ) : null}
+          {!loading && transferItems.length === 0 && (
+            <div className="rounded-xl border bg-background p-8 text-center space-y-2">
+              <p className="text-sm text-muted-foreground">
+                {isAirportPickup
+                  ? selectedHotels.length === 0
+                    ? "Add a hotel first to see Airport → Hotel pickup options."
+                    : "No Airport → Hotel transfer destinations found for this trip."
+                  : `No transfer options for ${transferCity}.`}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {isAirportPickup
+                  ? "KTH one-way rates from Kuala Lumpur Airport to the selected hotel / outstation."
+                  : "KTH 2026 rates cover Kuala Lumpur (KLIA), Langkawi, and Penang."}
+              </p>
+            </div>
+          )}
+          {!loading && transferItems.map((item) => {
+            const busyPick = pickingId === item.id;
+            const vehicles = getTransferVehicleOptions(item);
+            const fromPrice = vehicles[0]?.price ?? Number(item.privatePrice ?? item.sharedPrice ?? 0);
+            const img = Array.isArray(item.images) && item.images[0]
+              ? String(item.images[0])
+              : transferPlaceholderImage();
+            const boundHotel = String(
+              (item as ProductRecord & { boundHotelName?: string }).boundHotelName
+              || (isAirportPickup && dayHotelName && matchesAirportPickupForHotel(item, dayHotelCity || dayHotelName)
+                ? dayHotelName
+                : "")
+              || "",
+            ).trim();
+            const route = isAirportPickup
+              ? (boundHotel
+                ? `One Way Transfer from Kuala Lumpur Airport - ${boundHotel}`
+                : formatTransferDestination(item))
+              : formatTransferRoute(item);
+            const listKey = String(
+              (item as ProductRecord & { listKey?: string }).listKey
+              || item.id
+              || route,
+            );
+            return (
+              <div
+                key={listKey}
+                className="rounded-xl border bg-background shadow-sm hover:border-teal-600/40 transition-colors grid grid-cols-1 sm:grid-cols-[140px_1fr_auto] gap-0 overflow-hidden"
+              >
+                <div className="relative h-28 sm:h-auto sm:min-h-[104px] bg-muted">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                </div>
+                <div className="p-3 sm:p-4 min-w-0 space-y-1">
+                  <p className="font-semibold text-sm text-foreground leading-snug">{route}</p>
+                  {isAirportPickup ? (
+                    <p className="text-[11px] text-teal-800">
+                      Airport → {boundHotel || String(item.dropLocation || "Hotel").trim()}
+                    </p>
+                  ) : null}
+                  {/* Airport → hotel cards: keep route + Airport → hotel; hide Vehicles: list only */}
+                  {!isAirportPickup && vehicles.length > 1 ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      Vehicles: {vehicles.map((v) => v.label).join(" · ")}
+                    </p>
+                  ) : !isAirportPickup && item.description ? (
+                    <p className="text-[11px] text-muted-foreground line-clamp-1">{String(item.description)}</p>
+                  ) : null}
+                </div>
+                <div className="p-3 sm:p-4 flex sm:flex-col items-end justify-between gap-2 sm:border-l border-border/60">
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {isAirportPickup ? "From" : ""}
+                    </p>
+                    <p className="text-sm font-bold text-emerald-600">
+                      {fromPrice > 0 ? formatFullINR(fromPrice) : "On request"}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {isAirportPickup
+                        ? `for ${quoteAdults} adult${quoteAdults === 1 ? "" : "s"}${
+                          quoteChildren > 0
+                            ? ` · ${quoteChildren} child${quoteChildren === 1 ? "" : "ren"}`
+                            : ""
+                        }`
+                        : `${quoteAdults} Adult${quoteAdults === 1 ? "" : "s"}`}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busyPick}
+                    className="bg-slate-900 hover:bg-slate-800 text-white shrink-0 min-w-[88px]"
+                    onClick={() => void pickCatalogItem(item)}
+                  >
+                    {busyPick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isAirportPickup ? "Choose vehicle" : "Select"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (isInlineService && open && isActivities) {
+    const MALAYSIA_ACTIVITY_CITIES = [
+      "Kuala Lumpur",
+      "Genting Highlands",
+      "Malacca",
+      "Penang",
+      "Langkawi",
+      "Putrajaya",
+      "Johor Bahru",
+      "Kuala Selangor",
+      "Tambun",
+    ] as const;
+
+    const renderActivityCard = (
+      item: ProductRecord,
+      opts?: { showSelect?: boolean; footer?: ReactNode },
+    ) => {
+      const img = Array.isArray(item.images) && item.images[0]
+        ? String(item.images[0])
+        : activityPlaceholderImage();
+      const total = activityLineTotal(item, quoteAdults, quoteChildren);
+      const schedule = formatActivitySchedule(item);
+      const timingBar = formatActivityTimingBar(item);
+      const busyPick = pickingId === item.id;
+      return (
+        <div className="rounded-xl border bg-background shadow-sm overflow-hidden">
+          <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr_auto] gap-0">
+            <div className="relative h-28 sm:h-auto sm:min-h-[112px] bg-muted">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            </div>
+            <div className="p-3 sm:p-4 min-w-0 space-y-1.5">
+              <p className="font-semibold text-sm text-foreground leading-snug">{item.name}</p>
+              <div className="rounded-lg bg-slate-100/90 px-2.5 py-1.5 flex items-start gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-700">Timing &amp; Duration</p>
+                  <p className="text-[11px] text-slate-500">{timingBar || schedule}</p>
+                </div>
+              </div>
+              {item.description ? (
+                <p className="text-[11px] text-muted-foreground line-clamp-2">{String(item.description)}</p>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">
+                  {String(item.location || item.city || activityCity)}
+                  {isTourActivity(item) ? " · Tours" : " · Entrance (Non-Malaysian rates)"}
+                </p>
+              )}
+            </div>
+            <div className="p-3 sm:p-4 flex sm:flex-col items-end justify-between gap-2 sm:border-l border-border/60">
+              <div className="text-right">
+                <p className="text-sm font-bold text-foreground tabular-nums">
+                  {total > 0 ? formatFullINR(total) : "On request"}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {isTourActivity(item)
+                    ? "Tour rate"
+                    : `${quoteAdults} Adult${quoteAdults === 1 ? "" : "s"}${
+                      quoteChildren > 0 ? ` · ${quoteChildren} Child` : ""
+                    }`}
+                </p>
+                {!isTourActivity(item) ? (
+                  <p className="text-[11px] text-muted-foreground">Pax: {quoteTotalPax}</p>
+                ) : null}
+              </div>
+              {opts?.showSelect !== false && !opts?.footer ? (
+                <div className="flex flex-col items-end gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busyPick}
+                    className="bg-slate-900 hover:bg-slate-800 text-white shrink-0 min-w-[88px]"
+                    onClick={() => void pickCatalogItem(item)}
+                  >
+                    {busyPick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Select"}
+                  </Button>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-orange-600 hover:underline"
+                    onClick={() => setActivityDetailsItem(item)}
+                  >
+                    View Details
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-orange-600 hover:underline"
+                  onClick={() => setActivityDetailsItem(item)}
+                >
+                  View Details
+                </button>
+              )}
+            </div>
+          </div>
+          {opts?.footer}
+        </div>
+      );
+    };
+
+    const detailsDialog = (
+      <ActivityDetailsDialog
+        open={Boolean(activityDetailsItem)}
+        onOpenChange={(open) => {
+          if (!open) setActivityDetailsItem(null);
+        }}
+        activity={activityDetailsItem}
+      />
+    );
+
+    // Step 1: Start time
+    if (activityPickItem && activityStep === "time") {
+      return (
+        <>
+        <div
+          className={cn(
+            "rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col",
+            fillViewport ? "h-full min-h-0 max-h-none" : "min-h-[min(60vh,560px)] max-h-[min(70vh,640px)]",
+          )}
+        >
+          <div className="px-4 py-3 border-b bg-slate-900 text-white shrink-0 flex items-center justify-between gap-3">
+            <p className="text-sm sm:text-base font-semibold tracking-tight">Add Activity</p>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/10"
+              onClick={() => {
+                setActivityPickItem(null);
+                setActivityStep(null);
+              }}
+              aria-label="Back to activities"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
+            {renderActivityCard(activityPickItem, {
+              showSelect: false,
+              footer: (
+                <div className="border-t px-4 py-4 space-y-3 bg-muted/10">
+                  {isTourActivity(activityPickItem) ? (
+                    <p className="text-xs text-muted-foreground">
+                      Tours include vehicle — no separate transfer will be added.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-amber-700 flex items-center gap-1.5">
+                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      No transfer on this step — choose transport in Other Details next.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        Start time
+                      </Label>
+                      <Input
+                        type="time"
+                        className="h-10 w-[160px]"
+                        value={activityStartTime}
+                        onChange={(e) => setActivityStartTime(e.target.value)}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      className="bg-slate-900 hover:bg-slate-800 text-white min-w-[100px]"
+                      disabled={Boolean(pickingId)}
+                      onClick={() => {
+                        if (!activityStartTime.trim()) {
+                          toast({ title: "Start time required", variant: "destructive" });
+                          return;
+                        }
+                        // Tours already include vehicle — skip the extra Activity Transfer step.
+                        if (isTourActivity(activityPickItem)) {
+                          void submitActivityFinal();
+                          return;
+                        }
+                        setActivityStep("details");
+                      }}
+                    >
+                      {pickingId ? <Loader2 className="w-4 h-4 animate-spin" /> : isTourActivity(activityPickItem) ? "Add tour" : "Submit"}
+                    </Button>
+                  </div>
+                </div>
+              ),
+            })}
+          </div>
+        </div>
+        {detailsDialog}
+        </>
+      );
+    }
+
+    // Step 2: Other details (transport)
+    if (activityPickItem && activityStep === "details") {
+      const transferTotal = ACTIVITY_TRANSFER_VEHICLES.reduce(
+        (sum, v) => sum + v.price * Math.max(0, Number(activityVehicleQty[v.id] || 0)),
+        0,
+      );
+      const activityTotal = activityLineTotal(activityPickItem, quoteAdults, quoteChildren);
+      const busy = pickingId === activityPickItem.id;
+
+      return (
+        <>
+        <div
+          className={cn(
+            "rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col",
+            fillViewport ? "h-full min-h-0 max-h-none" : "min-h-[min(60vh,560px)] max-h-[min(70vh,640px)]",
+          )}
+        >
+          <div className="px-4 py-3 border-b bg-slate-900 text-white shrink-0 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm sm:text-base font-semibold tracking-tight">Other details</p>
+              <p className="text-[11px] text-white/70 truncate mt-0.5">{activityPickItem.name}</p>
+            </div>
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/10"
+              onClick={() => setActivityStep("time")}
+              aria-label="Back to start time"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-4">
+            {renderActivityCard(activityPickItem, { showSelect: false })}
+
+            <div className="rounded-xl border overflow-hidden">
+              <div className="px-4 py-3 border-b bg-muted/30 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Transport</p>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="rounded border-border"
+                    checked={activityIncludeTransfer}
+                    onChange={(e) => setActivityIncludeTransfer(e.target.checked)}
+                  />
+                  <span className={cn(
+                    "rounded-md px-2 py-0.5 text-xs font-semibold",
+                    activityIncludeTransfer ? "bg-slate-900 text-white" : "bg-muted text-muted-foreground",
+                  )}
+                  >
+                    PVT
+                  </span>
+                  <span className="text-muted-foreground text-xs">Private transfer</span>
+                </label>
+              </div>
+
+              {activityIncludeTransfer ? (
+                <div className="p-4 space-y-3">
+                  <label className="flex items-center gap-2 rounded-lg border border-emerald-600/40 bg-emerald-50/50 px-3 py-2.5 text-sm cursor-default">
+                    <span className="w-4 h-4 rounded-full border-2 border-emerald-600 flex items-center justify-center">
+                      <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                    </span>
+                    {ACTIVITY_TRANSFER_ROUTE}
+                  </label>
+
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          <th className="px-3 py-2.5 text-left font-semibold w-10">#</th>
+                          <th className="px-3 py-2.5 text-left font-semibold">Vehicle</th>
+                          <th className="px-3 py-2.5 text-left font-semibold">Cap</th>
+                          <th className="px-3 py-2.5 text-right font-semibold">Price</th>
+                          <th className="px-3 py-2.5 text-center font-semibold">Qty</th>
+                          <th className="px-3 py-2.5 text-right font-semibold">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ACTIVITY_TRANSFER_VEHICLES.map((vehicle, index) => {
+                          const qty = Math.max(0, Number(activityVehicleQty[vehicle.id] || 0));
+                          const rowTotal = vehicle.price * qty;
+                          return (
+                            <tr
+                              key={vehicle.id}
+                              className={cn(
+                                "border-t border-border/60",
+                                qty > 0 ? "bg-emerald-50/70" : "bg-background",
+                              )}
+                            >
+                              <td className="px-3 py-3 text-muted-foreground tabular-nums">{index + 1}</td>
+                              <td className="px-3 py-3 font-medium">{vehicle.label}</td>
+                              <td className="px-3 py-3 text-muted-foreground">{vehicle.paxLabel}</td>
+                              <td className="px-3 py-3 text-right tabular-nums">{formatFullINR(vehicle.price)}</td>
+                              <td className="px-3 py-3">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-7 w-7"
+                                    disabled={qty <= 0 || busy}
+                                    onClick={() =>
+                                      setActivityVehicleQty((prev) => ({
+                                        ...prev,
+                                        [vehicle.id]: Math.max(0, (prev[vehicle.id] || 0) - 1),
+                                      }))
+                                    }
+                                  >
+                                    <Minus className="w-3 h-3" />
+                                  </Button>
+                                  <Input
+                                    className="h-7 w-12 text-center text-sm px-1 tabular-nums"
+                                    type="number"
+                                    min={0}
+                                    max={20}
+                                    value={qty}
+                                    disabled={busy}
+                                    onChange={(e) => {
+                                      const n = Math.max(0, Math.min(20, Math.floor(Number(e.target.value) || 0)));
+                                      setActivityVehicleQty((prev) => ({ ...prev, [vehicle.id]: n }));
+                                    }}
+                                  />
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-7 w-7"
+                                    disabled={busy}
+                                    onClick={() =>
+                                      setActivityVehicleQty((prev) => ({
+                                        ...prev,
+                                        [vehicle.id]: Math.min(20, (prev[vehicle.id] || 0) + 1),
+                                      }))
+                                    }
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </Button>
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 text-right font-semibold tabular-nums">
+                                {formatFullINR(rowTotal)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="px-4 py-6 text-center text-sm text-amber-700">
+                  No transfer — activity ticket only.
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border bg-muted/10 px-4 py-4 flex flex-wrap items-end justify-between gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  Start time
+                </Label>
+                <Input
+                  type="time"
+                  className="h-10 w-[160px]"
+                  value={activityStartTime}
+                  onChange={(e) => setActivityStartTime(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground tabular-nums">
+                  Activity {formatFullINR(activityTotal)}
+                  {activityIncludeTransfer ? ` · Transfer ${formatFullINR(transferTotal)}` : ""}
+                  {" · "}
+                  <span className="font-semibold text-foreground">
+                    Total {formatFullINR(activityTotal + (activityIncludeTransfer ? transferTotal : 0))}
+                  </span>
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setActivityStep("time")}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-slate-900 hover:bg-slate-800 text-white min-w-[100px]"
+                  disabled={busy}
+                  onClick={() => void submitActivityFinal()}
+                >
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+        {detailsDialog}
+        </>
+      );
+    }
+
+    // Activity list
+    return (
+      <>
+      <div
+        className={cn(
+          "rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col",
+          fillViewport ? "h-full min-h-0 max-h-none" : "min-h-[min(60vh,560px)] max-h-[min(70vh,640px)]",
+        )}
+      >
+        <div className="px-4 py-3 border-b bg-slate-900 text-white shrink-0 flex items-center justify-between gap-3">
+          <p className="text-sm sm:text-base font-semibold tracking-tight">Add Activity</p>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/10"
+            onClick={() => onOpenChange(false)}
+            aria-label="Close activities"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        <div className="px-4 py-3 border-b bg-muted/10 shrink-0 grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3">
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">City</Label>
+            <select
+              className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              value={activityCity}
+              onChange={(e) => setActivityCity(e.target.value)}
+            >
+              {MALAYSIA_ACTIVITY_CITIES.map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Search</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                className="h-10 pl-8 text-sm"
+                placeholder="Search activity…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading activities…
+            </div>
+          )}
+          {!loading && items.length === 0 && (
+            <div className="rounded-xl border bg-background p-8 text-center space-y-2">
+              <p className="text-sm text-muted-foreground">
+                No activities for {activityCity}.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                From KTH Malaysia ticket sheet (Non-Malaysian adult / child rates).
+              </p>
+            </div>
+          )}
+          {!loading && items.map((item) => (
+            <div key={item.id}>{renderActivityCard(item)}</div>
+          ))}
+        </div>
+      </div>
+      {detailsDialog}
+    </>
+    );
+  }
+
+  if (isInlineService && open && isMeals) {
+    const mealPaxLabel = `${quoteAdults} Adult${quoteAdults === 1 ? "" : "s"}${
+      quoteChildren > 0 ? ` · ${quoteChildren} Child${quoteChildren === 1 ? "" : "ren"}` : ""
+    }`;
+    const formatMealInr = (amount: number) => {
+      const rounded = Math.round(amount * 100) / 100;
+      const text = rounded.toLocaleString("en-IN", {
+        minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
+        maximumFractionDigits: 2,
+      });
+      return `INR ${text}`;
+    };
+
+    async function submitExpandedMeal(item: ProductRecord) {
+      const food = mealFoodOnlyPrice(item);
+      const transferTotal = mealTransferVehicleTotal(mealVehicleQty);
+      const vehicles = selectedMealVehicles(mealVehicleQty);
+      if (!vehicles.length) {
+        toast({
+          title: "Select a vehicle",
+          description: "Choose qty for at least one vehicle.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!mealTimeSlot.trim()) {
+        toast({ title: "Select meal time", variant: "destructive" });
+        return;
+      }
+      const enriched = {
+        ...item,
+        mealExtras: {
+          timeSlot: mealTimeSlot,
+          foodPrice: food,
+          transferTotal,
+          sellingPrice: food + transferTotal,
+          vehicles: vehicles.map((v) => ({ label: v.label, qty: v.qty, price: v.price })),
+          route: MEAL_TRANSFER_ROUTE,
+        },
+      } as ProductRecord;
+      await pickCatalogItem(enriched);
+      setMealExpandId(null);
+    }
+
+    return (
+      <>
+        <div
+          className={cn(
+            "rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col",
+            fillViewport ? "h-full min-h-0 max-h-none" : "min-h-[min(60vh,560px)] max-h-[min(70vh,640px)]",
+          )}
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 py-3 space-y-2.5 bg-slate-50/80">
+            {loading && (
+              <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" /> Loading meals…
+              </div>
+            )}
+            {!loading && items.length === 0 && (
+              <div className="rounded-xl border bg-background p-8 text-center space-y-2">
+                <p className="text-sm text-muted-foreground">No meal options found.</p>
+                <p className="text-xs text-muted-foreground">
+                  Indian lunch / dinner set menus with optional private transfer.
+                </p>
+              </div>
+            )}
+            {!loading && items.map((item) => {
+              const busyPick = pickingId === item.id;
+              const isPrivate = item.transferInclusion === "PRIVATE";
+              const expanded = isPrivate && mealExpandId === item.id;
+              const foodPrice = mealFoodOnlyPrice(item);
+              const transferTotal = expanded ? mealTransferVehicleTotal(mealVehicleQty) : MEAL_TRANSFER_VEHICLES[0].price;
+              const displayPrice = isPrivate
+                ? (expanded ? foodPrice + transferTotal : Number(item.adultPrice || 0))
+                : Number(item.adultPrice || 0);
+              const sub = String(item.description || "").trim();
+              const slots = mealTimeSlotsForType(item.mealType);
+
+              return (
+                <div
+                  key={item.id}
+                  className={cn(
+                    "rounded-xl border bg-white px-4 py-3.5 space-y-3 transition-colors",
+                    expanded ? "border-slate-300 shadow-sm" : "border-slate-200 hover:border-slate-300",
+                  )}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-sm text-slate-900 leading-snug">{item.name}</p>
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                            isPrivate ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-700",
+                          )}
+                        >
+                          {isPrivate ? "Private Transfer" : "No Transfer"}
+                        </span>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 hover:underline"
+                          onClick={() => setMealDetailsItem(item)}
+                        >
+                          <InfoIcon className="w-3.5 h-3.5" />
+                          View Details
+                        </button>
+                      </div>
+                      {sub ? (
+                        <p className="text-xs text-slate-500 line-clamp-2">{sub}</p>
+                      ) : null}
+                    </div>
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0 sm:min-w-[120px]">
+                      <div className="text-left sm:text-right">
+                        <p className="text-sm font-bold text-emerald-600 tabular-nums">
+                          {displayPrice > 0 ? formatMealInr(displayPrice) : "On request"}
+                        </p>
+                        <p className="text-[11px] text-slate-500">{mealPaxLabel}</p>
+                      </div>
+                      {!expanded ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={busyPick}
+                          className="bg-slate-900 hover:bg-slate-800 text-white shrink-0 min-w-[88px] rounded-lg"
+                          onClick={() => {
+                            if (isPrivate) {
+                              setMealExpandId(item.id);
+                              setMealTimeSlot(slots[0] || "12:00 - 13:00");
+                              setMealVehicleQty(defaultMealVehicleQty());
+                              return;
+                            }
+                            void pickCatalogItem(item);
+                          }}
+                        >
+                          {busyPick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Select"}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {expanded ? (
+                    <div className="space-y-3 border-t border-slate-100 pt-3">
+                      <div className="flex flex-col lg:flex-row lg:items-end gap-3 lg:justify-between">
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold text-slate-800">Select Meal Time</p>
+                          <div className="flex flex-wrap gap-3">
+                            {slots.map((slot) => (
+                              <label
+                                key={slot}
+                                className="inline-flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"
+                              >
+                                <input
+                                  type="radio"
+                                  name={`meal-time-${item.id}`}
+                                  className="accent-slate-900"
+                                  checked={mealTimeSlot === slot}
+                                  onChange={() => setMealTimeSlot(slot)}
+                                />
+                                {slot}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <p className="text-xs text-slate-600 inline-flex items-center gap-1.5">
+                            Total Pax: <span className="font-semibold text-slate-900">{quoteTotalPax}</span>
+                            <Pencil className="w-3 h-3 text-slate-400" aria-hidden />
+                          </p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={busyPick}
+                            className="bg-slate-900 hover:bg-slate-800 text-white min-w-[88px] rounded-lg"
+                            onClick={() => void submitExpandedMeal(item)}
+                          >
+                            {busyPick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Submit"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-lg border border-slate-200">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                              <th className="px-3 py-2.5 text-left font-semibold w-10">#</th>
+                              <th className="px-3 py-2.5 text-left font-semibold">Vehicle</th>
+                              <th className="px-3 py-2.5 text-left font-semibold">Capacity</th>
+                              <th className="px-3 py-2.5 text-right font-semibold">Price</th>
+                              <th className="px-3 py-2.5 text-center font-semibold">Qty</th>
+                              <th className="px-3 py-2.5 text-right font-semibold">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {MEAL_TRANSFER_VEHICLES.map((vehicle, index) => {
+                              const qty = Math.max(0, Number(mealVehicleQty[vehicle.id] || 0));
+                              const rowTotal = vehicle.price * qty;
+                              return (
+                                <tr
+                                  key={vehicle.id}
+                                  className={cn(
+                                    "border-t border-slate-100",
+                                    qty > 0 ? "bg-emerald-50/80" : "bg-white",
+                                  )}
+                                >
+                                  <td className="px-3 py-2.5 text-slate-500 tabular-nums">{index + 1}</td>
+                                  <td className="px-3 py-2.5 font-medium text-slate-900">{vehicle.label}</td>
+                                  <td className="px-3 py-2.5 text-slate-500">{vehicle.capacity}</td>
+                                  <td className="px-3 py-2.5 text-right tabular-nums text-slate-700">
+                                    {formatMealInr(vehicle.price)}
+                                  </td>
+                                  <td className="px-3 py-2.5">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="outline"
+                                        className="h-7 w-7"
+                                        onClick={() => setMealVehicleQty((prev) => ({
+                                          ...prev,
+                                          [vehicle.id]: Math.max(0, qty - 1),
+                                        }))}
+                                      >
+                                        <Minus className="w-3 h-3" />
+                                      </Button>
+                                      <span className="w-6 text-center tabular-nums text-sm font-medium">{qty}</span>
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="outline"
+                                        className="h-7 w-7"
+                                        onClick={() => setMealVehicleQty((prev) => ({
+                                          ...prev,
+                                          [vehicle.id]: qty + 1,
+                                        }))}
+                                      >
+                                        <Plus className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  </td>
+                                  <td className="px-3 py-2.5 text-right tabular-nums font-medium text-slate-900">
+                                    {formatMealInr(rowTotal)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <Dialog
+          open={Boolean(mealDetailsItem)}
+          onOpenChange={(open) => {
+            if (!open) setMealDetailsItem(null);
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            <DialogTitle className="text-base font-semibold pr-8">
+              {String(mealDetailsItem?.name || "Meal")}
+            </DialogTitle>
+            {mealDetailsItem ? (
+              <div className="space-y-3 text-sm">
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
+                    mealDetailsItem.transferInclusion === "PRIVATE"
+                      ? "bg-sky-100 text-sky-800"
+                      : "bg-slate-100 text-slate-700",
+                  )}
+                >
+                  {mealDetailsItem.transferInclusion === "PRIVATE" ? "Private Transfer" : "No Transfer"}
+                </span>
+                {mealDetailsItem.mealType ? (
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                    {String(mealDetailsItem.mealType)}
+                  </p>
+                ) : null}
+                {mealDetailsItem.description ? (
+                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap">
+                    {String(mealDetailsItem.description)}
+                  </p>
+                ) : null}
+                {mealDetailsItem.restaurant ? (
+                  <p className="text-xs text-slate-500">
+                    <span className="font-medium text-slate-700">Restaurants: </span>
+                    {String(mealDetailsItem.restaurant)}
+                  </p>
+                ) : null}
+                <p className="text-sm font-bold text-emerald-600 tabular-nums">
+                  {Number(mealDetailsItem.adultPrice || 0) > 0
+                    ? formatMealInr(Number(mealDetailsItem.adultPrice))
+                    : "On request"}
+                  <span className="ml-2 text-xs font-normal text-slate-500">{mealPaxLabel}</span>
+                </p>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+
+  if (isInlineService && open) {
+    const label = kind === "activities" ? "activities" : kind === "meals" ? "meals" : kind;
+    return (
+      <div
+        className={cn(
+          "rounded-xl border border-border/70 bg-card overflow-hidden flex flex-col",
+          fillViewport ? "h-full min-h-0 max-h-none" : "min-h-[min(60vh,560px)] max-h-[min(70vh,640px)]",
+        )}
+      >
+        <div className="px-4 py-3 border-b bg-muted/20 shrink-0 space-y-3">
+          <div>
+            <p className="text-[11px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+              {kind === "meals" ? "Meal selection" : "Activity selection"}
+            </p>
+            <p className="text-base sm:text-lg font-semibold text-foreground mt-0.5">
+              {destLabel ? `Live ${label} for ${destLabel}` : `Browse live ${label}`}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              From Malaysia contracted / KTH rate sheets (2026).
+            </p>
+          </div>
+          <div className="relative max-w-md">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              className="h-9 pl-8 text-sm rounded-full"
+              placeholder={`Search ${label}…`}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-2">
+          {loading && (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading {label}…
+            </div>
+          )}
+          {!loading && items.length === 0 && (
+            <div className="rounded-xl border bg-background p-8 text-center space-y-2">
+              <p className="text-sm text-muted-foreground">
+                {destLabel ? `No live ${label} found for ${destLabel}.` : `No live ${label} found.`}
+              </p>
+            </div>
+          )}
+          {!loading && items.map((item) => {
+            const busyPick = pickingId === item.id;
+            const price = Number(item.adultPrice ?? 0);
+            const sub = [item.location || item.city, item.duration, item.ticketType].filter(Boolean).join(" · ");
+            return (
+              <div key={item.id} className="rounded-xl border bg-background px-4 py-3 flex items-start justify-between gap-3 hover:border-teal-600/40 transition-colors">
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm text-foreground truncate">{item.name}</p>
+                  {sub ? <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{sub}</p> : null}
+                  {price > 0 ? (
+                    <p className="text-xs font-semibold text-teal-700 mt-1">{formatFullINR(price)}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">Rate on select</p>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busyPick}
+                  className="bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+                  onClick={() => void pickCatalogItem(item)}
+                >
+                  {busyPick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Select"}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }

@@ -128,6 +128,15 @@ function coveringRates(rates: RateWindow[], travelDate: string, variantKey?: str
   });
 }
 
+/** True when every variant field on the rate is also present on the request (rate may be less specific). */
+function rateCompatibleWithRequest(rateMeta: unknown, requestVariantKey: string): boolean {
+  const rateKey = rateVariantKey(rateMeta);
+  if (!rateKey) return true;
+  if (!requestVariantKey) return false;
+  const requestParts = new Set(requestVariantKey.split("|").filter(Boolean));
+  return rateKey.split("|").filter(Boolean).every((part) => requestParts.has(part));
+}
+
 /**
  * PRODUCT + active contracted rate + inclusive validity determines cost.
  * Never returns an expired, future, inactive, or invented rate.
@@ -145,9 +154,24 @@ export function findApplicableContractedRate(
     const exact = coveringRates(rates, travelDate, variantKey);
     if (exact.length === 1) return { status: "OK", rate: exact[0] };
     if (exact.length > 1) return { status: "AMBIGUOUS_RATE", message: AMBIGUOUS_RATE_MESSAGE };
+
+    // Request may include mealPlan/etc. while the rate only stores roomType — accept subset matches.
+    const compatible = rates.filter(
+      (rate) =>
+        rate.active
+        && dateInRange(travelDate, rate.validFrom, rate.validTo)
+        && rateCompatibleWithRequest(rate.metadata, variantKey),
+    );
+    if (compatible.length === 1) return { status: "OK", rate: compatible[0] };
+    if (compatible.length > 1) return { status: "AMBIGUOUS_RATE", message: AMBIGUOUS_RATE_MESSAGE };
+
     const productLevel = coveringRates(rates, travelDate, "");
     if (productLevel.length === 1) return { status: "OK", rate: productLevel[0] };
     if (productLevel.length > 1) return { status: "AMBIGUOUS_RATE", message: AMBIGUOUS_RATE_MESSAGE };
+
+    const anyCovering = coveringRates(rates, travelDate);
+    if (anyCovering.length === 1) return { status: "OK", rate: anyCovering[0] };
+    if (anyCovering.length > 1) return { status: "AMBIGUOUS_RATE", message: AMBIGUOUS_RATE_MESSAGE };
     return { status: "NO_VALID_RATE", message: NO_VALID_RATE_MESSAGE };
   }
 
