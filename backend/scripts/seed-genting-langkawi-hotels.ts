@@ -264,14 +264,28 @@ async function upsertRoomRate(opts: {
     where: {
       productType: "HOTEL",
       productId: opts.productId,
-      validFrom,
-      validTo,
     },
   });
-  const existing = all.find((row) => {
+  const sameWindow = all.filter((row) => row.validFrom === validFrom && row.validTo === validTo);
+  const existing = sameWindow.find((row) => {
     const meta = (row.metadata || {}) as Record<string, unknown>;
     return String(meta.roomType || "") === opts.room.roomType;
   });
+
+  // Same roomType on a different validity window would make June dates AMBIGUOUS.
+  for (const row of all) {
+    const meta = (row.metadata || {}) as Record<string, unknown>;
+    if (String(meta.roomType || "") !== opts.room.roomType) continue;
+    if (row.validFrom === validFrom && row.validTo === validTo) continue;
+    if (!row.active) continue;
+    await db.contractedRate.update({
+      where: { id: row.id },
+      data: { active: false },
+    });
+    console.log(
+      `  deactivate conflicting window · ${opts.room.roomType} (${row.validFrom}→${row.validTo})`,
+    );
+  }
 
   const metadata: Record<string, unknown> = {
     roomType: opts.room.roomType,
