@@ -67,6 +67,8 @@ export function mapApiBooking(b: ApiBooking): Booking {
     paymentStatus: b.paymentStatus as Booking["paymentStatus"],
     paymentMethod: b.paymentMethod || undefined,
     agent: b.agentName,
+    agentId: b.agentId ?? null,
+    agentName: b.agentName || null,
     agency: b.agencyName,
     agentAgencyName: b.agentAgencyName || b.agent?.agency?.name,
     agentAgencyLogo: b.agentAgencyLogo ?? b.agent?.agency?.logo ?? null,

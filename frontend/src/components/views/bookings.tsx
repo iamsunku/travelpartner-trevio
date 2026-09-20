@@ -120,6 +120,13 @@ function BookingDetailDialog({
   const [adjustPrice, setAdjustPrice] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
   const [opsAssigneeName, setOpsAssigneeName] = useState("");
+  const [assignAgentId, setAssignAgentId] = useState("none");
+  const [agents, setAgents] = useState<Array<{
+    id: string;
+    name: string;
+    agentCode?: string | null;
+    agency?: { name?: string | null; code?: string | null } | null;
+  }>>([]);
   const [payMethod, setPayMethod] = useState("Bank Transfer");
   const [teamEmployees, setTeamEmployees] = useState<{ id: string; name: string; role: string }[]>([]);
   const [completeness, setCompleteness] = useState<{
@@ -134,6 +141,7 @@ function BookingDetailDialog({
   const canFinance = user && !isAgent && (hasPermission(user, "finance") || ["super_admin", "agency_admin", "accountant"].includes(user.role));
   const canOps = user && !isAgent && (user.role === "operations" || ["super_admin", "agency_admin", "branch_manager"].includes(user.role) || hasPermission(user, "suppliers"));
   const canAssign = Boolean(user && !isAgent && (canOps || ["sales_executive", "agency_admin", "branch_manager", "super_admin"].includes(user.role)));
+  const canAssignAgent = Boolean(user && !isAgent && ["super_admin", "agency_admin", "branch_manager", "sales_executive"].includes(user.role));
   const canApproveDeviation = user && ["super_admin", "agency_admin"].includes(user.role);
   const canAdjustPrice = user && ["super_admin", "agency_admin"].includes(user.role);
   const canDownloadVouchers = !isAgent || booking?.paymentStatus !== "Pending" || ["Confirmed", "Partially Confirmed", "Travel Documents Ready", "Completed"].includes(booking?.status || "");
@@ -196,8 +204,19 @@ function BookingDetailDialog({
   }, [open, canAssign, user?.agencyId]);
 
   useEffect(() => {
+    if (!open || !canAssignAgent) return;
+    api.getAgents()
+      .then((res) => setAgents(res.agents || []))
+      .catch(() => setAgents([]));
+  }, [open, canAssignAgent]);
+
+  useEffect(() => {
     if (booking?.operationsExecutiveName) setOpsAssigneeName(booking.operationsExecutiveName);
   }, [booking?.operationsExecutiveName]);
+
+  useEffect(() => {
+    if (booking) setAssignAgentId(booking.agentId || "none");
+  }, [booking?.id, booking?.agentId]);
 
   useEffect(() => {
     if (!open || tab !== "ops") return;
@@ -317,6 +336,7 @@ function BookingDetailDialog({
                   <SummaryCell label="Amount Paid" value={formatFullINR(booking.amountPaid ?? 0)} />
                   <SummaryCell label="Balance" value={formatFullINR(booking.balanceAmount ?? booking.amount)} />
                   <SummaryCell label="Sales" value={booking.salesExecutiveName || booking.agent} />
+                  <SummaryCell label="Travel agent" value={booking.agentName || booking.agent || "—"} />
                   <SummaryCell label="Operations" value={booking.operationsExecutiveName || "—"} />
                 </div>
                 {completeness && (
@@ -337,31 +357,60 @@ function BookingDetailDialog({
                   </div>
                 )}
 
-                {canAssign && (
+                {(canAssign || canAssignAgent) && (
                   <div className="flex flex-wrap items-end gap-2 border rounded-lg p-3">
-                    <div className="min-w-[200px]">
-                      <Label className="text-xs">Assign operations</Label>
-                      <Select
-                        value={opsAssigneeName || "__none"}
-                        onValueChange={(v) => setOpsAssigneeName(v === "__none" ? "" : v)}
-                      >
-                        <SelectTrigger className="h-8"><SelectValue placeholder="Select ops" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none">Unassigned</SelectItem>
-                          {teamEmployees.map((e) => (
+                    {canAssignAgent && (
+                      <div className="min-w-[220px] flex-1">
+                        <Label className="text-xs">Assign travel agent</Label>
+                        <Select value={assignAgentId || "none"} onValueChange={setAssignAgentId}>
+                          <SelectTrigger className="h-8"><SelectValue placeholder="Select registered agent" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">No travel agent</SelectItem>
+                            {agents.map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.name}
+                                {a.agentCode ? ` · ${a.agentCode}` : ""}
+                                {a.agency?.name ? ` · ${a.agency.name}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {canAssign && (
+                      <div className="min-w-[200px]">
+                        <Label className="text-xs">Assign operations</Label>
+                        <Select
+                          value={opsAssigneeName || "__none"}
+                          onValueChange={(v) => setOpsAssigneeName(v === "__none" ? "" : v)}
+                        >
+                          <SelectTrigger className="h-8"><SelectValue placeholder="Select ops" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none">Unassigned</SelectItem>
+                            {teamEmployees.map((e) => (
                               <SelectItem key={e.id} value={e.name}>{e.name} ({e.role})</SelectItem>
                             ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <Button
                       size="sm"
-                      disabled={busy || !opsAssigneeName}
-                      onClick={() => run("Operations assigned", async () => {
+                      disabled={busy}
+                      onClick={() => run("Assignment saved", async () => {
                         const emp = teamEmployees.find((e) => e.name === opsAssigneeName);
                         await api.assignBookingExecutives(booking.id, {
-                          operationsExecutiveName: opsAssigneeName,
-                          operationsExecutiveId: emp?.id,
+                          ...(canAssign
+                            ? {
+                                operationsExecutiveName: opsAssigneeName || null,
+                                operationsExecutiveId: emp?.id || null,
+                              }
+                            : {}),
+                          ...(canAssignAgent
+                            ? {
+                                agentId: assignAgentId === "none" ? null : assignAgentId,
+                              }
+                            : {}),
                         });
                       })}
                     >

@@ -1496,14 +1496,47 @@ export function mountBmsRoutes(
           res.status(403).json({ error: "Not allowed to assign executives" });
           return;
         }
+
+        const data: Record<string, unknown> = {
+          salesExecutiveId: req.body?.salesExecutiveId ?? existing.salesExecutiveId,
+          salesExecutiveName: req.body?.salesExecutiveName ?? existing.salesExecutiveName,
+          operationsExecutiveId: req.body?.operationsExecutiveId ?? existing.operationsExecutiveId,
+          operationsExecutiveName: req.body?.operationsExecutiveName ?? existing.operationsExecutiveName,
+        };
+
+        if (req.body?.agentId !== undefined || req.body?.agentName !== undefined) {
+          const clearAgent = req.body.agentId === null || req.body.agentId === "";
+          if (clearAgent) {
+            data.agentId = null;
+            data.agentName = req.body.agentName != null ? String(req.body.agentName) : existing.agentName;
+          } else if (req.body.agentId) {
+            const agent = await db.user.findFirst({
+              where: {
+                id: String(req.body.agentId),
+                role: "travel_agent",
+                status: { in: ["Active", "Approved"] },
+                ...agencyScope(req),
+              },
+              select: { id: true, name: true, agencyId: true, agency: { select: { name: true, code: true } } },
+            });
+            if (!agent) {
+              res.status(400).json({ error: "Registered travel agent not found" });
+              return;
+            }
+            data.agentId = agent.id;
+            data.agentName = agent.name;
+            if (req.auth?.role === "super_admin" && agent.agencyId) {
+              data.agencyId = agent.agencyId;
+              data.agencyName = agent.agency?.name || existing.agencyName;
+            }
+          } else if (req.body.agentName != null) {
+            data.agentName = String(req.body.agentName);
+          }
+        }
+
         const booking = await db.booking.update({
           where: { id: existing.id },
-          data: {
-            salesExecutiveId: req.body?.salesExecutiveId ?? existing.salesExecutiveId,
-            salesExecutiveName: req.body?.salesExecutiveName ?? existing.salesExecutiveName,
-            operationsExecutiveId: req.body?.operationsExecutiveId ?? existing.operationsExecutiveId,
-            operationsExecutiveName: req.body?.operationsExecutiveName ?? existing.operationsExecutiveName,
-          },
+          data,
           include: BOOKING_INCLUDE,
         });
         await writeAudit({
@@ -1511,7 +1544,7 @@ export function mountBmsRoutes(
           agencyId: booking.agencyId,
           bookingId: booking.id,
           action: "Assignees Updated",
-          details: `Ops: ${booking.operationsExecutiveName || "—"} · Sales: ${booking.salesExecutiveName || "—"}`,
+          details: `Ops: ${booking.operationsExecutiveName || "—"} · Sales: ${booking.salesExecutiveName || "—"} · Agent: ${booking.agentName || "—"}`,
         });
         res.json({ booking });
       } catch (e) {

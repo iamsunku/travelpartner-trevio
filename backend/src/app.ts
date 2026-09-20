@@ -2185,18 +2185,27 @@ app.patch("/api/employees/:id", requireAuth, requireRole("super_admin", "agency_
 });
 
 // ── Travel agents & product access ───────────────────────────────────────────
-app.get("/api/agents", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res) => {
+app.get("/api/agents", requireAuth, requireAnyPermission("quotations", "bookings"), async (req: AuthRequest, res) => {
   try {
     const { ensureAgencyCode, ensureUserAgentCode } = await import("./lib/agent-codes.js");
     const scopeAgencyId = req.auth?.agencyId || (req.auth?.role === "super_admin" ? await (await import("./lib/api-key-config.js")).resolveDefaultAgencyId() : null);
     if (scopeAgencyId) await ensureAgencyCode(scopeAgencyId);
     const missing = await db.user.findMany({
-      where: { role: "travel_agent", agentCode: null, ...agencyScope(req) },
+      where: {
+        role: "travel_agent",
+        agentCode: null,
+        status: { in: ["Active", "Approved"] },
+        ...agencyScope(req),
+      },
       select: { id: true },
     });
     for (const m of missing) await ensureUserAgentCode(m.id, true);
     const agents = await db.user.findMany({
-      where: { role: "travel_agent", ...agencyScope(req) },
+      where: {
+        role: "travel_agent",
+        status: { in: ["Active", "Approved"] },
+        ...agencyScope(req),
+      },
       select: {
         id: true,
         name: true,
@@ -2217,6 +2226,97 @@ app.get("/api/agents", requireAuth, requirePermission("quotations"), async (req:
         productAccess: parseProductAccess(a.productAccess, "travel_agent"),
       })),
     });
+  } catch (e) {
+    logger.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+/** Staff: assign a registered travel agent to a quotation. */
+app.patch("/api/quotations/:id/assign-agent", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res) => {
+  try {
+    if (req.auth?.role === "travel_agent" || req.auth?.role === "customer") {
+      res.status(403).json({ error: "Not allowed to assign agents" });
+      return;
+    }
+    const id = routeParamId(req);
+    const existing = await db.quotation.findFirst({
+      where: { id, deletedAt: null, ...agencyScope(req), ...branchScope(req, "createdById") },
+    });
+    if (!existing) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    if (["Converted to Booking", "Archived"].includes(existing.status)) {
+      res.status(400).json({ error: "Cannot reassign this quotation" });
+      return;
+    }
+
+    const rawAgentId = req.body?.agentId;
+    const clear = rawAgentId === null || rawAgentId === "" || rawAgentId === undefined;
+    let agentId: string | null = null;
+    let agentName: string | null = null;
+    let agentCode: string | null = existing.agentCode;
+    let agencyCode: string | null = existing.agencyCode;
+    let agencyId = existing.agencyId;
+
+    if (!clear) {
+      const agent = await db.user.findFirst({
+        where: {
+          id: String(rawAgentId),
+          role: "travel_agent",
+          status: { in: ["Active", "Approved"] },
+          ...agencyScope(req),
+        },
+        select: {
+          id: true,
+          name: true,
+          agentCode: true,
+          agencyId: true,
+          agency: { select: { code: true, name: true } },
+        },
+      });
+      if (!agent) {
+        res.status(400).json({ error: "Registered travel agent not found" });
+        return;
+      }
+      const { ensureUserAgentCode, ensureAgencyCode } = await import("./lib/agent-codes.js");
+      agentId = agent.id;
+      agentName = agent.name;
+      agentCode = (await ensureUserAgentCode(agent.id, true)) || agent.agentCode || null;
+      if (agent.agencyId) {
+        agencyId = agent.agencyId;
+        await ensureAgencyCode(agent.agencyId);
+        agencyCode = agent.agency?.code || agencyCode;
+      }
+    } else {
+      agentId = null;
+      agentName = null;
+    }
+
+    const quotation = await db.quotation.update({
+      where: { id: existing.id },
+      data: {
+        agentId,
+        agentName,
+        agentCode,
+        agencyCode,
+        ...(req.auth?.role === "super_admin" && agencyId ? { agencyId } : {}),
+      },
+      include: { packages: true },
+    });
+    await db.auditLog.create({
+      data: {
+        userId: req.auth?.userId,
+        agencyId: quotation.agencyId,
+        userName: req.auth?.email || "System",
+        action: "Quotation Agent Assigned",
+        module: "Quotations",
+        details: agentName ? `Assigned to ${agentName}` : "Agent cleared",
+        ip: req.ip || "0.0.0.0",
+      },
+    });
+    res.json({ quotation });
   } catch (e) {
     logger.error(e);
     res.status(500).json({ error: "Server error" });

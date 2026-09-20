@@ -266,6 +266,8 @@ export interface Booking {
   paymentStatus: "Paid" | "Pending" | "Partial" | "Refunded";
   paymentMethod?: string;
   agent: string;
+  agentId?: string | null;
+  agentName?: string | null;
   agency: string;
   agentAgencyName?: string;
   agentAgencyLogo?: string | null;

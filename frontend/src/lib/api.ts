@@ -630,6 +630,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  assignQuotationAgent: (id: string, body: { agentId: string | null }) =>
+    apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/assign-agent`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
   assignBookingExecutives: (id: string, body: Record<string, unknown>) =>
     apiFetch<{ booking: ApiBooking }>(`/api/bookings/${id}/assignees`, {
       method: "PATCH",
@@ -1108,6 +1114,7 @@ export interface ApiBooking {
   status: string;
   paymentStatus: string;
   paymentMethod?: string | null;
+  agentId?: string | null;
   agentName: string;
   agencyName: string;
   agentAgencyName?: string;

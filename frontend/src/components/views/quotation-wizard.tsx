@@ -394,7 +394,7 @@ export function QuotationWizardView() {
     id: string;
     name: string;
     agentCode?: string | null;
-    agency?: { code?: string | null } | null;
+    agency?: { code?: string | null; name?: string | null } | null;
   }>>([]);
   const [salesExecutives, setSalesExecutives] = useState<Array<{
     id: string;
@@ -2220,7 +2220,7 @@ export function QuotationWizardView() {
 
                 {canAssignTravelAgent ? (
                 <div className="space-y-1.5 min-w-0">
-                  <Label className="text-sm font-medium">Travel agent</Label>
+                  <Label className="text-sm font-medium">Assign travel agent</Label>
                   {agents.length ? (
                     <Select
                       value={form.agentId || "none"}
@@ -2245,24 +2245,23 @@ export function QuotationWizardView() {
                       }}
                     >
                       <SelectTrigger className="h-10 w-full">
-                        <SelectValue placeholder="Select travel agent" className="truncate" />
+                        <SelectValue placeholder="Select registered agent" className="truncate" />
                       </SelectTrigger>
                       <SelectContent side="bottom" avoidCollisions={false}>
                         <SelectItem value="none">No travel agent</SelectItem>
                         {agents.map((a) => (
                           <SelectItem key={a.id} value={a.id}>
-                            {a.name}{a.agentCode ? ` · ${a.agentCode}` : ""}
+                            {a.name}
+                            {a.agentCode ? ` · ${a.agentCode}` : ""}
+                            {a.agency?.name ? ` · ${a.agency.name}` : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Input
-                      className="h-10 w-full"
-                      placeholder="Travel agent name (optional)"
-                      value={form.agentName}
-                      onChange={(e) => setForm({ ...form, agentName: e.target.value })}
-                    />
+                    <p className="text-xs text-muted-foreground h-10 flex items-center">
+                      No registered travel agents found.
+                    </p>
                   )}
                 </div>
                 ) : null}

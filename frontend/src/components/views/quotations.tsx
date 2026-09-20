@@ -661,6 +661,15 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
   const [decisionComments, setDecisionComments] = useState("");
   const [decisionBusy, setDecisionBusy] = useState(false);
   const [requireFinance, setRequireFinance] = useState(false);
+  const [agents, setAgents] = useState<Array<{
+    id: string;
+    name: string;
+    agentCode?: string | null;
+    agency?: { name?: string | null; code?: string | null } | null;
+  }>>([]);
+  const [assignAgentId, setAssignAgentId] = useState<string>("none");
+  const [assignBusy, setAssignBusy] = useState(false);
+  const canAssignAgent = Boolean(user && !isAgent && ["super_admin", "agency_admin", "branch_manager", "sales_executive"].includes(user.role));
 
   useEffect(() => {
     if (!open || !quote) return;
@@ -668,6 +677,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
     setExtendDate(quote.validTill?.slice(0, 10) || "");
     setConvertStart(toCalendarDate(quote.travelStartDate) || toCalendarDate(quote.travelDates));
     setConvertEnd(toCalendarDate(quote.travelEndDate) || toCalendarDate(quote.returnDate));
+    setAssignAgentId((quote as { agentId?: string }).agentId || "none");
     api.getQuotationFull(quote.id)
       .then((res) => {
         const mapped = mapApiQuotation(res.quotation);
@@ -677,6 +687,7 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
         setExtendDate(mapped.validTill?.slice(0, 10) || "");
         setConvertStart(toCalendarDate(mapped.travelStartDate) || toCalendarDate(mapped.travelDates));
         setConvertEnd(toCalendarDate(mapped.travelEndDate) || toCalendarDate(mapped.returnDate));
+        setAssignAgentId((mapped as { agentId?: string }).agentId || "none");
       })
       .catch(() => undefined);
     api.getQuotationVersions(quote.id)
@@ -686,6 +697,13 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
       .then((res) => setCustomerResponses(res.responses || []))
       .catch(() => setCustomerResponses([]));
   }, [open, quote, isAgent, upsertQuotation]);
+
+  useEffect(() => {
+    if (!open || !canAssignAgent) return;
+    api.getAgents()
+      .then((res) => setAgents(res.agents || []))
+      .catch(() => setAgents([]));
+  }, [open, canAssignAgent]);
 
   if (!quote) return null;
   const display = full || quote;
@@ -903,6 +921,10 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
               <p className="font-medium break-all">{display.createdBy}</p>
             </div>
             <div>
+              <p className="text-muted-foreground">Travel agent</p>
+              <p className="font-medium break-all">{display.agentName || "—"}</p>
+            </div>
+            <div>
               <p className="text-muted-foreground">Items</p>
               <p className="font-medium">{display.items}</p>
             </div>
@@ -925,6 +947,61 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
               </div>
             )}
           </div>
+
+          {canAssignAgent && !["Converted to Booking", "Archived"].includes(display.status) && (
+            <div className="flex flex-wrap items-end gap-2 border rounded-lg p-3">
+              <div className="min-w-[240px] flex-1">
+                <Label className="text-xs">Assign travel agent</Label>
+                <Select value={assignAgentId || "none"} onValueChange={setAssignAgentId}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select registered agent" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No travel agent</SelectItem>
+                    {agents.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                        {a.agentCode ? ` · ${a.agentCode}` : ""}
+                        {a.agency?.name ? ` · ${a.agency.name}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                size="sm"
+                disabled={assignBusy}
+                onClick={async () => {
+                  setAssignBusy(true);
+                  try {
+                    const res = await api.assignQuotationAgent(
+                      display.id,
+                      { agentId: assignAgentId === "none" ? null : assignAgentId },
+                    );
+                    const mapped = mapApiQuotation(res.quotation);
+                    setFull(mapped);
+                    upsertQuotation(mapped);
+                    setAssignAgentId((mapped as { agentId?: string }).agentId || "none");
+                    toast({
+                      title: "Travel agent updated",
+                      description: mapped.agentName || "Agent cleared from quotation",
+                    });
+                  } catch (e) {
+                    toast({
+                      title: "Could not assign agent",
+                      description: e instanceof ApiError ? e.message : "Try again",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setAssignBusy(false);
+                  }
+                }}
+              >
+                {assignBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
+                Save agent
+              </Button>
+            </div>
+          )}
           <QuotePriceBreakdown
             costing={{
               ...costing,
