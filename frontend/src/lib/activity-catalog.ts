@@ -146,24 +146,20 @@ export function isTourActivity(item: { ticketType?: string | null; activityCateg
   return /^tours?$/i.test(key);
 }
 
+/** Line total for an activity / ticket product (accepts catalogue ProductRecord). */
 export function activityLineTotal(
-  item: {
-    adultPrice?: unknown;
-    childPrice?: unknown;
-    ticketType?: unknown;
-    activityCategory?: unknown;
-    [key: string]: unknown;
-  },
+  item: object,
   adults: number,
   children: number,
 ): number {
-  const adult = Number(item.adultPrice || 0);
+  const rec = item as Record<string, unknown>;
+  const adult = Number(rec.adultPrice || 0);
   // KTH Tours are flat vehicle/tour rates (not per-pax tickets).
   if (isTourActivity({
-    ticketType: item.ticketType == null ? null : String(item.ticketType),
-    activityCategory: item.activityCategory == null ? null : String(item.activityCategory),
+    ticketType: rec.ticketType == null ? null : String(rec.ticketType),
+    activityCategory: rec.activityCategory == null ? null : String(rec.activityCategory),
   })) return Math.max(0, adult);
-  const child = Number(item.childPrice ?? item.adultPrice ?? 0);
+  const child = Number(rec.childPrice ?? rec.adultPrice ?? 0);
   return Math.max(0, adult) * Math.max(0, adults) + Math.max(0, child) * Math.max(0, children);
 }
 
