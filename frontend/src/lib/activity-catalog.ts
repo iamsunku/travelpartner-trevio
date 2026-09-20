@@ -147,13 +147,22 @@ export function isTourActivity(item: { ticketType?: string | null; activityCateg
 }
 
 export function activityLineTotal(
-  item: { adultPrice?: number | null; childPrice?: number | null; ticketType?: string | null; activityCategory?: string | null },
+  item: {
+    adultPrice?: unknown;
+    childPrice?: unknown;
+    ticketType?: unknown;
+    activityCategory?: unknown;
+    [key: string]: unknown;
+  },
   adults: number,
   children: number,
 ): number {
   const adult = Number(item.adultPrice || 0);
   // KTH Tours are flat vehicle/tour rates (not per-pax tickets).
-  if (isTourActivity(item)) return Math.max(0, adult);
+  if (isTourActivity({
+    ticketType: item.ticketType == null ? null : String(item.ticketType),
+    activityCategory: item.activityCategory == null ? null : String(item.activityCategory),
+  })) return Math.max(0, adult);
   const child = Number(item.childPrice ?? item.adultPrice ?? 0);
   return Math.max(0, adult) * Math.max(0, adults) + Math.max(0, child) * Math.max(0, children);
 }

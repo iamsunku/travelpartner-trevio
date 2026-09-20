@@ -632,6 +632,17 @@ export interface ProductRecord {
   approvalStatus?: string;
   pendingRateChanges?: Record<string, unknown> | null;
   transferOptions?: Array<{ transferProductId: string; label: string }>;
+  /** Activity / ticket catalogue fields */
+  adultPrice?: number | null;
+  childPrice?: number | null;
+  ticketType?: string | null;
+  activityCategory?: string | null;
+  startTime?: string | null;
+  closingTime?: string | null;
+  duration?: string | null;
+  description?: string | null;
+  privatePrice?: number | null;
+  sharedPrice?: number | null;
   [key: string]: unknown;
 }
 
