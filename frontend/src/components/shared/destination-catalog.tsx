@@ -408,7 +408,6 @@ export function DestinationCatalog({ onSelect }: DestinationCatalogProps) {
                 )}
               </div>
             }
-            bordered={false}
           />
 
           {selected.size > 0 && (
