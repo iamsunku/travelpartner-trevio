@@ -502,7 +502,11 @@ async function freezeLine(
     || source === RATE_SOURCES.MOCK
   ) {
     // Catalogue / manual / API lines are not contracted-rate gates.
-    const manual = { ...line, rateUnresolved: false, rateUnresolvedReason: null };
+    const manual: Record<string, unknown> = {
+      ...line,
+      rateUnresolved: false,
+      rateUnresolvedReason: null,
+    };
     delete manual.contractedCost;
     return manual;
   }
