@@ -3,7 +3,7 @@ import {
   seedTravelDetailsFromPackage,
   seedTravelDetailsFromServices,
   travelDetailsComplete,
-} from "./travel-details";
+} from "./travel-details.js";
 
 describe("travel-details seeding", () => {
   it("seeds flights and hotel from quotation package lines", () => {
