@@ -13,7 +13,6 @@ import {
   isAgentLike,
   latestApprovalStage,
   nextDiscountApprovalAction,
-  nextQuoteNo,
   nightsBetween,
   normalizeStatus,
   notifyQuote,
@@ -22,7 +21,9 @@ import {
   restorePackagesFromSnapshot,
   sanitizeQuotationForRole,
   writeQuoteAudit,
+  runWithUniqueQuoteNo,
 } from "../lib/quotations.js";
+import { cloneQuotationAsDraft, type QuotationCloneSource } from "../lib/quotation-clone.js";
 import { agentQuoteScope, canApproveStage, quoteSendBlockReason } from "../lib/quote-access.js";
 import { freshValidTill, isPastValidTill, quotePastValidityBlockReason, runExpireDueQuotations } from "../lib/quotation-expiry.js";
 import { defaultValidTill, todayYmd, travelDatesBlockReason, travelDatesUpdateBlockReason } from "../lib/travel-dates.js";
@@ -778,7 +779,6 @@ export function mountQuotationRoutes(
       const agentCode = codes.agentCode;
       const agentId = codes.agentId;
       const agentName = codes.agentName;
-      const quoteNo = await nextQuoteNo();
       const tripBasics = resolveTripBasicsFromBody(body);
       const computedNights = nightsBetween(emptyToNull(body.travelStartDate), emptyToNull(body.travelEndDate));
       const nights = tripBasics.nights != null
@@ -792,7 +792,7 @@ export function mountQuotationRoutes(
         const leadRow = await db.lead.findFirst({ where: { id: leadId, ...agencyScope(req) }, select: { id: true } });
         if (!leadRow) leadId = null;
       }
-      const quote = await db.quotation.create({
+      const quote = await runWithUniqueQuoteNo(async (tx, quoteNo) => tx.quotation.create({
         data: {
           quoteNo,
           agencyId: agencyId || null,
@@ -862,7 +862,9 @@ export function mountQuotationRoutes(
           wizardStep: Math.max(1, toInt(body.wizardStep, 1) || 1),
           isInternational: Boolean(body.isInternational),
         },
-      });
+      }));
+
+      const quoteNo = quote.quoteNo;
 
       await applyDiscountApproval({
         quotationId: quote.id,
@@ -1856,111 +1858,156 @@ export function mountQuotationRoutes(
         res.status(404).json({ error: "Not found" });
         return;
       }
-      const quoteNo = await nextQuoteNo();
-      const created = await db.quotation.create({
-        data: {
-          quoteNo,
-          agencyId: existing.agencyId,
-          branchId: ownBranchId(req) ?? existing.branchId,
-          customerName: existing.customerName,
-          service: existing.service,
-          items: existing.items,
-          amount: existing.amount,
-          gst: existing.gst,
-          total: existing.total,
-          status: "Draft",
-          validTill: existing.validTill,
-          quoteDate: todayYmd(),
-          createdById: req.auth?.userId,
-          createdBy: req.auth?.email || existing.createdBy,
-          isInternational: existing.isInternational,
-          contactPerson: existing.contactPerson,
-          contactEmail: existing.contactEmail,
-          contactPhone: existing.contactPhone,
-          destination: existing.destination,
-          country: existing.country,
-          coverImage: existing.coverImage,
-          departureCity: existing.departureCity,
-          travelDates: existing.travelDates,
-          travelStartDate: existing.travelStartDate,
-          travelEndDate: existing.travelEndDate,
-          returnDate: existing.returnDate,
-          nights: existing.nights,
-          days: existing.days,
-          adults: existing.adults,
-          children: existing.children,
-          infants: existing.infants,
-          rooms: existing.rooms,
-          hotelStarPreference: existing.hotelStarPreference,
-          nationality: existing.nationality,
-          landOnly: existing.landOnly,
-          estimatedBookingDate: existing.estimatedBookingDate,
-          tripCities: existing.tripCities ?? [],
-          currency: existing.currency,
-          baseCurrency: existing.baseCurrency,
-          exchangeRate: existing.exchangeRate,
-          packageIncludes: existing.packageIncludes ?? [],
-          packageExcludes: existing.packageExcludes ?? [],
-          termsAndConditions: existing.termsAndConditions,
-          paymentTerms: existing.paymentTerms,
-          cancellationPolicy: existing.cancellationPolicy,
-          refundPolicy: existing.refundPolicy,
-          hotelTerms: existing.hotelTerms,
-          flightTerms: existing.flightTerms,
-          visaTerms: existing.visaTerms,
-          insuranceTerms: existing.insuranceTerms,
-          forceMajeure: existing.forceMajeure,
-          travelDisclaimer: existing.travelDisclaimer,
-          salesExecutiveName: existing.salesExecutiveName,
-          agentName: existing.agentName,
-          lineItems: existing.lineItems ?? [],
-          totalNetCost: existing.totalNetCost,
-          totalSelling: existing.totalSelling,
-          grossProfit: existing.grossProfit,
-          profitMargin: existing.profitMargin,
-          discountType: existing.discountType,
-          discountValue: existing.discountValue,
-          discountAmount: existing.discountAmount,
-          taxRate: existing.taxRate,
-          taxableAmount: existing.taxableAmount,
-          perPersonCost: existing.perPersonCost,
-          specialRequests: existing.specialRequests,
-          approvalStatus: "Draft",
-          currentVersion: 1,
-          wizardStep: 1,
-        },
+      const created = await cloneQuotationAsDraft({
+        source: existing as QuotationCloneSource,
+        actor: { userId: req.auth?.userId, email: req.auth?.email },
+        branchId: ownBranchId(req) ?? existing.branchId,
+        auditAction: "Quote Duplicated",
+        auditDetails: `From ${existing.quoteNo}`,
+        req,
+        wizardStep: 1,
       });
-      for (const pkg of existing.packages) {
-        await db.quotationPackage.create({
-          data: {
-            quotationId: created.id,
-            name: pkg.name,
-            sortOrder: pkg.sortOrder,
-            isSelected: pkg.isSelected,
-            description: pkg.description,
-            hotels: pkg.hotels ?? [],
-            flights: pkg.flights ?? [],
-            transfers: pkg.transfers ?? [],
-            activities: pkg.activities ?? [],
-            meals: pkg.meals ?? [],
-            itinerary: pkg.itinerary ?? [],
-            visa: pkg.visa ?? undefined,
-            insurance: pkg.insurance ?? undefined,
-            addOns: pkg.addOns ?? [],
-            inclusions: pkg.inclusions ?? [],
-            exclusions: pkg.exclusions ?? [],
-            totalNetCost: pkg.totalNetCost,
-            totalSelling: pkg.totalSelling,
-            grossProfit: pkg.grossProfit,
-            gst: pkg.gst,
-            total: pkg.total,
-            perPersonCost: pkg.perPersonCost,
-          },
-        });
+      res.status(201).json({ quotation: created });
+    } catch (e) {
+      logger.error(e);
+      res.status(500).json({ error: "Server error" });
+    }
+  });
+
+  app.post("/api/quotations/:id/save-as-new", requireAuth, requirePermission("quotations"), async (req: AuthRequest, res: Response) => {
+    try {
+      if (req.auth?.role === "customer") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
       }
-      await writeQuoteAudit({ req, agencyId: created.agencyId, quotationId: created.id, action: "Quote Duplicated", details: `From ${existing.quoteNo}` });
-      const full = await db.quotation.findUnique({ where: { id: created.id }, include: QUOTE_INCLUDE });
-      res.status(201).json({ quotation: full });
+      const existing = await loadQuoteForActor(req, agencyScope, branchScope);
+      if (!existing) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+
+      let body = (req.body || {}) as Record<string, unknown>;
+      const agentActor = req.auth?.role === "travel_agent";
+      if (agentActor) {
+        body = stripAgentPricingOverrides(body);
+        body.agentId = req.auth?.userId;
+        delete body.internalNotes;
+        delete body.trevioMarkupType;
+        delete body.trevioMarkupValue;
+        delete body.discountType;
+        delete body.discountValue;
+      }
+
+      const dateBlock = travelDatesBlockReason({
+        travelStartDate: body.travelStartDate ?? existing.travelStartDate,
+        travelEndDate: body.travelEndDate ?? existing.travelEndDate,
+        returnDate: body.returnDate ?? existing.returnDate,
+        travelDates: body.travelDates ?? existing.travelDates,
+        validTill: body.validTill || body.quoteExpiryDate || existing.validTill,
+        estimatedBookingDate: body.estimatedBookingDate ?? existing.estimatedBookingDate,
+      });
+      if (dateBlock) {
+        res.status(400).json({ error: dateBlock });
+        return;
+      }
+
+      // Prefer wizard payload packages when present so unsaved edits are preserved.
+      const hasOverrides = body && Object.keys(body).length > 0;
+      const created = await cloneQuotationAsDraft({
+        source: existing as QuotationCloneSource,
+        actor: { userId: req.auth?.userId, email: req.auth?.email },
+        branchId: ownBranchId(req) ?? existing.branchId,
+        overrides: hasOverrides ? body : null,
+        auditAction: "Quotation Saved as New",
+        auditDetails: `From ${existing.quoteNo} (${existing.id})`,
+        req,
+        wizardStep: body.wizardStep != null ? Math.max(1, toInt(body.wizardStep, 1) || 1) : 1,
+      });
+
+      // Independent rate freeze for the new quotation — do not inherit source freeze
+      // validity. Conversion must re-validate against current catalogue rates.
+      try {
+        const pkgs = (created.packages || []) as Array<Record<string, unknown> & { id: string; isSelected?: boolean }>;
+        let selectedLayers: ReturnType<typeof layersFromPackage> | null = null;
+        let selectedUnresolved = false;
+        let selectedTaxRuleId: string | null = null;
+        let selectedTaxRate = 0;
+        const rateScope = catalogRateScope(req, agencyScope);
+        for (const pkg of pkgs) {
+          const frozen = await freezePackageLines(pkg, {
+            travelDate: created.travelStartDate,
+            travelEndDate: created.travelEndDate,
+            existingPackages: [],
+            scope: rateScope,
+          });
+          const priced = await priceFrozenPackage(frozen, {
+            currency: created.currency,
+            nights: created.nights,
+            adults: created.adults,
+            children: created.children,
+            infants: created.infants,
+            trevioMarkupType: created.trevioMarkupType,
+            trevioMarkupValue: created.trevioMarkupValue,
+            agentMarkupType: created.agentMarkupType,
+            agentMarkup: created.agentMarkup,
+            discountType: created.discountType,
+            discountValue: created.discountValue,
+            travelStartDate: created.travelStartDate,
+            exchangeRate: created.exchangeRate,
+            exchangeRateExplicit: created.exchangeRateExplicit,
+            scope: rateScope,
+          });
+          const layers = layersFromPackage(priced.priced);
+          if (pkg.isSelected || !selectedLayers) {
+            selectedLayers = layers;
+            selectedUnresolved = Boolean(priced.priced.unresolved);
+            selectedTaxRuleId = priced.taxRuleId;
+            selectedTaxRate = priced.taxRate;
+          }
+          await db.quotationPackage.update({
+            where: { id: pkg.id },
+            data: packageWriteData(priced.frozen, layers),
+          });
+        }
+        if (selectedLayers) {
+          await db.quotation.update({
+            where: { id: created.id },
+            data: {
+              amount: selectedLayers.amount,
+              gst: selectedLayers.gst,
+              total: selectedLayers.total,
+              totalSelling: selectedLayers.totalSelling,
+              totalNetCost: selectedLayers.totalNetCost,
+              grossProfit: selectedLayers.grossProfit,
+              profitMargin: selectedLayers.profitMargin,
+              discountAmount: selectedLayers.discountAmount,
+              taxableAmount: selectedLayers.taxableAmount,
+              perPersonCost: selectedLayers.perPersonCost,
+              taxRate: selectedTaxRate,
+              taxRuleId: selectedTaxRuleId,
+              pricingStatus: selectedUnresolved ? "UNRESOLVED" : "OK",
+            },
+          });
+        }
+      } catch (freezeErr) {
+        logger.error(freezeErr);
+        await db.quotation.update({
+          where: { id: created.id },
+          data: { pricingStatus: "UNRESOLVED" },
+        }).catch(() => undefined);
+      }
+
+      const refreshed = await db.quotation.findUnique({
+        where: { id: created.id },
+        include: QUOTE_INCLUDE,
+      });
+
+      res.status(201).json({
+        quotation: sanitizeQuotationForRole(
+          (refreshed || created) as unknown as Record<string, unknown>,
+          req.auth?.role,
+        ),
+      });
     } catch (e) {
       logger.error(e);
       res.status(500).json({ error: "Server error" });

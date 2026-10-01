@@ -238,6 +238,8 @@ export interface BookingServiceItem {
   sellingPrice: number;
   driverDetails?: { driverName?: string; vehicleNumber?: string; driverPhone?: string } | null;
   notes?: string | null;
+  /** Structured hotel/activity line fields from quotation conversion. */
+  lineDetails?: Record<string, unknown> | null;
 }
 
 export interface ChangeRequestItem {
@@ -268,7 +270,11 @@ export interface Booking {
   agent: string;
   agentId?: string | null;
   agentName?: string | null;
+  agentCode?: string | null;
   agency: string;
+  agencyId?: string | null;
+  agencyCode?: string | null;
+  branchId?: string | null;
   agentAgencyName?: string;
   agentAgencyLogo?: string | null;
   createdAt: string;

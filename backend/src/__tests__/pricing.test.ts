@@ -126,6 +126,37 @@ describe("phase 3 pricing", () => {
     expect(manual.contractedCost).toBe(9000);
   });
 
+  it("catalog and preset add-ons with explicit prices are not unresolved", () => {
+    const catalog = pricePackage({
+      addOns: [{
+        source: "CATALOG",
+        name: "SIM Card",
+        costPrice: 300,
+        sellingPrice: 500,
+        quantity: 1,
+      }],
+    }, { ...ctx, trevioMarkup: { type: "Fixed", value: 0 }, agentMarkup: { type: "Fixed", value: 0 } });
+    expect(catalog.unresolved).toBe(false);
+    expect(catalog.contractedCost).toBe(300);
+
+    const preset = pricePackage({
+      addOns: [{
+        source: "PRESET",
+        name: "Travel insurance top-up",
+        costPrice: 800,
+        sellingPrice: 1200,
+      }],
+    }, { ...ctx, trevioMarkup: { type: "Fixed", value: 0 }, agentMarkup: { type: "Fixed", value: 0 } });
+    expect(preset.unresolved).toBe(false);
+    expect(preset.contractedCost).toBe(800);
+
+    const missing = pricePackage({
+      addOns: [{ source: "CATALOG", name: "No price" }],
+    }, { ...ctx, trevioMarkup: { type: "Fixed", value: 0 }, agentMarkup: { type: "Fixed", value: 0 } });
+    expect(missing.unresolved).toBe(true);
+    expect(missing.contractedCost).toBe(0);
+  });
+
   it("K-L. 15% Trevio markup then 10% agent markup", () => {
     const priced = pricePackage({
       hotels: [{ source: "CONTRACTED_PRODUCT", productType: "HOTEL", rooms: 1, nights: 1, rateSnapshot: { contractedCost: 10000, currency: "INR", rateUnit: "PER_ROOM_NIGHT", frozen: true } }],

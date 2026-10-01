@@ -338,7 +338,16 @@ function BookingDetailDialog({
                   <SummaryCell label="Amount Paid" value={formatFullINR(booking.amountPaid ?? 0)} />
                   <SummaryCell label="Balance" value={formatFullINR(booking.balanceAmount ?? booking.amount)} />
                   <SummaryCell label="Sales" value={booking.salesExecutiveName || booking.agent} />
-                  <SummaryCell label="Travel agent" value={booking.agentName || booking.agent || "—"} />
+                  <SummaryCell
+                    label="Travel agent"
+                    value={
+                      [
+                        booking.agentName || booking.agent || "—",
+                        booking.agentCode ? `(${booking.agentCode})` : "",
+                        booking.agencyCode ? `· ${booking.agencyCode}` : "",
+                      ].filter(Boolean).join(" ")
+                    }
+                  />
                   <SummaryCell label="Operations" value={booking.operationsExecutiveName || "—"} />
                 </div>
                 {completeness && (
@@ -1029,7 +1038,41 @@ function BookingDetailDialog({
                           <p className="font-semibold">{svc.serviceType}: {svc.title}</p>
                           <p className="text-muted-foreground">Status: {svc.status}</p>
                           <p className="text-muted-foreground">Quoted cost: {formatFullINR(quotedCost)}</p>
+                          {svc.sellingPrice != null && (
+                            <p className="text-muted-foreground">Selling: {formatFullINR(svc.sellingPrice)}</p>
+                          )}
                           {svc.supplierName && <p className="text-muted-foreground">Supplier: {svc.supplierName}</p>}
+                          {(() => {
+                            const d = (svc.lineDetails || null) as Record<string, unknown> | null;
+                            if (!d) return null;
+                            if (d.kind === "hotel" || svc.serviceType === "Hotel") {
+                              const bits = [
+                                d.roomType ? `Room: ${d.roomType}` : "",
+                                d.mealPlan ? `Meal: ${d.mealPlan}` : "",
+                                d.checkIn && d.checkOut ? `${d.checkIn} → ${d.checkOut}` : "",
+                                d.rooms != null ? `${d.rooms} room(s)` : "",
+                                d.city ? String(d.city) : "",
+                                d.rateId ? `Rate ${d.rateId}` : "",
+                              ].filter(Boolean);
+                              return bits.length ? (
+                                <p className="text-muted-foreground mt-1">{bits.join(" · ")}</p>
+                              ) : null;
+                            }
+                            if (d.kind === "activity" || svc.serviceType === "Attraction") {
+                              const bits = [
+                                d.date ? `Date ${d.date}` : "",
+                                d.city ? String(d.city) : "",
+                                d.ticketType ? String(d.ticketType) : "",
+                                d.adults != null ? `${d.adults} adult(s)` : "",
+                                d.children != null && Number(d.children) > 0 ? `${d.children} child(ren)` : "",
+                                d.rateId ? `Rate ${d.rateId}` : "",
+                              ].filter(Boolean);
+                              return bits.length ? (
+                                <p className="text-muted-foreground mt-1">{bits.join(" · ")}</p>
+                              ) : null;
+                            }
+                            return null;
+                          })()}
                         </div>
                         <div className="flex gap-1 flex-wrap">
                           {svc.status === "Confirmed" && <Badge variant="secondary">Confirmed</Badge>}

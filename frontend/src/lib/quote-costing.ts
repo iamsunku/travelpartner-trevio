@@ -27,6 +27,73 @@ export function lineTotals(line: CostLine) {
   return { cost, selling, profit: selling - cost };
 }
 
+/**
+ * Display-only component sell amount for itinerary/day cards.
+ * Does NOT change liveCosting / package totals.
+ * Prefers persisted sellingPrice (already a line/stay total in quotation JSON).
+ * Returns null when there is nothing meaningful to show (no inventing ₹0).
+ */
+export function displayComponentSellingPrice(
+  line: Record<string, unknown> | null | undefined,
+  kind?: "hotel" | "flight" | "transfer" | "activity" | "meal" | "addon",
+): number | null {
+  if (!line || typeof line !== "object") return null;
+  if (line.enabled === false) return null;
+  if (line.complimentary === true || line.included === true || line.includedInPlan === true) return null;
+
+  const sell = Number(line.sellingPrice);
+  if (Number.isFinite(sell) && sell > 0) return Math.round(sell);
+
+  if (kind === "flight") {
+    const fare = Number(line.fare);
+    if (Number.isFinite(fare) && fare > 0) return Math.round(fare);
+  }
+
+  // Activity only: when sellingPrice is absent, mirror existing rate×pax behavior for display.
+  if (kind === "activity" && (line.adultRate != null || line.childRate != null)) {
+    const fromRates =
+      Number(line.adultRate || 0) * Number(line.adults || 0)
+      + Number(line.childRate || 0) * Number(line.children || 0);
+    if (fromRates > 0) return Math.round(fromRates);
+  }
+
+  return null;
+}
+
+/** Hotel stay sellingPrice is a full-stay total — show on check-in night only. */
+export function isHotelStayPriceNight(hotel: Record<string, unknown>, nightDate: string): boolean {
+  const cin = String(hotel.checkIn || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cin)) return true;
+  return nightDate === cin;
+}
+
+/** Resolve a package JSON row by itinerary line id / sourceKey fragment. */
+export function findPackageLineById(
+  rows: Record<string, unknown>[] | undefined,
+  rawId: string,
+  kindPrefix?: string,
+): Record<string, unknown> | null {
+  if (!rows?.length) return null;
+  let id = String(rawId || "").trim();
+  if (!id) return null;
+  if (kindPrefix && id.startsWith(`${kindPrefix}:`)) id = id.slice(kindPrefix.length + 1);
+  // hotel:lineId:checkin | hotel:lineId:stay:YYYY-MM-DD
+  if (kindPrefix === "hotel") {
+    const m = id.match(/^([^:]+)(?::|$)/);
+    if (m) id = m[1];
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const keys = [
+      String(row.lineId || ""),
+      String(row.id || ""),
+      `${kindPrefix || "line"}-${i}`,
+    ].filter(Boolean);
+    if (keys.includes(id)) return row;
+  }
+  return null;
+}
+
 export function sumServiceLines(lines: unknown): { cost: number; selling: number } {
   if (!Array.isArray(lines)) return { cost: 0, selling: 0 };
   return lines.reduce(
@@ -113,7 +180,7 @@ export function calcPackageCosting(pkg: {
     { key: "meals", label: "Meals", netCost: meals.cost, sellingPrice: meals.selling },
     { key: "visa", label: "Visa", netCost: visa.cost, sellingPrice: visa.selling },
     { key: "insurance", label: "Insurance", netCost: insurance.cost, sellingPrice: insurance.selling },
-    { key: "addOns", label: "Misc / Add-ons", netCost: addOns.cost, sellingPrice: addOns.selling },
+    { key: "addOns", label: "Add-ons", netCost: addOns.cost, sellingPrice: addOns.selling },
   ];
 
   let totalNetCost = services.reduce((s, row) => s + row.netCost, 0);

@@ -247,4 +247,72 @@ describe("MODULE 04A — itinerary sync", () => {
     expect(items.some((i) => i.activityName === "Old manual")).toBe(true);
     expect(items.some((i) => i.autoFromFlight)).toBe(true);
   });
+
+  it("dated addOns do not create MISC itinerary items", () => {
+    const windows = buildTripCityStayWindows([{ city: "Phuket", nights: 2, order: 1 }], start);
+    const days = syncPackageItinerary([], {
+      stayWindows: windows,
+      travelStartDate: start,
+      addOns: [{
+        lineId: "ao1",
+        name: "SIM Card",
+        date: "2026-10-18",
+        city: "Phuket",
+        enabled: true,
+        sellingPrice: 500,
+        costPrice: 300,
+        source: "CATALOG",
+      }],
+    });
+    const allItems = days.flatMap((d) => (d.items as Record<string, unknown>[]) || []);
+    expect(allItems.some((i) => i.autoFromMisc === true)).toBe(false);
+    expect(allItems.some((i) => String(i.itemType).toUpperCase() === "MISC")).toBe(false);
+    expect(allItems.some((i) => String(i.activityName).includes("SIM"))).toBe(false);
+  });
+
+  it("strips legacy autoFromMisc on sync but preserves manual MISC and addOns data", () => {
+    const windows = buildTripCityStayWindows([{ city: "Phuket", nights: 1, order: 1 }], start);
+    const existing = [{
+      day: 1,
+      title: "Day 1",
+      city: "Phuket",
+      date: "2026-10-18",
+      items: [
+        {
+          itemType: "MISC",
+          activityName: "Legacy SIM",
+          autoFromMisc: true,
+          miscLineId: "ao-old",
+          sourceKey: "misc:ao-old",
+        },
+        {
+          itemType: "MISC",
+          activityName: "Hand-written note",
+          description: "Genuine manual misc",
+        },
+        {
+          itemType: "MANUAL",
+          activityName: "Client welcome",
+        },
+      ],
+    }];
+    const addOns = [{
+      lineId: "ao-old",
+      name: "Legacy SIM",
+      date: "2026-10-18",
+      city: "Phuket",
+      enabled: true,
+      sellingPrice: 500,
+    }];
+    const next = syncPackageItinerary(existing, {
+      stayWindows: windows,
+      travelStartDate: start,
+      addOns,
+    });
+    const items = (next[0].items as Record<string, unknown>[]) || [];
+    expect(items.some((i) => i.autoFromMisc === true)).toBe(false);
+    expect(items.some((i) => i.activityName === "Legacy SIM")).toBe(false);
+    expect(items.some((i) => i.activityName === "Hand-written note")).toBe(true);
+    expect(items.some((i) => i.activityName === "Client welcome")).toBe(true);
+  });
 });

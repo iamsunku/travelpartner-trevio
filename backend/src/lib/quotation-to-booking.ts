@@ -104,6 +104,100 @@ function lineNote(line: Record<string, unknown>, extra: Array<string | number | 
   return [...extra, line.remarks ? String(line.remarks) : ""].map((x) => (x == null ? "" : String(x))).filter(Boolean).join(" · ") || undefined;
 }
 
+function optionalStr(value: unknown): string | undefined {
+  if (value == null || value === "") return undefined;
+  return String(value);
+}
+
+function optionalNum(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function rateIdentityFromLine(line: Record<string, unknown>) {
+  const snap = line.rateSnapshot && typeof line.rateSnapshot === "object"
+    ? (line.rateSnapshot as Record<string, unknown>)
+    : null;
+  const rateId = optionalStr(line.rateId) || optionalStr(snap?.rateId);
+  return {
+    rateId,
+    rateSnapshot: snap || undefined,
+    rateValidFrom: optionalStr(line.rateValidFrom) || optionalStr(snap?.validFrom),
+    rateValidTo: optionalStr(line.rateValidTo) || optionalStr(snap?.validTo),
+    rateSelectedAt: optionalStr(line.rateSelectedAt) || optionalStr(snap?.selectedAt),
+    rateTravelDate: optionalStr(line.rateTravelDate) || optionalStr(snap?.travelDate),
+    productId: optionalStr(line.productId) || optionalStr(snap?.productId),
+    productType: optionalStr(line.productType) || optionalStr(snap?.productType),
+    source: optionalStr(line.source),
+  };
+}
+
+/** Structured hotel fields for BookingService.lineDetails (notes remain human-readable only). */
+export function hotelLineDetails(h: Record<string, unknown>): Prisma.InputJsonValue {
+  const rate = rateIdentityFromLine(h);
+  const selfBooked = h.selfBooked === true || String(h.source || "") === "MANUAL";
+  return {
+    kind: "hotel",
+    lineId: optionalStr(h.lineId) ?? null,
+    hotelName: String(h.hotelName || h.name || "Hotel"),
+    city: optionalStr(h.tripCity || h.city) ?? null,
+    destination: optionalStr(h.destination) ?? null,
+    roomType: optionalStr(h.roomType) ?? null,
+    mealPlan: optionalStr(h.mealPlan) ?? null,
+    checkIn: optionalStr(h.checkIn) ?? null,
+    checkOut: optionalStr(h.checkOut) ?? null,
+    nights: optionalNum(h.nights) ?? null,
+    rooms: optionalNum(h.rooms) ?? null,
+    adults: optionalNum(h.adults) ?? null,
+    children: optionalNum(h.children) ?? null,
+    starCategory: optionalStr(h.starCategory) ?? null,
+    address: optionalStr(h.address) ?? null,
+    selfBooked,
+    costPrice: optionalNum(h.costPrice ?? h.contractedCost) ?? null,
+    sellingPrice: optionalNum(h.sellingPrice) ?? null,
+    rateId: rate.rateId ?? null,
+    rateSnapshot: (rate.rateSnapshot as Prisma.InputJsonValue) ?? null,
+    rateValidFrom: rate.rateValidFrom ?? null,
+    rateValidTo: rate.rateValidTo ?? null,
+    rateSelectedAt: rate.rateSelectedAt ?? null,
+    rateTravelDate: rate.rateTravelDate ?? null,
+    productId: rate.productId ?? null,
+    productType: rate.productType ?? null,
+    source: rate.source ?? null,
+  };
+}
+
+/** Structured activity fields for BookingService.lineDetails. */
+export function activityLineDetails(a: Record<string, unknown>): Prisma.InputJsonValue {
+  const rate = rateIdentityFromLine(a);
+  return {
+    kind: "activity",
+    lineId: optionalStr(a.lineId) ?? null,
+    activityName: String(a.activityName || a.name || "Activity"),
+    city: optionalStr(a.city || a.tripCity) ?? null,
+    destination: optionalStr(a.destination) ?? null,
+    date: optionalStr(a.date) ?? null,
+    ticketType: optionalStr(a.ticketType) ?? null,
+    duration: optionalStr(a.duration) ?? null,
+    timeSlot: optionalStr(a.timeSlot || a.startTime) ?? null,
+    adults: optionalNum(a.adults) ?? null,
+    children: optionalNum(a.children) ?? null,
+    quantity: optionalNum(a.quantity ?? a.pax) ?? null,
+    costPrice: optionalNum(a.costPrice ?? a.contractedCost) ?? null,
+    sellingPrice: optionalNum(a.sellingPrice) ?? null,
+    rateId: rate.rateId ?? null,
+    rateSnapshot: (rate.rateSnapshot as Prisma.InputJsonValue) ?? null,
+    rateValidFrom: rate.rateValidFrom ?? null,
+    rateValidTo: rate.rateValidTo ?? null,
+    rateSelectedAt: rate.rateSelectedAt ?? null,
+    rateTravelDate: rate.rateTravelDate ?? null,
+    productId: rate.productId ?? null,
+    productType: rate.productType ?? null,
+    source: rate.source ?? null,
+  };
+}
+
 async function copySelectedPackageToBookingTx(
   tx: Tx,
   bookingId: string,
@@ -119,7 +213,13 @@ async function copySelectedPackageToBookingTx(
     addOns: unknown;
   },
 ) {
-  async function svc(serviceType: string, title: string, line: Record<string, unknown>, notes?: string) {
+  async function svc(
+    serviceType: string,
+    title: string,
+    line: Record<string, unknown>,
+    notes?: string,
+    lineDetails?: Prisma.InputJsonValue,
+  ) {
     await tx.bookingService.create({
       data: {
         bookingId,
@@ -134,6 +234,7 @@ async function copySelectedPackageToBookingTx(
         voucherUrl: line.voucherUrl ? String(line.voucherUrl) : undefined,
         ticketUrl: line.ticketUrl ? String(line.ticketUrl) : undefined,
         notes,
+        ...(lineDetails != null ? { lineDetails } : {}),
       },
     });
   }
@@ -150,7 +251,7 @@ async function copySelectedPackageToBookingTx(
       h.checkIn && h.checkOut ? `${h.checkIn} → ${h.checkOut}` : "",
       h.nights != null && h.nights !== "" ? `${h.nights} nights` : "",
       h.rooms ? `${h.rooms} rooms` : "",
-    ]));
+    ]), hotelLineDetails(h));
   }
   for (const f of jsonArr(selected.flights)) {
     const paxBits = [
@@ -201,7 +302,7 @@ async function copySelectedPackageToBookingTx(
       a.voucher ? `Voucher ${a.voucher}` : "",
       a.source ? `Source: ${a.source}` : "",
       a.description ? String(a.description) : "",
-    ]));
+    ]), activityLineDetails(a));
   }
   for (const m of jsonArr(selected.meals)) {
     const paxBits = [
@@ -538,10 +639,12 @@ export async function convertQuotationToBooking(input: ConvertQuotationInput): P
           commission,
           status: "Awaiting Passenger Details",
           paymentStatus: "Pending",
-          agentId: quote.agentId || input.userId,
+          agentId: quote.agentId || input.userId || undefined,
           agentName: quote.agentName || salesName,
+          agentCode: quote.agentCode || undefined,
           agencyId: input.ownAgencyId ?? quote.agencyId ?? undefined,
           agencyName: "",
+          agencyCode: quote.agencyCode || undefined,
           branchId: input.ownBranchId ?? quote.branchId ?? undefined,
           quotationId: quote.id,
           quoteNo: quote.quoteNo,

@@ -1,34 +1,52 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, FileDown, Loader2, Send } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, CopyPlus, FileDown, Loader2, Pencil, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function QuoteWizardFooter({
   busy,
+  isSaved = false,
   onBack,
   onSaveDraft,
+  onSaveAsNew,
+  onEdit,
   onNext,
   nextLabel,
   showNext = true,
   onCreatePdf,
   onSend,
+  onBook,
+  bookEnabled = true,
+  bookDisabledReason,
   meta,
   error,
   className,
 }: {
   busy?: boolean;
+  /** True when a persisted quotation ID exists — unlocks post-save actions. */
+  isSaved?: boolean;
   onBack?: () => void;
   onSaveDraft?: () => void | Promise<void>;
+  /** Create a new quotation from the current wizard state and switch the wizard to it. */
+  onSaveAsNew?: () => void | Promise<void>;
+  /** Return to editing services (post-save). */
+  onEdit?: () => void | Promise<void>;
   onNext?: () => void;
   nextLabel?: string;
   showNext?: boolean;
   onCreatePdf?: () => void | Promise<void>;
   onSend?: () => void | Promise<void>;
+  onBook?: () => void | Promise<void>;
+  /** When false, Book Now stays visible but blocked (e.g. not Accepted). */
+  bookEnabled?: boolean;
+  bookDisabledReason?: string;
   meta?: React.ReactNode;
   error?: string | null;
   className?: string;
 }) {
+  const savePrimary = Boolean(onSaveDraft) && !isSaved;
+
   return (
     <div
       className={cn(
@@ -55,20 +73,47 @@ export function QuoteWizardFooter({
             {onSaveDraft ? (
               <Button
                 type="button"
-                variant="outline"
+                variant={savePrimary ? "default" : "outline"}
                 size="sm"
                 disabled={busy}
                 className="h-8"
                 onClick={() => void onSaveDraft()}
               >
                 {busy ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : null}
-                Save draft
+                Save Proposal
+              </Button>
+            ) : null}
+            {isSaved && onSaveAsNew ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                className="h-8"
+                onClick={() => void onSaveAsNew()}
+                title="Create a new quotation from the current edits"
+              >
+                <CopyPlus className="w-3.5 h-3.5 mr-1.5" />
+                Save as New
+              </Button>
+            ) : null}
+            {isSaved && onEdit ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy}
+                className="h-8"
+                onClick={() => void onEdit()}
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                Edit
               </Button>
             ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            {onCreatePdf ? (
+            {isSaved && onCreatePdf ? (
               <Button
                 type="button"
                 variant="outline"
@@ -78,10 +123,10 @@ export function QuoteWizardFooter({
                 onClick={() => void onCreatePdf()}
               >
                 <FileDown className="w-3.5 h-3.5 mr-1.5" />
-                PDF
+                Create PDF
               </Button>
             ) : null}
-            {onSend ? (
+            {isSaved && onSend ? (
               <Button
                 type="button"
                 variant="outline"
@@ -91,11 +136,36 @@ export function QuoteWizardFooter({
                 onClick={() => void onSend()}
               >
                 <Send className="w-3.5 h-3.5 mr-1.5" />
-                Send quotation
+                Send Quotation
+              </Button>
+            ) : null}
+            {isSaved && onBook ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={busy || bookEnabled === false}
+                className="h-8"
+                title={
+                  bookEnabled === false
+                    ? (bookDisabledReason || "Quotation must be Accepted before booking")
+                    : undefined
+                }
+                onClick={() => void onBook()}
+              >
+                <BookOpen className="w-3.5 h-3.5 mr-1.5" />
+                Book Now
               </Button>
             ) : null}
             {showNext && onNext ? (
-              <Button type="button" size="sm" disabled={busy} className="h-8" onClick={onNext}>
+              <Button
+                type="button"
+                variant={savePrimary ? "outline" : "default"}
+                size="sm"
+                disabled={busy}
+                className="h-8"
+                onClick={onNext}
+              >
                 {nextLabel || "Next"}
                 <ChevronRight className="w-3.5 h-3.5 ml-1" />
               </Button>

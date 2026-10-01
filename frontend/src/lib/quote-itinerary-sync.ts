@@ -390,32 +390,6 @@ function mealItem(row: Record<string, unknown>, index: number): Record<string, u
   };
 }
 
-function miscItem(row: Record<string, unknown>, index: number): Record<string, unknown> {
-  const id = lineKey(row, "misc", index);
-  const name = String(row.name || row.title || "Add-on").trim();
-  const category = String(row.category || row.addOnType || "").trim();
-  const qty = Number(row.quantity ?? 1) || 1;
-  return {
-    itemType: "MISC",
-    activityName: name,
-    description: [
-      category,
-      row.description,
-      qty > 1 ? `Qty ${qty}` : "",
-    ].map((v) => String(v || "").trim()).filter(Boolean).join(" · "),
-    pickupTime: "",
-    duration: "",
-    vehicle: "",
-    guide: "",
-    voucher: String(row.voucher || ""),
-    remarks: String(row.remarks || ""),
-    category,
-    autoFromMisc: true,
-    miscLineId: id,
-    sourceKey: `misc:${id}`,
-  };
-}
-
 function stripAllAutoItems(days: Record<string, unknown>[]): {
   days: Record<string, unknown>[];
   preserved: Map<string, Record<string, unknown>>;
@@ -632,19 +606,9 @@ export function syncPackageItinerary(
     day.items = items;
   });
 
-  // Miscellaneous / add-ons
-  (input.addOns || []).forEach((a, i) => {
-    if (!a || typeof a !== "object") return;
-    if (a.enabled === false) return;
-    const date = String(a.date || "").trim();
-    if (!date) return;
-    const day = ensureDay(days, date, String(a.city || a.tripCity || "").trim());
-    const raw = miscItem(a, i);
-    const item = mergePreserved(raw, preserved.get(String(raw.sourceKey)));
-    const items = asItems(day);
-    if (!items.some((it) => String(it.sourceKey) === String(item.sourceKey))) items.push(item);
-    day.items = items;
-  });
+  // Add-ons remain on packages[].addOns only — do not project dated add-ons into
+  // itinerary as MISC. stripAllAutoItems already drops legacy autoFromMisc rows;
+  // manual MISC (no autoFromMisc) is preserved in `kept`.
 
   return finalizeDays(days);
 }
@@ -684,6 +648,11 @@ export function itemTypeLabel(type: unknown): string {
   if (t === "TRANSFER") return "Transfer";
   if (t === "ACTIVITY") return "Activity";
   if (t === "MEAL") return "Meal";
-  if (t === "MISC") return "Misc";
+  if (t === "MISC") return "Add-on";
   return "Manual";
+}
+
+/** True for legacy auto-projected add-on itinerary lines (safe to strip/hide). */
+export function isLegacyAutoMiscItem(item: Record<string, unknown>): boolean {
+  return item.autoFromMisc === true;
 }

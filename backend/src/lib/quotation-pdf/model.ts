@@ -83,6 +83,16 @@ export type QuotationPdfPackage = {
     sellingPrice?: number;
     currency?: string;
   }>;
+  addOns: Array<{
+    name?: string;
+    description?: string;
+    date?: string;
+    city?: string;
+    quantity?: number;
+    unitPrice?: number;
+    sellingPrice?: number;
+    currency?: string;
+  }>;
   visa?: {
     enabled: boolean;
     visaType?: string;
@@ -411,6 +421,27 @@ function mapMeals(rows: Record<string, unknown>[]) {
     });
 }
 
+function mapAddOns(rows: Record<string, unknown>[]) {
+  return rows
+    .filter((a) => a.enabled !== false)
+    .map((a) => {
+      const selling = Number(a.sellingPrice);
+      const qty = Math.max(1, Math.round(Number(a.quantity ?? 1) || 1));
+      const sellOut = Number.isFinite(selling) && selling > 0 ? Math.round(selling) : undefined;
+      const unitPrice = sellOut != null && qty > 0 ? Math.round(sellOut / qty) : undefined;
+      return {
+        name: str(a.name || a.title) || undefined,
+        description: str(a.description) || undefined,
+        date: str(a.date) || undefined,
+        city: str(a.city || a.tripCity) || undefined,
+        quantity: qty,
+        unitPrice,
+        sellingPrice: sellOut,
+        currency: str(a.currency) || undefined,
+      };
+    });
+}
+
 function mapItinerary(rows: Record<string, unknown>[]) {
   return rows.map((day, i) => ({
     day: (typeof day.day === "string" || typeof day.day === "number" ? day.day : i + 1) as string | number,
@@ -426,12 +457,15 @@ function mapItinerary(rows: Record<string, unknown>[]) {
       bestTimeToVisit: str(p.bestTimeToVisit) || undefined,
       famousFor: str(p.famousFor) || undefined,
     })).filter((p) => p.name),
-    items: asArr(day.items).map((it) => ({
-      activityName: str(it.activityName) || undefined,
-      description: str(it.description) || undefined,
-      itemType: str(it.itemType) || undefined,
-      pickupTime: str(it.pickupTime) || undefined,
-    })),
+    items: asArr(day.items)
+      // Hide legacy auto-projected add-on lines; keep genuine manual MISC.
+      .filter((it) => it.autoFromMisc !== true)
+      .map((it) => ({
+        activityName: str(it.activityName) || undefined,
+        description: str(it.description) || undefined,
+        itemType: str(it.itemType) || undefined,
+        pickupTime: str(it.pickupTime) || undefined,
+      })),
   }));
 }
 
@@ -486,6 +520,7 @@ function mapPackage(pkg: Record<string, unknown>, quote: Record<string, unknown>
   const transfers = mapTransfers(asArr(pkg.transfers));
   const activities = mapActivities(asArr(pkg.activities));
   const meals = mapMeals(asArr(pkg.meals));
+  const addOns = mapAddOns(asArr(pkg.addOns));
   const hotelSell = asArr(pkg.hotels).reduce((s, h) => {
     const n = Number(h.sellingPrice);
     return s + (Number.isFinite(n) && n > 0 ? Math.round(n) : 0);
@@ -498,6 +533,7 @@ function mapPackage(pkg: Record<string, unknown>, quote: Record<string, unknown>
     transfers,
     activities,
     meals,
+    addOns,
     visa: mapVisa(pkg.visa),
     insurance: mapInsurance(pkg.insurance),
     itinerary: mapItinerary(asArr(pkg.itinerary)),
@@ -509,6 +545,7 @@ function mapPackage(pkg: Record<string, unknown>, quote: Record<string, unknown>
       { label: "Cars & Transfers", amount: sumSelling(transfers) },
       { label: "Activities", amount: sumSelling(activities) },
       { label: "Meals", amount: sumSelling(meals) },
+      { label: "Add-ons", amount: sumSelling(addOns) },
     ].filter((r) => r.amount > 0),
     pricing: packagePricing(pkg, quote),
   };

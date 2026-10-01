@@ -589,6 +589,28 @@ export async function renderQuotationPdf(model: QuotationPdfModel): Promise<{ bu
       }
     }
 
+    if (pkg.addOns.length) {
+      ensure(doc, 50, onNewPage);
+      kicker(doc, "ADD-ONS");
+      heading(doc, "Add-ons");
+      for (const addon of pkg.addOns) {
+        ensure(doc, 32, onNewPage);
+        body(doc, [
+          addon.name,
+          addon.description,
+          addon.date,
+          addon.city,
+          addon.quantity != null && addon.quantity > 1 ? `Qty ${addon.quantity}` : "",
+          addon.unitPrice != null
+            ? `Unit ${addon.currency || "INR"} ${Math.round(addon.unitPrice).toLocaleString("en-IN")}`
+            : "",
+          addon.sellingPrice != null
+            ? `Total ${addon.currency || "INR"} ${Math.round(addon.sellingPrice).toLocaleString("en-IN")}`
+            : "",
+        ].filter(Boolean).join(" · "), { width: contentWidth() });
+      }
+    }
+
     if (pkg.visa?.enabled) {
       ensure(doc, 80, onNewPage);
       kicker(doc, "Visa");

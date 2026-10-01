@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { db } from "./db.js";
-import { QUOTE_INCLUDE, sanitizeQuotationForRole, isAgentLike } from "./quotations.js";
+import { QUOTE_INCLUDE, sanitizeQuotationForRole, isAgentLike, type QuotationDbClient } from "./quotations.js";
 
 /** Fields that define a meaningful customer/commercial revision. */
 const QUOTE_MATERIAL_KEYS = [
@@ -119,8 +119,8 @@ export function summarizeVersionForList(row: {
   };
 }
 
-async function nextVersionNumber(quotationId: string): Promise<number> {
-  const last = await db.quotationVersion.findFirst({
+async function nextVersionNumber(quotationId: string, client: QuotationDbClient = db): Promise<number> {
+  const last = await client.quotationVersion.findFirst({
     where: { quotationId },
     orderBy: { versionNumber: "desc" },
     select: { versionNumber: true },
@@ -136,16 +136,18 @@ export async function createQuotationVersion(opts: {
   reason?: string;
   /** If provided, use this payload instead of reloading. */
   full?: Record<string, unknown>;
+  client?: QuotationDbClient;
 }) {
-  const full = opts.full || (await db.quotation.findUnique({
+  const client = opts.client ?? db;
+  const full = opts.full || (await client.quotation.findUnique({
     where: { id: opts.quotationId },
     include: QUOTE_INCLUDE,
   })) as Record<string, unknown> | null;
   if (!full) return null;
 
-  const versionNumber = await nextVersionNumber(opts.quotationId);
+  const versionNumber = await nextVersionNumber(opts.quotationId, client);
   const snapshot = buildVersionSnapshot(full);
-  const version = await db.quotationVersion.create({
+  const version = await client.quotationVersion.create({
     data: {
       quotationId: opts.quotationId,
       versionNumber,
@@ -156,7 +158,7 @@ export async function createQuotationVersion(opts: {
       createdById: opts.createdById,
     },
   });
-  await db.quotation.update({
+  await client.quotation.update({
     where: { id: opts.quotationId },
     data: { currentVersion: versionNumber },
   });
@@ -169,8 +171,12 @@ export async function ensureInitialQuotationVersion(opts: {
   createdByName: string;
   createdById?: string;
   changeSummary?: string;
+  client?: QuotationDbClient;
+  /** Optional preloaded quotation+packages to avoid a second read inside a transaction. */
+  full?: Record<string, unknown>;
 }) {
-  const count = await db.quotationVersion.count({ where: { quotationId: opts.quotationId } });
+  const client = opts.client ?? db;
+  const count = await client.quotationVersion.count({ where: { quotationId: opts.quotationId } });
   if (count > 0) return null;
   return createQuotationVersion({
     quotationId: opts.quotationId,
@@ -178,6 +184,8 @@ export async function ensureInitialQuotationVersion(opts: {
     createdById: opts.createdById,
     changeSummary: opts.changeSummary || "Version 1",
     reason: "initial",
+    client,
+    full: opts.full,
   });
 }
 

@@ -699,6 +699,13 @@ export const api = {
   duplicateQuotation: (id: string) =>
     apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/duplicate`, { method: "POST", body: "{}" }),
 
+  /** Clone quotation as a new Draft, optionally applying current wizard payload overrides. */
+  saveQuotationAsNew: (id: string, body?: Record<string, unknown>) =>
+    apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/save-as-new`, {
+      method: "POST",
+      body: JSON.stringify(body || {}),
+    }),
+
   archiveQuotation: (id: string) =>
     apiFetch<{ quotation: ApiQuotation }>(`/api/quotations/${id}/archive`, { method: "POST", body: "{}" }),
 
@@ -1096,7 +1103,11 @@ export interface ApiBooking {
   paymentMethod?: string | null;
   agentId?: string | null;
   agentName: string;
+  agentCode?: string | null;
+  agencyId?: string | null;
   agencyName: string;
+  agencyCode?: string | null;
+  branchId?: string | null;
   agentAgencyName?: string;
   agentAgencyLogo?: string | null;
   agent?: { name?: string; agency?: { name?: string; logo?: string | null } | null } | null;

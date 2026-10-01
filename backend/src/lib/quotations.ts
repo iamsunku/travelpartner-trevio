@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { db } from "./db.js";
 import type { AuthRequest } from "../middleware/auth.js";
 import { filterDocumentsForRole } from "./documents.js";
@@ -58,10 +59,31 @@ export function normalizeStatus(status: string): string {
   return status;
 }
 
-export async function nextQuoteNo(): Promise<string> {
+/** Prisma client or interactive transaction client. */
+export type QuotationDbClient = Prisma.TransactionClient | typeof db;
+
+export function isPrismaUniqueConflict(err: unknown, targetIncludes?: string): boolean {
+  if (!err || typeof err !== "object") return false;
+  const code = (err as { code?: string }).code;
+  if (code !== "P2002") return false;
+  if (!targetIncludes) return true;
+  const target = (err as { meta?: { target?: string | string[] } }).meta?.target;
+  if (!target) return true;
+  const joined = Array.isArray(target) ? target.join(",") : String(target);
+  return joined.toLowerCase().includes(targetIncludes.toLowerCase());
+}
+
+/** Postgres/Prisma serialization failure under concurrent Serializable transactions. */
+export function isPrismaSerializationFailure(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const code = (err as { code?: string }).code;
+  return code === "P2034";
+}
+
+export async function nextQuoteNo(client: QuotationDbClient = db): Promise<string> {
   const year = new Date().getFullYear();
   const prefix = `TG-QT-${year}-`;
-  const latest = await db.quotation.findFirst({
+  const latest = await client.quotation.findFirst({
     where: { quoteNo: { startsWith: prefix } },
     orderBy: { quoteNo: "desc" },
     select: { quoteNo: true },
@@ -72,10 +94,43 @@ export async function nextQuoteNo(): Promise<string> {
     if (!Number.isNaN(n)) seq = n + 1;
   } else {
     // migrate from QT-YYYY-NNN style count
-    const count = await db.quotation.count();
+    const count = await client.quotation.count();
     seq = count + 1;
   }
   return `${prefix}${String(seq).padStart(6, "0")}`;
+}
+
+/**
+ * Allocate a unique quoteNo and run work in one DB transaction.
+ * Retries on quoteNo unique collisions (P2002) and serialization failures (P2034).
+ */
+export async function runWithUniqueQuoteNo<T>(
+  work: (tx: Prisma.TransactionClient, quoteNo: string) => Promise<T>,
+  opts?: { maxAttempts?: number },
+): Promise<T> {
+  const maxAttempts = Math.max(1, opts?.maxAttempts ?? 8);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await db.$transaction(
+        async (tx) => {
+          const quoteNo = await nextQuoteNo(tx);
+          return work(tx, quoteNo);
+        },
+        {
+          maxWait: 10_000,
+          timeout: 30_000,
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      );
+    } catch (err) {
+      lastError = err;
+      const retryable =
+        isPrismaUniqueConflict(err, "quoteNo") || isPrismaSerializationFailure(err);
+      if (!retryable || attempt === maxAttempts - 1) throw err;
+    }
+  }
+  throw lastError;
 }
 
 export type CostLine = {
@@ -364,8 +419,11 @@ export async function writeQuoteAudit(opts: {
   previousValue?: unknown;
   updatedValue?: unknown;
   details?: string;
+  /** Optional transaction client so audit participates in a parent transaction. */
+  client?: QuotationDbClient;
 }) {
-  await db.auditLog.create({
+  const client = opts.client ?? db;
+  await client.auditLog.create({
     data: {
       userId: opts.req?.auth?.userId,
       agencyId: opts.agencyId ?? opts.req?.auth?.agencyId ?? undefined,

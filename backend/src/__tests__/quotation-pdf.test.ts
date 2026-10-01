@@ -174,6 +174,62 @@ describe("phase 5 quotation pdf", () => {
     expect(model.packages[0].hotels[0].hotelName).toBe("Ubud Garden");
     expect(model.packages[1].hotels[0].hotelName).toBe("Seminyak Suites");
   });
+
+  it("dedicated ADD-ONS section uses packages.addOns and hides legacy auto MISC itinerary lines", () => {
+    const quote = {
+      ...baseQuote,
+      packages: [{
+        ...baseQuote.packages[0],
+        addOns: [{
+          name: "Local SIM",
+          description: "7-day data pack",
+          date: "2026-10-02",
+          city: "Ubud",
+          quantity: 2,
+          sellingPrice: 900,
+          currency: "INR",
+          costPrice: 400,
+          supplier: "SecretSupplier",
+        }],
+        itinerary: [{
+          day: 1,
+          title: "Arrival",
+          city: "Ubud",
+          items: [
+            { activityName: "Check-in", description: "Hotel check-in" },
+            {
+              activityName: "Local SIM",
+              itemType: "MISC",
+              autoFromMisc: true,
+              miscLineId: "ao1",
+            },
+            {
+              activityName: "Hand note",
+              itemType: "MISC",
+              description: "manual",
+            },
+          ],
+        }],
+      }],
+    };
+    const model = buildQuotationPdfModel({ quote, mode: "customer", audience: "customer" });
+    const pkg = model.packages[0];
+    expect(pkg.addOns).toHaveLength(1);
+    expect(pkg.addOns[0].name).toBe("Local SIM");
+    expect(pkg.addOns[0].description).toContain("7-day");
+    expect(pkg.addOns[0].date).toBe("2026-10-02");
+    expect(pkg.addOns[0].city).toBe("Ubud");
+    expect(pkg.addOns[0].quantity).toBe(2);
+    expect(pkg.addOns[0].sellingPrice).toBe(900);
+    expect(pkg.addOns[0].unitPrice).toBe(450);
+    expect(pkg.serviceTotals.some((r) => r.label === "Add-ons" && r.amount === 900)).toBe(true);
+    const itineraryNames = pkg.itinerary[0].items.map((i) => i.activityName);
+    expect(itineraryNames).toContain("Check-in");
+    expect(itineraryNames).toContain("Hand note");
+    expect(itineraryNames).not.toContain("Local SIM");
+    expect(assertCustomerSafeModel(model)).toEqual([]);
+    expect(JSON.stringify(model)).not.toMatch(/SecretSupplier|costPrice/i);
+  });
 });
 
 afterAll(async () => {

@@ -301,6 +301,7 @@ export function QuotationWizardView() {
   const setWizardQuotationId = useAppStore((s) => s.setWizardQuotationId);
   const closeQuotationWizard = useAppStore((s) => s.closeQuotationWizard);
   const setQuotePrefill = useAppStore((s) => s.setQuotePrefill);
+  const setView = useAppStore((s) => s.setView);
   const onClose = () => {
     setQuotePrefill(null);
     closeQuotationWizard();
@@ -319,7 +320,7 @@ export function QuotationWizardView() {
   /** 0 Personal → 1 Travel → 2 Services → 3 Itinerary → 4 Pricing → 5 Preview */
   const [flowStep, setFlowStep] = useState(FLOW_PERSONAL);
   const [servicePicker, setServicePicker] = useState<{
-    service: "Hotel" | "Flights" | "Transfers" | "Activities" | "Meals" | "Miscellaneous";
+    service: "Hotel" | "Flights" | "Transfers" | "Activities" | "Meals" | "Add-ons";
     dayNumber: number;
     date: string;
     city: string;
@@ -328,11 +329,16 @@ export function QuotationWizardView() {
   const [busy, setBusy] = useState(false);
   const tripPersistChain = useRef(Promise.resolve<Quotation | null>(null));
   const tripPersistEpoch = useRef(0);
+  /** Serializes all persist / save-as-new calls; prevents double first-create. */
+  const persistChain = useRef(Promise.resolve<Quotation | null>(null));
+  const knownIdRef = useRef<string | null>(quotationId || null);
   const [requireFinanceApproval, setRequireFinanceApproval] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [id, setId] = useState<string | null>(quotationId || null);
   const [leadId, setLeadId] = useState<string | null>(null);
   const [quoteNo, setQuoteNo] = useState("");
+  const [quotationStatus, setQuotationStatus] = useState<string>("Draft");
+  const [pricingStatus, setPricingStatus] = useState<string>("OK");
   const [form, setForm] = useState({
     customerName: "",
     contactPerson: "",
@@ -418,6 +424,19 @@ export function QuotationWizardView() {
   const canPickSalesExecutive = Boolean(user && !isTravelAgentUser);
 
   useEffect(() => {
+    knownIdRef.current = id;
+  }, [id]);
+
+  /** Unsaved quotes cannot sit on Pricing/Preview (blocks action bypass via stale step). */
+  useEffect(() => {
+    if (!open) return;
+    if ((id || knownIdRef.current) ) return;
+    if (wizardPhase === "trip" && flowStep >= FLOW_PRICING) {
+      setFlowStep(FLOW_ITINERARY);
+    }
+  }, [open, id, wizardPhase, flowStep]);
+
+  useEffect(() => {
     if (!open) return;
     preloadWorldCities();
     if (quotationId) {
@@ -426,8 +445,11 @@ export function QuotationWizardView() {
         .then((res) => {
           const q = res.quotation as unknown as Quotation & Record<string, unknown>;
           setId(q.id);
+          knownIdRef.current = q.id;
           setLeadId((q.leadId as string) || null);
           setQuoteNo(q.quoteNo);
+          setQuotationStatus(String(q.status || "Draft"));
+          setPricingStatus(String((q as { pricingStatus?: string }).pricingStatus || "OK"));
           setStep(0);
           setWizardPhase("trip");
           setFlowStep(FLOW_SERVICES);
@@ -509,7 +531,10 @@ export function QuotationWizardView() {
         .finally(() => setBusy(false));
     } else {
       setId(null);
+      knownIdRef.current = null;
       setQuoteNo("");
+      setQuotationStatus("Draft");
+      setPricingStatus("OK");
       setStep(0);
       setWizardPhase("basics");
       setFlowStep(FLOW_PERSONAL);
@@ -946,7 +971,8 @@ export function QuotationWizardView() {
     const quiet = Boolean(opts?.quiet);
     if (!quiet) setBusy(true);
     setSaveError(null);
-    try {
+
+    const run = async (): Promise<Quotation | null> => {
       const normalizedTripCities = citiesSrc
         .filter((c) => c.city.trim() && Number(c.nights) > 0)
         .map((c, i) => ({
@@ -955,6 +981,7 @@ export function QuotationWizardView() {
           order: i + 1,
           destinationId: c.destinationId || null,
         }));
+      const currentId = knownIdRef.current;
       const payload = {
         ...formSrc,
         adults: Number(formSrc.adults) || 2,
@@ -980,7 +1007,7 @@ export function QuotationWizardView() {
           ? normalizedTripCities.map((c) => c.city).join(" · ")
           : formSrc.destination,
         wizardStep: nextStep + 1,
-        packages: !id && !packagesSrc.some((p) =>
+        packages: !currentId && !packagesSrc.some((p) =>
           [p.hotels, p.flights, p.transfers, p.activities, p.meals].some((rows) => Array.isArray(rows) && rows.length > 0)
         )
           ? undefined
@@ -995,16 +1022,19 @@ export function QuotationWizardView() {
         advanceStatus: opts?.advanceStatus ?? !quiet,
       };
       let quotation: Quotation;
-      if (!id) {
+      if (!currentId) {
         const created = await api.createQuotationWizard(payload);
         quotation = mapApiQuotation(created.quotation);
+        knownIdRef.current = quotation.id;
         setId(quotation.id);
         setQuoteNo(quotation.quoteNo);
         setWizardQuotationId(quotation.id);
       } else {
-        const saved = await api.saveQuotationWizard(id, payload);
+        const saved = await api.saveQuotationWizard(currentId, payload);
         quotation = mapApiQuotation(saved.quotation);
       }
+      setQuotationStatus(String(quotation.status || "Draft"));
+      setPricingStatus(String(quotation.pricingStatus || "OK"));
       setForm((f) => ({
         ...f,
         agentCode: quotation.agentCode || f.agentCode,
@@ -1060,6 +1090,12 @@ export function QuotationWizardView() {
         });
       }
       return quotation;
+    };
+
+    const queued = persistChain.current.then(run, run);
+    persistChain.current = queued.then(() => null, () => null);
+    try {
+      return await queued;
     } catch (e) {
       const message = e instanceof ApiError ? e.message : "Could not save quotation";
       setSaveError(message);
@@ -1074,6 +1110,120 @@ export function QuotationWizardView() {
     }
   }
 
+  /** Fork current wizard edits into a new quotation; switch wizard onto the new ID. */
+  async function saveAsNew() {
+    const formSrc = form;
+    const citiesSrc = tripCities;
+    const packagesSrc = packages;
+    const hasTripPlan = citiesSrc.some((c) => c.city.trim() && Number(c.nights) > 0);
+    if (!formSrc.customerName.trim() || (!formSrc.destination.trim() && !hasTripPlan)) {
+      toast({ title: "Customer and destination (or trip cities) are required", variant: "destructive" });
+      return null;
+    }
+    const dateBlock = travelDatesBlockReason({
+      travelStartDate: formSrc.travelStartDate,
+      travelEndDate: formSrc.travelEndDate,
+      validTill: formSrc.validTill,
+      estimatedBookingDate: formSrc.estimatedBookingDate,
+    });
+    if (dateBlock) {
+      toast({ title: dateBlock, variant: "destructive" });
+      return null;
+    }
+
+    setBusy(true);
+    setSaveError(null);
+
+    const run = async (): Promise<Quotation | null> => {
+      const normalizedTripCities = citiesSrc
+        .filter((c) => c.city.trim() && Number(c.nights) > 0)
+        .map((c, i) => ({
+          city: c.city.trim(),
+          nights: Math.max(1, Number(c.nights) || 1),
+          order: i + 1,
+          destinationId: c.destinationId || null,
+        }));
+      const payload = {
+        ...formSrc,
+        adults: Number(formSrc.adults) || 2,
+        children: Number(formSrc.children) || 0,
+        infants: Number(formSrc.infants) || 0,
+        specialRequests: [
+          formSrc.passportNumber?.trim() ? `Passport: ${formSrc.passportNumber.trim()}` : "",
+          formSrc.specialRequests?.trim() || "",
+        ].filter(Boolean).join("\n") || null,
+        passportNumber: undefined,
+        rooms: Math.max(1, Number(formSrc.rooms) || 1),
+        hotelStarPreference: formSrc.hotelStarPreference || undefined,
+        nationality: formSrc.nationality || undefined,
+        landOnly: Boolean(formSrc.landOnly),
+        estimatedBookingDate: formSrc.estimatedBookingDate || null,
+        departureCity: formSrc.departureCity || undefined,
+        tripCities: normalizedTripCities,
+        nights: nights ?? undefined,
+        days: tripDays ?? undefined,
+        travelDates: formSrc.travelStartDate,
+        destination: normalizedTripCities.length
+          ? normalizedTripCities.map((c) => c.city).join(" · ")
+          : formSrc.destination,
+        wizardStep: step + 1,
+        packages: packagesSrc.map((p, i) => ({ ...p, sortOrder: i })),
+        service: formSrc.service || (formSrc.isInternational ? "International" : "Holiday"),
+        leadId: leadId || undefined,
+        budget: formSrc.budget || undefined,
+        agentCode: formSrc.agentCode || user?.agentCode || undefined,
+        agencyCode: formSrc.agencyCode || user?.agencyCode || undefined,
+        agentId: formSrc.agentId || user?.id || undefined,
+        advanceStatus: false,
+      };
+
+      let quotation: Quotation;
+      const sourceId = knownIdRef.current;
+      if (!sourceId) {
+        const created = await api.createQuotationWizard(payload);
+        quotation = mapApiQuotation(created.quotation);
+      } else {
+        const created = await api.saveQuotationAsNew(sourceId, payload);
+        quotation = mapApiQuotation(created.quotation);
+      }
+
+      knownIdRef.current = quotation.id;
+      setId(quotation.id);
+      setQuoteNo(quotation.quoteNo);
+      setWizardQuotationId(quotation.id);
+      setQuotationStatus(String(quotation.status || "Draft"));
+      setPricingStatus(String(quotation.pricingStatus || "OK"));
+      if (quotation.packages?.length) setPackages(quotation.packages);
+      setForm((f) => ({
+        ...f,
+        agentCode: quotation.agentCode || f.agentCode,
+        agencyCode: quotation.agencyCode || f.agencyCode,
+        agentId: quotation.agentId || f.agentId,
+        agentName: quotation.agentName || f.agentName,
+      }));
+      upsertQuotation(quotation);
+      onSaved(quotation);
+      toast({
+        title: "Saved as new quotation",
+        description: quotation.quoteNo ? `Now editing ${quotation.quoteNo}` : undefined,
+      });
+      return quotation;
+    };
+
+    const queued = persistChain.current.then(run, run);
+    persistChain.current = queued.then(() => null, () => null);
+    try {
+      return await queued;
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : "Could not save as new";
+      setSaveError(message);
+      toast({ title: "Save as New failed", description: message, variant: "destructive" });
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function buildSelectedPackagePatch(patch: Partial<QuotationPackage>): QuotationPackage[] {
     const idx = packages.findIndex((p) => p.isSelected);
     const i = idx >= 0 ? idx : 0;
@@ -1084,7 +1234,7 @@ export function QuotationWizardView() {
    *  New quotes (no id yet) stay local until the user clicks Save draft / Send. */
   async function persistTripPackage(nextPackages: QuotationPackage[]) {
     setPackages(nextPackages);
-    if (!id) return null;
+    if (!knownIdRef.current) return null;
     const epoch = ++tripPersistEpoch.current;
     const run = tripPersistChain.current.then(() =>
       persist(step, {
@@ -1127,7 +1277,16 @@ export function QuotationWizardView() {
       return;
     }
     if (wizardPhase === "trip") {
-      setFlowStep((s) => Math.min(s + 1, FLOW_PREVIEW));
+      const nextFlow = Math.min(flowStep + 1, FLOW_PREVIEW);
+      if (nextFlow >= FLOW_PRICING && !(id || knownIdRef.current)) {
+        toast({
+          title: "Save Proposal first",
+          description: "Pricing and Preview unlock after the quotation is saved.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setFlowStep(nextFlow);
       return;
     }
     let target = Math.min(step + 1, STEPS.length - 1);
@@ -1154,19 +1313,25 @@ export function QuotationWizardView() {
   }
 
   async function createTripPdf() {
+    if (!id && !knownIdRef.current) {
+      toast({
+        title: "Save Proposal first",
+        description: "Create PDF is available after the quotation is saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!form.customerName.trim() || (!form.destination.trim() && !tripCities.some((c) => c.city.trim()))) {
       toast({ title: "Customer and destination are required for the client PDF", variant: "destructive" });
       return;
     }
     try {
-      const preview = buildReviewQuote();
-      const ok = await downloadQuotationPdf(preview, undefined, { mode: id ? "preview" : "customer" });
+      const preview = buildReviewQuote(id || knownIdRef.current);
+      const ok = await downloadQuotationPdf(preview, undefined, { mode: "preview" });
       toast({
         title: ok ? "Client PDF ready" : "PDF failed",
         description: ok
-          ? id
-            ? "Branded quotation PDF downloaded."
-            : "Brochure opened. Save the quote to generate a stored server PDF."
+          ? "Branded quotation PDF downloaded."
           : "Could not open the PDF.",
         variant: ok ? "default" : "destructive",
       });
@@ -1180,6 +1345,14 @@ export function QuotationWizardView() {
   }
 
   async function sendTripQuotation() {
+    if (!id && !knownIdRef.current) {
+      toast({
+        title: "Save Proposal first",
+        description: "Send Quotation is available after the quotation is saved.",
+        variant: "destructive",
+      });
+      return;
+    }
     const quote = await ensureSavedForDelivery();
     if (!quote) return;
     if (quote.contactEmail?.trim()) {
@@ -1209,6 +1382,81 @@ export function QuotationWizardView() {
       description: "Update trip details to add email or phone before sending.",
       variant: "destructive",
     });
+  }
+
+  async function bookTripNow() {
+    const quoteId = id || knownIdRef.current;
+    if (!quoteId) {
+      toast({
+        title: "Save Proposal first",
+        description: "Book Now is available after the quotation is saved.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      // Authoritative status from server — do not rely only on local wizard state.
+      const full = await api.getQuotationFull(quoteId);
+      const q = full.quotation as { status?: string; pricingStatus?: string };
+      const status = String(q.status || "");
+      const rates = String(q.pricingStatus || "OK");
+      setQuotationStatus(status || "Draft");
+      setPricingStatus(rates);
+      if (status !== "Accepted") {
+        const statusLabel = status || "unknown";
+        toast({
+          title: "Book Now unavailable",
+          description:
+            statusLabel === "Draft" || statusLabel === "In Progress"
+              ? `Quotation must be Accepted before booking. Current status: ${statusLabel}. Save, send, and accept first.`
+              : statusLabel === "Sent" || statusLabel === "Sent to Agent" || statusLabel === "Customer Reviewing"
+                ? `Quotation is ${statusLabel}. Wait for customer acceptance before booking.`
+                : statusLabel === "Rejected" || statusLabel === "Expired"
+                  ? `Cannot book a ${statusLabel} quotation. Renew or revise and re-accept first.`
+                  : `Quotation must be Accepted before booking. Current status: ${statusLabel}.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      if (rates === "UNRESOLVED") {
+        toast({
+          title: "Book Now unavailable",
+          description: "Contracted rates are unresolved. Fix hotel/activity rates before booking.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const res = await api.proceedToBooking(quoteId, {
+        travelStartDate: form.travelStartDate || undefined,
+        travelEndDate: form.travelEndDate || undefined,
+      });
+      const booking = (await import("@/lib/api-mappers")).mapApiBooking(res.booking);
+      upsertQuotation({
+        ...buildReviewQuote(quoteId),
+        id: quoteId,
+        quoteNo: quoteNo || undefined,
+        status: "Converted to Booking",
+        convertedBookingId: booking.id,
+      } as Quotation);
+      setQuotationStatus("Converted to Booking");
+      toast({
+        title: res.idempotent ? "Booking already exists" : "Booking created",
+        description: `${booking.bookingRef} — open Bookings to continue.`,
+      });
+      closeQuotationWizard();
+      setView("bookings");
+    } catch (e) {
+      toast({
+        title: "Book Now unavailable",
+        description: e instanceof ApiError
+          ? e.message
+          : "Quotation must be accepted before booking. Save, send, and accept first.",
+        variant: "destructive",
+      });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function back() {
@@ -1273,9 +1521,17 @@ export function QuotationWizardView() {
       toast({ title: "Customer and destination (or trip cities) are required", variant: "destructive" });
       return null;
     }
+    if (!id && !knownIdRef.current) {
+      toast({
+        title: "Save Proposal first",
+        description: "Email and WhatsApp need a saved quotation.",
+        variant: "destructive",
+      });
+      return null;
+    }
     const saved = await persist(step);
     if (!saved?.id) {
-      toast({ title: "Save the draft first", description: "Email and WhatsApp need a saved quotation.", variant: "destructive" });
+      toast({ title: "Save the proposal first", description: "Email and WhatsApp need a saved quotation.", variant: "destructive" });
       return null;
     }
     return { ...buildReviewQuote(saved.id), ...saved, id: saved.id, quoteNo: saved.quoteNo || quoteNo || "DRAFT" };
@@ -1716,7 +1972,9 @@ export function QuotationWizardView() {
 
   function appendTripMisc(item: MiscCatalogItem) {
     const city = (servicePicker?.city || "").trim();
-    const date = servicePicker?.date || form.travelStartDate || "";
+    // Quotation-level Add-ons: date is optional metadata only — never force travel start
+    // (dated add-ons must not become itinerary day items).
+    const date = (servicePicker?.date || "").trim();
     const adults = Math.max(1, form.adults || 1);
     const children = Math.max(0, form.children || 0);
     const selling = miscLineSelling(item, adults, children);
@@ -1841,7 +2099,7 @@ export function QuotationWizardView() {
 
   if (wizardPhase === "trip") {
     const pickerCity = servicePicker?.city || "";
-    const isMiscPicker = servicePicker?.service === "Miscellaneous";
+    const isMiscPicker = servicePicker?.service === "Add-ons";
     const isFlightPicker = servicePicker?.service === "Flights";
     const pickerKind =
       servicePicker?.service === "Transfers"
@@ -1862,8 +2120,8 @@ export function QuotationWizardView() {
           ? `Add Activity in ${pickerCity || "your trip"}`
           : servicePicker?.service === "Meals"
             ? "Add Meal to your Package"
-            : servicePicker?.service === "Miscellaneous"
-              ? "Add Miscellaneous to your Package"
+            : servicePicker?.service === "Add-ons"
+              ? "Add Add-on to your Quotation"
               : servicePicker?.service === "Flights"
                 ? "Add Flight to your Package"
                 : `Add Hotel in ${pickerCity || "your trip"}`;
@@ -1878,6 +2136,10 @@ export function QuotationWizardView() {
           itinerary={selected?.itinerary}
           hotels={(selected?.hotels || []) as Record<string, unknown>[]}
           flights={(selected?.flights || []) as Record<string, unknown>[]}
+          transfers={(selected?.transfers || []) as Record<string, unknown>[]}
+          activities={(selected?.activities || []) as Record<string, unknown>[]}
+          meals={(selected?.meals || []) as Record<string, unknown>[]}
+          addOns={(selected?.addOns || []) as Record<string, unknown>[]}
           busy={busy}
           stage={
             flowStep === FLOW_ITINERARY
@@ -1983,7 +2245,17 @@ export function QuotationWizardView() {
             rows[idx] = { ...rows[idx], sellingPrice, ...(key === "flights" ? { fare: sellingPrice } : {}) };
             void persistTripPackage(buildSelectedPackagePatch({ [key]: rows }));
           }}
-          onFlowStepChange={setFlowStep}
+          onFlowStepChange={(nextFlow) => {
+            if (nextFlow >= FLOW_PRICING && !(id || knownIdRef.current)) {
+              toast({
+                title: "Save Proposal first",
+                description: "Pricing and Preview unlock after the quotation is saved.",
+                variant: "destructive",
+              });
+              return;
+            }
+            setFlowStep(nextFlow);
+          }}
           onBack={() => void backFlow()}
           onUpdateTripDetails={() => {
             setStep(0);
@@ -1998,6 +2270,16 @@ export function QuotationWizardView() {
           onCreatePdf={createTripPdf}
           onSendQuotation={sendTripQuotation}
           onSaveDraft={() => void persist(step)}
+          onSaveAsNew={() => void saveAsNew()}
+          onBookNow={() => void bookTripNow()}
+          bookEnabled={quotationStatus === "Accepted" && pricingStatus !== "UNRESOLVED"}
+          bookDisabledReason={
+            quotationStatus !== "Accepted"
+              ? `Quotation must be Accepted before booking (current: ${quotationStatus}).`
+              : pricingStatus === "UNRESOLVED"
+                ? "Contracted rates are unresolved. Fix rates before booking."
+                : undefined
+          }
           onUpdateItineraryDay={(date, patch) => {
             const days = [...((selected?.itinerary || []) as Array<Record<string, unknown>>)];
             const idx = days.findIndex((d) => String(d.date || "") === date);
@@ -2106,6 +2388,31 @@ export function QuotationWizardView() {
             });
             void persistTripPackage(buildSelectedPackagePatch({ addOns, itinerary }));
           }}
+          onUpdateAddOn={(lineId, patch) => {
+            const prev = (selected?.addOns || []) as Record<string, unknown>[];
+            const addOns = prev.map((a, i) => {
+              const key = String(a.lineId || a.productId || `misc-${i}`);
+              if (key !== lineId) return a;
+              return {
+                ...a,
+                ...(patch.name != null ? { name: patch.name } : {}),
+                ...(patch.description != null ? { description: patch.description } : {}),
+                ...(patch.date != null ? { date: patch.date } : {}),
+                ...(patch.city != null ? { city: patch.city } : {}),
+                ...(patch.quantity != null ? { quantity: patch.quantity } : {}),
+                ...(patch.sellingPrice != null ? { sellingPrice: patch.sellingPrice } : {}),
+                ...(patch.remarks != null ? { remarks: patch.remarks } : {}),
+              };
+            });
+            const itinerary = syncItineraryFromPackage(selected?.itinerary, {
+              ...selected,
+              addOns,
+            }, {
+              stayWindows,
+              travelStartDate: form.travelStartDate,
+            });
+            void persistTripPackage(buildSelectedPackagePatch({ addOns, itinerary }));
+          }}
           onUpdateHotel={(lineId, patch) => {
             const prev = (selected?.hotels || []) as Record<string, unknown>[];
             const hotels = prev.map((h) => {
@@ -2174,7 +2481,7 @@ export function QuotationWizardView() {
               || target.service === "Transfers"
               || target.service === "Activities"
               || target.service === "Meals"
-              || target.service === "Miscellaneous"
+              || target.service === "Add-ons"
             ) {
               setServicePicker({
                 service: target.service,
@@ -2751,6 +3058,7 @@ export function QuotationWizardView() {
                           })
                           : packages;
                         if (packagesChanged) setPackages(nextPackages);
+                        if (!knownIdRef.current) return;
                         const epoch = ++tripPersistEpoch.current;
                         const run = tripPersistChain.current.then(() =>
                           persist(step, {
@@ -4177,21 +4485,28 @@ export function QuotationWizardView() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={busy}
+                  disabled={busy || !id}
+                  title={id ? undefined : "Save Proposal first"}
                   onClick={async () => {
+                    if (!id) {
+                      toast({
+                        title: "Save Proposal first",
+                        description: "Create PDF is available after the quotation is saved.",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
                     if (!form.customerName.trim() || !form.destination.trim()) {
                       toast({ title: "Customer and destination are required for the client PDF", variant: "destructive" });
                       return;
                     }
                     try {
-                      const preview = buildReviewQuote();
-                      const ok = await downloadQuotationPdf(preview, undefined, { mode: id ? "preview" : "customer" });
+                      const preview = buildReviewQuote(id);
+                      const ok = await downloadQuotationPdf(preview, undefined, { mode: "preview" });
                       toast({
                         title: ok ? "Client PDF ready" : "PDF failed",
                         description: ok
-                          ? id
-                            ? "Branded quotation PDF downloaded."
-                            : "Brochure opened. Save the quote to generate a stored server PDF."
+                          ? "Branded quotation PDF downloaded."
                           : "Could not open the PDF.",
                         variant: ok ? "default" : "destructive",
                       });
@@ -4209,13 +4524,18 @@ export function QuotationWizardView() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={busy}
+                  disabled={busy || !id}
+                  title={id ? undefined : "Save Proposal first"}
                   onClick={async () => {
+                    if (!id) {
+                      toast({ title: "Save Proposal first", variant: "destructive" });
+                      return;
+                    }
                     if (!form.customerName.trim() || !form.destination.trim()) {
                       toast({ title: "Customer and destination are required", variant: "destructive" });
                       return;
                     }
-                    const ok = await downloadClientQuotationBrochure(buildReviewQuote());
+                    const ok = await downloadClientQuotationBrochure(buildReviewQuote(id));
                     toast({
                       title: ok ? "Print dialog opened" : "Print failed",
                       description: ok ? "Use your browser print dialog to print or save as PDF." : "Pop-up may be blocked.",
@@ -4228,7 +4548,8 @@ export function QuotationWizardView() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={busy}
+                  disabled={busy || !id}
+                  title={id ? undefined : "Save Proposal first"}
                   onClick={async () => {
                     const quote = await ensureSavedForDelivery();
                     if (!quote) return;
@@ -4251,7 +4572,8 @@ export function QuotationWizardView() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={busy}
+                  disabled={busy || !id}
+                  title={id ? undefined : "Save Proposal first"}
                   onClick={async () => {
                     const quote = await ensureSavedForDelivery();
                     if (!quote) return;
@@ -4322,6 +4644,8 @@ export function QuotationWizardView() {
                 }
                 onBack={() => void backFlow()}
                 onSaveDraft={() => void persist(0)}
+                onSaveAsNew={() => void saveAsNew()}
+                isSaved={Boolean(id)}
                 onNext={() => void next()}
                 nextLabel={
                   flowStep === FLOW_PERSONAL
@@ -4716,7 +5040,7 @@ function MiscCatalogPanel({
       <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 py-3 space-y-2.5 bg-slate-50/80">
         {filtered.length === 0 ? (
           <div className="rounded-xl border bg-background p-8 text-center text-sm text-muted-foreground">
-            No miscellaneous items match your filters.
+            No add-ons match your filters.
           </div>
         ) : (
           filtered.map((item) => {

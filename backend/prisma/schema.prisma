@@ -149,8 +149,10 @@ model Booking {
   paymentMethod String?
   agentId       String?
   agentName     String
+  agentCode     String?  // snapshot from quotation e.g. WAN-AGT-0001
   agencyId      String?
   agencyName    String
+  agencyCode    String?  // snapshot from quotation e.g. WAN
   branchId      String?
   // BMS fields
   quotationId   String?
@@ -1956,6 +1958,8 @@ model BookingService {
   voucherUrl       String?
   ticketUrl        String?
   notes            String?
+  /** Structured hotel/activity/flight line fidelity from quotation conversion (not notes-only). */
+  lineDetails      Json?
   driverDetails    Json?    // { driverName, vehicleNumber, driverPhone }
   confirmedAt      DateTime?
   createdAt        DateTime @default(now())

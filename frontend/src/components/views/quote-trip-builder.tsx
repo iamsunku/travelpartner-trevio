@@ -8,9 +8,9 @@ import {
   ClipboardList,
   Clock,
   Eye,
-  MoreHorizontal,
   Pencil,
   Plane,
+  Plus,
   Star,
   Trash2,
   UserRound,
@@ -43,13 +43,26 @@ import { AgencyQuoteStepper, AGENCY_QUOTE_STEPS } from "@/components/shared/agen
 import { ItineraryPlaceSelect, type ItineraryPlaceItem } from "@/components/shared/itinerary-place-select";
 import { formatActivityTimingBar } from "@/lib/activity-catalog";
 import { placeholderHotelImage } from "@/lib/hotel-placeholder-images";
-import { buildTripNightDates, formatItineraryDate, itemTypeLabel } from "@/lib/quote-itinerary-sync";
+import { buildTripNightDates, formatItineraryDate, isLegacyAutoMiscItem, itemTypeLabel } from "@/lib/quote-itinerary-sync";
 import type { TripCityStayWindow } from "@/lib/quote-trip-stays";
 import type { ResolvedQuoteCosting } from "@/lib/quote-costing";
+import {
+  displayComponentSellingPrice,
+  findPackageLineById,
+} from "@/lib/quote-costing";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 export type TripBuilderStage = "services" | "itinerary" | "pricing" | "preview";
 
+function ComponentSellLabel({ amount }: { amount: number | null }) {
+  if (amount == null) return null;
+  return (
+    <p className="text-sm font-semibold tabular-nums text-slate-700 shrink-0">
+      {formatFullINR(amount)}
+    </p>
+  );
+}
 const STAGE_TO_FLOW: Record<TripBuilderStage, number> = {
   services: 2,
   itinerary: 3,
@@ -64,7 +77,7 @@ const FLOW_TO_STAGE: Record<number, TripBuilderStage> = {
   5: "preview",
 };
 
-export type TripBuilderService = "Hotel" | "Flights" | "Transfers" | "Activities" | "Meals" | "Miscellaneous";
+export type TripBuilderService = "Hotel" | "Flights" | "Transfers" | "Activities" | "Meals" | "Add-ons";
 
 type TripFormSlice = {
   customerName: string;
@@ -97,11 +110,11 @@ const DAY_SERVICES: Array<{
   key: TripBuilderService;
   icon: typeof Building2;
 }> = [
+  // Hotel is added from the Hotels & Stay section (and optional day chip when night uncovered).
   { key: "Hotel", icon: Building2 },
   { key: "Transfers", icon: Car },
   { key: "Activities", icon: ClipboardList },
   { key: "Meals", icon: UtensilsCrossed },
-  { key: "Miscellaneous", icon: MoreHorizontal },
 ];
 
 function weekdayShort(ymd: string): string {
@@ -245,6 +258,10 @@ export function QuoteTripBuilder({
   itinerary,
   hotels = [],
   flights = [],
+  transfers = [],
+  activities = [],
+  meals = [],
+  addOns = [],
   busy,
   stage = "services",
   flowStep = 2,
@@ -263,6 +280,10 @@ export function QuoteTripBuilder({
   onCreatePdf,
   onSendQuotation,
   onSaveDraft,
+  onSaveAsNew,
+  onBookNow,
+  bookEnabled = true,
+  bookDisabledReason,
   onOpenService,
   onRemoveHotel,
   onRemoveFlight,
@@ -273,6 +294,7 @@ export function QuoteTripBuilder({
   onUpdateHotel,
   onUpdateTransfer,
   onUpdateActivity,
+  onUpdateAddOn,
   onUpdateItineraryDay,
 }: {
   form: TripFormSlice;
@@ -283,6 +305,10 @@ export function QuoteTripBuilder({
   itinerary: unknown;
   hotels?: Record<string, unknown>[];
   flights?: Record<string, unknown>[];
+  transfers?: Record<string, unknown>[];
+  activities?: Record<string, unknown>[];
+  meals?: Record<string, unknown>[];
+  addOns?: Record<string, unknown>[];
   busy?: boolean;
   stage?: TripBuilderStage;
   flowStep?: number;
@@ -312,7 +338,14 @@ export function QuoteTripBuilder({
   onSendQuotation: () => void | Promise<void>;
   /** Explicit save — creates Draft if new, keeps work without auto-save on Continue. */
   onSaveDraft?: () => void | Promise<void>;
-  /** Opens live catalogue for Hotel / Flights / Transfers / Activities / Meals. */
+  /** Fork current wizard state into a new quotation ID (leaves original unchanged). */
+  onSaveAsNew?: () => void | Promise<void>;
+  /** Post-save: convert / proceed toward booking when applicable. */
+  onBookNow?: () => void | Promise<void>;
+  /** When false, Book Now is visible but blocked (must be Accepted). */
+  bookEnabled?: boolean;
+  bookDisabledReason?: string;
+  /** Opens live catalogue for Hotel / Flights / Transfers / Activities / Meals / Add-ons. */
   onOpenService?: (target: {
     service: TripBuilderService;
     dayNumber: number;
@@ -329,6 +362,15 @@ export function QuoteTripBuilder({
   onUpdateHotel?: (lineId: string, patch: { roomType?: string; mealPlan?: string; remarks?: string }) => void;
   onUpdateTransfer?: (lineId: string, patch: { pickupTime?: string; remarks?: string }) => void;
   onUpdateActivity?: (lineId: string, patch: { timeSlot?: string; remarks?: string }) => void;
+  onUpdateAddOn?: (lineId: string, patch: {
+    name?: string;
+    description?: string;
+    date?: string;
+    city?: string;
+    quantity?: number;
+    sellingPrice?: number;
+    remarks?: string;
+  }) => void;
   onUpdateItineraryDay?: (date: string, patch: {
     title?: string;
     description?: string;
@@ -346,6 +388,16 @@ export function QuoteTripBuilder({
   const [editMealPlan, setEditMealPlan] = useState("");
   const [editPickupTime, setEditPickupTime] = useState("");
   const [editRemarks, setEditRemarks] = useState("");
+  const [editAddOn, setEditAddOn] = useState<{
+    lineId: string;
+    name: string;
+    description: string;
+    date: string;
+    city: string;
+    quantity: number;
+    sellingPrice: number;
+    remarks: string;
+  } | null>(null);
 
   function openEdit(target: EditTarget) {
     setEditTarget(target);
@@ -390,7 +442,9 @@ export function QuoteTripBuilder({
       const day = raw as Record<string, unknown>;
       const date = String(day.date || "");
       if (!date) continue;
-      const items = Array.isArray(day.items) ? (day.items as Record<string, unknown>[]) : [];
+      const items = Array.isArray(day.items)
+        ? (day.items as Record<string, unknown>[]).filter((item) => !isLegacyAutoMiscItem(item))
+        : [];
       map.set(date, items);
     }
     return map;
@@ -424,6 +478,22 @@ export function QuoteTripBuilder({
 
   const activeStage: TripBuilderStage = stage || FLOW_TO_STAGE[flowStep] || "services";
   const activeFlow = flowStep ?? STAGE_TO_FLOW[activeStage];
+  const isSaved = Boolean(quoteId);
+  const postSaveStage = activeStage === "pricing" || activeStage === "preview";
+  const { toast } = useToast();
+
+  function requestFlowStep(index: number) {
+    // Pricing (4) and Preview (5) require a persisted quotation ID.
+    if (index >= 4 && !quoteId) {
+      toast({
+        title: "Save Proposal first",
+        description: "Pricing, Preview, PDF, and Send unlock after the quotation is saved.",
+        variant: "destructive",
+      });
+      return;
+    }
+    onFlowStepChange?.(index);
+  }
 
   const dayMetaByDate = useMemo(() => {
     const map = new Map<string, Record<string, unknown>>();
@@ -452,7 +522,7 @@ export function QuoteTripBuilder({
             onUpdateTripDetails();
             return;
           }
-          onFlowStepChange?.(index);
+          requestFlowStep(index);
         }}
       />
 
@@ -490,7 +560,7 @@ export function QuoteTripBuilder({
         <div className="rounded-lg border bg-muted/20 px-3 py-2.5">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Pricing summary</p>
           <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-            Hotels, Flights, Cars &amp; Transfers, Activities, Meals and Misc totals. Edit sell prices or discount, then send.
+            Hotels, Flights, Cars &amp; Transfers, Activities, Meals and Add-ons totals. Edit sell prices or discount, then send.
           </p>
         </div>
       )}
@@ -498,7 +568,9 @@ export function QuoteTripBuilder({
         <div className="rounded-lg border bg-muted/20 px-3 py-2.5">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Preview & send</p>
           <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-            Use PDF and Send quotation in the footer. After accept → Quotations → Proceed to Booking — guest details fill Passengers automatically.
+            {isSaved
+              ? "Use Create PDF and Send Quotation in the footer. Book Now after the quotation is accepted."
+              : "Save Proposal to unlock Create PDF, Send Quotation, and Book Now."}
           </p>
         </div>
       )}
@@ -675,7 +747,7 @@ export function QuoteTripBuilder({
                       { key: "transfers", label: "Cars & Transfers", netCost: 0, sellingPrice: 0 },
                       { key: "activities", label: "Activities", netCost: 0, sellingPrice: 0 },
                       { key: "meals", label: "Meals", netCost: 0, sellingPrice: 0 },
-                      { key: "addOns", label: "Misc / Add-ons", netCost: 0, sellingPrice: 0 },
+                      { key: "addOns", label: "Add-ons", netCost: 0, sellingPrice: 0 },
                     ]
                 ).map((row) => (
                   <tr
@@ -787,7 +859,7 @@ export function QuoteTripBuilder({
                     String(f.flightNumber || "").trim(),
                   ].filter(Boolean).join(" ") || `Flight ${i + 1}`;
                   const route = [String(f.from || "").trim(), String(f.to || "").trim()].filter(Boolean).join(" → ");
-                  const sell = Number(f.sellingPrice || f.fare || 0);
+                  const sell = displayComponentSellingPrice(f, "flight");
                   return (
                     <li key={lineId} className="flex flex-wrap items-center gap-3 px-4 sm:px-5 py-3">
                       <div className="min-w-0 flex-1">
@@ -798,7 +870,9 @@ export function QuoteTripBuilder({
                           {f.cabinClass ? ` · ${String(f.cabinClass)}` : ""}
                         </p>
                       </div>
-                      <p className="text-sm font-semibold tabular-nums text-slate-900">{formatFullINR(sell)}</p>
+                      {sell != null ? (
+                        <p className="text-sm font-semibold tabular-nums text-slate-900">{formatFullINR(sell)}</p>
+                      ) : null}
                       {onRemoveFlight ? (
                         <Button
                           type="button"
@@ -818,6 +892,189 @@ export function QuoteTripBuilder({
             )}
           </section>
         )}
+
+        {/* Quotation-level Hotel / Stay — before daily itinerary */}
+        <section className="rounded-2xl border border-teal-200/80 bg-white shadow-sm overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-teal-100 bg-teal-50/60">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
+                <Building2 className="w-4 h-4 text-brand-teal" />
+                Hotels &amp; Stay
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Accommodation for this quotation · stay totals (not per night)
+              </p>
+            </div>
+            {activeStage === "services" && onOpenService ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-full border-teal-200 bg-white text-teal-900 hover:border-teal-400 hover:bg-teal-50"
+                onClick={() => {
+                  const win = stayWindows[0];
+                  onOpenService({
+                    service: "Hotel",
+                    dayNumber: 1,
+                    date: win?.checkIn || form.travelStartDate || "",
+                    city: win?.city || form.destination || "",
+                  });
+                }}
+              >
+                <Building2 className="w-3.5 h-3.5 mr-1.5" />
+                Add hotel
+              </Button>
+            ) : null}
+          </div>
+          {hotels.length === 0 ? (
+            <p className="px-4 py-5 text-sm text-slate-500">
+              No hotels yet. Add accommodation for each city stay — hotels appear here, not inside Day cards.
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {hotels.map((hotel, hi) => {
+                const name = String(hotel.hotelName || hotel.name || "Hotel");
+                const stars = hotelStars(hotel.starCategory);
+                const roomType = String(hotel.roomType || "").trim();
+                const meal = String(hotel.mealPlan || "").trim();
+                const rooms = hotel.rooms != null ? Math.max(1, Math.round(Number(hotel.rooms) || 1)) : null;
+                const nights = hotel.nights != null && Number(hotel.nights) > 0
+                  ? Math.round(Number(hotel.nights))
+                  : null;
+                const city = String(hotel.city || hotel.tripCity || "").trim();
+                const refundable = hotel.refundable === true
+                  || /refundable|free\s*cancel/i.test(String(hotel.cancellationPolicy || ""));
+                const selfBooked = hotel.selfBooked === true;
+                const img = String(hotel.imageUrl || "").trim()
+                  || placeholderHotelImage({
+                    name,
+                    city: city || form.destination || "",
+                    country: "Malaysia",
+                  });
+                const lineId = String(hotel.lineId || hotel.productId || `hotel-${hi}`);
+                const hotelSell = displayComponentSellingPrice(hotel, "hotel");
+                const remarks = String(hotel.remarks || "").trim();
+                return (
+                  <li
+                    key={lineId}
+                    className="flex flex-col sm:flex-row gap-3 px-4 sm:px-5 py-3.5"
+                  >
+                    <div className="relative h-24 w-full sm:h-20 sm:w-28 shrink-0 rounded-lg overflow-hidden bg-slate-100">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-sm font-semibold text-slate-900">{name}</p>
+                            {stars > 0 ? (
+                              <span className="inline-flex items-center gap-0.5">
+                                {Array.from({ length: stars }).map((_, i) => (
+                                  <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                ))}
+                              </span>
+                            ) : null}
+                            {selfBooked ? (
+                              <span className="rounded-md bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium">
+                                Self-booked
+                              </span>
+                            ) : null}
+                          </div>
+                          {city ? (
+                            <p className="text-xs text-slate-600">{city}</p>
+                          ) : null}
+                          <p className="text-xs text-slate-500">
+                            {formatStayDisplay(String(hotel.checkIn || ""), String(hotel.checkOut || ""))}
+                            {nights != null ? ` · ${nights} night${nights === 1 ? "" : "s"}` : ""}
+                          </p>
+                          {roomType ? (
+                            <p className="text-xs text-slate-600">
+                              {roomType}
+                              {rooms != null ? ` · ${rooms} room${rooms === 1 ? "" : "s"}` : ""}
+                            </p>
+                          ) : rooms != null ? (
+                            <p className="text-xs text-slate-600">
+                              {rooms} room{rooms === 1 ? "" : "s"}
+                            </p>
+                          ) : null}
+                          {remarks ? (
+                            <p className="text-xs text-slate-500 line-clamp-2">{remarks}</p>
+                          ) : null}
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {meal ? (
+                              <span className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">
+                                {meal}
+                              </span>
+                            ) : null}
+                            {refundable ? (
+                              <span className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">
+                                Refundable
+                              </span>
+                            ) : (
+                              <span className="rounded-md bg-rose-50 text-rose-700 border border-rose-100 px-1.5 py-0.5 text-[10px] font-medium">
+                                Non-Refundable
+                              </span>
+                            )}
+                            <span className="rounded-md bg-amber-50 text-amber-800 border border-amber-100 px-1.5 py-0.5 text-[10px] font-medium">
+                              On Request
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          {hotelSell != null ? (
+                            <div className="text-right">
+                              <p className="text-[10px] uppercase tracking-wide text-slate-500">Stay total</p>
+                              <ComponentSellLabel amount={hotelSell} />
+                            </div>
+                          ) : null}
+                          <ItemActionButtons
+                            onEdit={
+                              onUpdateHotel
+                                ? () => openEdit({
+                                  kind: "hotel",
+                                  lineId,
+                                  title: name,
+                                  roomType,
+                                  mealPlan: meal,
+                                  remarks: String(hotel.remarks || ""),
+                                })
+                                : undefined
+                            }
+                            onDelete={onRemoveHotel ? () => onRemoveHotel(lineId) : undefined}
+                            onView={() => setViewTarget({
+                              kind: "hotel",
+                              title: name,
+                              imageUrl: img,
+                              rows: [
+                                { label: "City", value: city || "—" },
+                                { label: "Room type", value: roomType || "—" },
+                                { label: "Rooms", value: rooms != null ? String(rooms) : "—" },
+                                { label: "Meal plan", value: meal || "—" },
+                                { label: "Check in / out", value: formatStayDisplay(String(hotel.checkIn || ""), String(hotel.checkOut || "")) },
+                                { label: "Nights", value: nights != null ? String(nights) : "—" },
+                                { label: "Cancellation", value: refundable ? "Refundable" : "Non-refundable" },
+                                ...(selfBooked ? [{ label: "Booking", value: "Self-booked" }] : []),
+                                ...(hotelSell != null
+                                  ? [{ label: "Stay total", value: formatFullINR(hotelSell) }]
+                                  : []),
+                                { label: "Remarks", value: remarks || "—" },
+                              ],
+                            })}
+                            deleteLabel="Remove hotel"
+                            editLabel="Edit hotel"
+                            viewLabel="View hotel"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
         {nights.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-4 py-10 text-center text-sm text-slate-500">
             Add trip cities and nights in Travel details to build the day-wise plan.
@@ -933,7 +1190,6 @@ export function QuoteTripBuilder({
                                   key === "Hotel"
                                   || key === "Activities"
                                   || key === "Meals"
-                                  || key === "Miscellaneous"
                                 )
                               ) {
                                 onOpenService({
@@ -1070,15 +1326,9 @@ export function QuoteTripBuilder({
 
                 <div className="p-4 sm:p-5 space-y-3">
                   {(() => {
-                    const dayHotels = hotels.filter((h) => {
-                      const cin = String(h.checkIn || "");
-                      const cout = String(h.checkOut || "");
-                      if (!/^\d{4}-\d{2}-\d{2}$/.test(cin)) return false;
-                      if (/^\d{4}-\d{2}-\d{2}$/.test(cout)) return night.date >= cin && night.date < cout;
-                      return night.date === cin;
-                    });
+                    // Hotel stay cards live in Hotels & Stay above — never inside Day cards.
                     const nonHotelItems = items.filter((item) => String(item.itemType || "").toUpperCase() !== "HOTEL");
-                    const empty = dayHotels.length === 0 && nonHotelItems.length === 0 && items.length === 0;
+                    const empty = nonHotelItems.length === 0;
                     if (empty) {
                       return (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center">
@@ -1092,110 +1342,32 @@ export function QuoteTripBuilder({
                         </div>
                       );
                     }
+
+                    // Display-only day sum (excludes hotels — those are in Hotels & Stay).
+                    let dayDisplayTotal = 0;
+                    for (const item of nonHotelItems) {
+                      const t = String(item.itemType || "").toUpperCase();
+                      if (t === "TRANSFER") {
+                        const id = String(item.transferLineId || item.lineId || item.sourceKey || "").replace(/^transfer:/, "");
+                        const sell = displayComponentSellingPrice(findPackageLineById(transfers, id, "transfer"), "transfer");
+                        if (sell != null) dayDisplayTotal += sell;
+                      } else if (t === "ACTIVITY") {
+                        const id = String(item.activityLineId || item.lineId || item.sourceKey || "").replace(/^activity:/, "");
+                        const sell = displayComponentSellingPrice(findPackageLineById(activities, id, "activity"), "activity");
+                        if (sell != null) dayDisplayTotal += sell;
+                      } else if (t === "MEAL") {
+                        const id = String(item.mealLineId || item.lineId || item.sourceKey || "").replace(/^meal:/, "");
+                        const sell = displayComponentSellingPrice(findPackageLineById(meals, id, "meal"), "meal");
+                        if (sell != null) dayDisplayTotal += sell;
+                      } else if (t === "FLIGHT") {
+                        const id = String(item.flightLineId || item.lineId || item.sourceKey || "").replace(/^flight:/, "");
+                        const sell = displayComponentSellingPrice(findPackageLineById(flights, id, "flight"), "flight");
+                        if (sell != null) dayDisplayTotal += sell;
+                      }
+                    }
+
                     return (
                       <>
-                        {dayHotels.map((hotel, hi) => {
-                          const name = String(hotel.hotelName || hotel.name || "Hotel");
-                          const stars = hotelStars(hotel.starCategory);
-                          const roomType = String(hotel.roomType || "").trim();
-                          const meal = String(hotel.mealPlan || "").trim();
-                          const refundable = hotel.refundable === true
-                            || /refundable|free\s*cancel/i.test(String(hotel.cancellationPolicy || ""));
-                          const img = String(hotel.imageUrl || "").trim()
-                            || placeholderHotelImage({
-                              name,
-                              city: String(hotel.city || hotel.tripCity || night.city || ""),
-                              country: "Malaysia",
-                            });
-                          const lineId = String(hotel.lineId || hotel.productId || hi);
-                          return (
-                            <div
-                              key={`hotel-${lineId}-${night.date}`}
-                              className="rounded-xl border border-slate-200 bg-white px-3 py-3 flex gap-3"
-                            >
-                              <div className="relative h-16 w-20 shrink-0 rounded-lg overflow-hidden bg-slate-100">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                              </div>
-                              <div className="min-w-0 flex-1 space-y-1">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <Building2 className="w-4 h-4 text-brand-teal shrink-0" />
-                                      <p className="text-sm font-semibold text-slate-900 truncate">{name}</p>
-                                      {stars > 0 && (
-                                        <span className="inline-flex items-center gap-0.5">
-                                          {Array.from({ length: stars }).map((_, i) => (
-                                            <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
-                                          ))}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {roomType ? (
-                                      <p className="text-xs text-slate-600 mt-0.5">Room Type: {roomType}</p>
-                                    ) : null}
-                                    <p className="text-xs text-slate-500">
-                                      Check In/Out: {formatStayDisplay(String(hotel.checkIn || ""), String(hotel.checkOut || ""))}
-                                    </p>
-                                    <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                      {meal ? (
-                                        <span className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">
-                                          {meal}
-                                        </span>
-                                      ) : null}
-                                      {refundable ? (
-                                        <span className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">
-                                          Refundable
-                                        </span>
-                                      ) : (
-                                        <span className="rounded-md bg-rose-50 text-rose-700 border border-rose-100 px-1.5 py-0.5 text-[10px] font-medium">
-                                          Non-Refundable
-                                        </span>
-                                      )}
-                                      <span className="rounded-md bg-amber-50 text-amber-800 border border-amber-100 px-1.5 py-0.5 text-[10px] font-medium">
-                                        On Request
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <ItemActionButtons
-                                      onEdit={
-                                        onUpdateHotel
-                                          ? () => openEdit({
-                                            kind: "hotel",
-                                            lineId,
-                                            title: name,
-                                            roomType,
-                                            mealPlan: meal,
-                                            remarks: String(hotel.remarks || ""),
-                                          })
-                                          : undefined
-                                      }
-                                      onDelete={onRemoveHotel ? () => onRemoveHotel(lineId) : undefined}
-                                      onView={() => setViewTarget({
-                                        kind: "hotel",
-                                        title: name,
-                                        imageUrl: img,
-                                        rows: [
-                                          { label: "Room type", value: roomType || "—" },
-                                          { label: "Meal plan", value: meal || "—" },
-                                          { label: "Check in / out", value: formatStayDisplay(String(hotel.checkIn || ""), String(hotel.checkOut || "")) },
-                                          { label: "City", value: String(hotel.city || hotel.tripCity || night.city || "—") },
-                                          { label: "Cancellation", value: refundable ? "Refundable" : "Non-refundable" },
-                                          { label: "Remarks", value: String(hotel.remarks || "—") },
-                                        ],
-                                      })}
-                                      deleteLabel="Remove hotel"
-                                      editLabel="Edit hotel"
-                                      viewLabel="View hotel"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-
                         {nonHotelItems.length > 0 ? (
                           <ul className="space-y-3">
                             {nonHotelItems.map((item, i) => {
@@ -1203,6 +1375,7 @@ export function QuoteTripBuilder({
                               const isActivity = String(item.itemType || "").toUpperCase() === "ACTIVITY";
                               const isMeal = String(item.itemType || "").toUpperCase() === "MEAL";
                               const isMisc = String(item.itemType || "").toUpperCase() === "MISC";
+                              const isFlight = String(item.itemType || "").toUpperCase() === "FLIGHT";
                               const transferLineId = String(
                                 item.transferLineId || item.lineId || item.sourceKey || "",
                               ).replace(/^transfer:/, "");
@@ -1215,6 +1388,9 @@ export function QuoteTripBuilder({
                               const miscLineId = String(
                                 item.miscLineId || item.lineId || item.sourceKey || "",
                               ).replace(/^misc:/, "");
+                              const flightLineId = String(
+                                item.flightLineId || item.lineId || item.sourceKey || "",
+                              ).replace(/^flight:/, "");
                               const pickupDisplay = formatPickupTimeDisplay(item.pickupTime || item.timeSlot);
                               const title = String(item.activityName || `Item ${i + 1}`);
                               const description = String(item.description || "").trim();
@@ -1227,6 +1403,28 @@ export function QuoteTripBuilder({
                                   duration: String(item.duration || ""),
                                 })
                                 : "";
+                              const sourceLine = isTransfer
+                                ? findPackageLineById(transfers, transferLineId, "transfer")
+                                : isActivity
+                                  ? findPackageLineById(activities, activityLineId, "activity")
+                                  : isMeal
+                                    ? findPackageLineById(meals, mealLineId, "meal")
+                                    : isFlight
+                                      ? findPackageLineById(flights, flightLineId, "flight")
+                                      : isMisc
+                                        ? findPackageLineById(addOns, miscLineId, "misc")
+                                        : null;
+                              const itemSell = isTransfer
+                                ? displayComponentSellingPrice(sourceLine, "transfer")
+                                : isActivity
+                                  ? displayComponentSellingPrice(sourceLine, "activity")
+                                  : isMeal
+                                    ? displayComponentSellingPrice(sourceLine, "meal")
+                                    : isFlight
+                                      ? displayComponentSellingPrice(sourceLine, "flight")
+                                      : isMisc
+                                        ? displayComponentSellingPrice(sourceLine, "addon")
+                                        : null;
                               return (
                                 <li key={`${night.date}-item-${i}`} className="space-y-1">
                                   {(isTransfer || isActivity) && pickupDisplay ? (
@@ -1234,7 +1432,8 @@ export function QuoteTripBuilder({
                                   ) : null}
                                   <div className="rounded-xl border border-slate-200 bg-white px-3 py-3 flex items-start gap-3">
                                     <div className="min-w-0 flex-1 space-y-1.5">
-                                      <div className="flex flex-wrap items-center gap-2">
+                                      <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex flex-wrap items-center gap-2 min-w-0">
                                         <p className="text-sm font-semibold text-slate-900">{title}</p>
                                         {isMeal && mealTransfer ? (
                                           <span
@@ -1253,6 +1452,8 @@ export function QuoteTripBuilder({
                                             {miscCategory}
                                           </span>
                                         ) : null}
+                                        </div>
+                                        <ComponentSellLabel amount={itemSell} />
                                       </div>
                                       {description ? (
                                         <p className="text-xs text-slate-500 line-clamp-2">{description}</p>
@@ -1274,7 +1475,7 @@ export function QuoteTripBuilder({
                                         </span>
                                       ) : isMisc ? (
                                         <span className="inline-flex items-center rounded-md bg-violet-50 text-violet-800 border border-violet-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
-                                          Misc
+                                          Add-on
                                         </span>
                                       ) : (
                                         <span className="inline-flex items-center rounded-md bg-brand-teal/10 text-brand-teal px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
@@ -1381,6 +1582,16 @@ export function QuoteTripBuilder({
                             })}
                           </ul>
                         ) : null}
+                        {dayDisplayTotal > 0 ? (
+                          <div className="flex items-center justify-between border-t border-slate-100 pt-3 mt-1">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Day {dayNumber} Total
+                            </p>
+                            <p className="text-sm font-bold tabular-nums text-slate-900">
+                              {formatFullINR(dayDisplayTotal)}
+                            </p>
+                          </div>
+                        ) : null}
                       </>
                     );
                   })()}
@@ -1392,15 +1603,153 @@ export function QuoteTripBuilder({
       </div>
       ) : null}
 
+      <section className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-slate-100 bg-slate-50/70">
+          <div className="min-w-0">
+            <h3 className="text-sm sm:text-base font-bold text-slate-900">Add-ons</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Quotation-level extras — not part of the day itinerary.
+            </p>
+          </div>
+          {onOpenService ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-full border-slate-200 bg-white text-slate-700 hover:border-brand-blue/40 hover:text-brand-blue"
+              onClick={() => onOpenService({
+                service: "Add-ons",
+                dayNumber: 0,
+                date: "",
+                city: "",
+              })}
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Add Add-on
+            </Button>
+          ) : null}
+        </div>
+        <div className="px-4 sm:px-5 py-4 space-y-3">
+          {(() => {
+            const rows = addOns.filter((row) => row.enabled !== false);
+            const totalSell = rows.reduce((s, r) => {
+              const n = displayComponentSellingPrice(r, "addon");
+              return s + (n != null ? n : 0);
+            }, 0);
+            if (!rows.length) {
+              return (
+                <p className="text-sm text-slate-500 py-2">
+                  No add-ons yet. Add SIM cards, insurance extras, entrance tickets, or custom charges here.
+                </p>
+              );
+            }
+            return (
+              <>
+                <ul className="space-y-2.5">
+                  {rows.map((row, i) => {
+                    const lineId = String(row.lineId || row.productId || `addon-${i}`);
+                    const name = String(row.name || row.title || `Add-on ${i + 1}`);
+                    const description = String(row.description || "").trim();
+                    const category = String(row.category || row.addOnType || "").trim();
+                    const date = String(row.date || "").trim();
+                    const city = String(row.city || row.tripCity || "").trim();
+                    const qty = Math.max(1, Math.round(Number(row.quantity ?? 1) || 1));
+                    const sell = displayComponentSellingPrice(row, "addon");
+                    const editSell = sell ?? (Number(row.sellingPrice) > 0 ? Math.round(Number(row.sellingPrice)) : 0);
+                    return (
+                      <li
+                        key={lineId}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-3 flex items-start gap-3"
+                      >
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-slate-900">{name}</p>
+                            {category ? (
+                              <span className="inline-flex items-center rounded-full bg-violet-50 text-violet-800 px-2 py-0.5 text-[10px] font-semibold">
+                                {category}
+                              </span>
+                            ) : null}
+                          </div>
+                          {description ? (
+                            <p className="text-xs text-slate-500 line-clamp-2">{description}</p>
+                          ) : null}
+                          <p className="text-[11px] text-slate-500">
+                            {[
+                              date ? formatItineraryDate(date) : "",
+                              city,
+                              qty > 1 ? `Qty ${qty}` : "",
+                            ].filter(Boolean).join(" · ") || "No date / city"}
+                          </p>
+                          {sell != null ? (
+                            <p className="text-sm font-semibold tabular-nums text-emerald-700">
+                              {formatFullINR(sell)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <ItemActionButtons
+                          editLabel="Edit add-on"
+                          deleteLabel="Remove add-on"
+                          viewLabel="View add-on"
+                          onEdit={onUpdateAddOn ? () => setEditAddOn({
+                            lineId,
+                            name,
+                            description,
+                            date,
+                            city,
+                            quantity: qty,
+                            sellingPrice: editSell,
+                            remarks: String(row.remarks || ""),
+                          }) : undefined}
+                          onDelete={onRemoveMisc ? () => onRemoveMisc(lineId) : undefined}
+                          onView={() => setViewTarget({
+                            kind: "misc",
+                            title: name,
+                            rows: [
+                              ...(category ? [{ label: "Category", value: category }] : []),
+                              ...(description ? [{ label: "Description", value: description }] : []),
+                              ...(date ? [{ label: "Date", value: formatItineraryDate(date) }] : []),
+                              ...(city ? [{ label: "City", value: city }] : []),
+                              { label: "Quantity", value: String(qty) },
+                              ...(sell != null ? [{ label: "Price", value: formatFullINR(sell) }] : []),
+                              ...(row.remarks ? [{ label: "Remarks", value: String(row.remarks) }] : []),
+                            ],
+                          })}
+                        />
+                      </li>
+                    );
+                  })}
+                </ul>
+                {totalSell > 0 ? (
+                <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Add-ons total</p>
+                  <p className="text-sm font-bold tabular-nums text-slate-900">{formatFullINR(totalSell)}</p>
+                </div>
+                ) : null}
+              </>
+            );
+          })()}
+        </div>
+      </section>
+
         </div>
       </div>
 
       <QuoteWizardFooter
         busy={busy}
+        isSaved={isSaved}
         onBack={onBack}
         onSaveDraft={onSaveDraft}
-        onCreatePdf={activeStage === "pricing" || activeStage === "preview" ? onCreatePdf : undefined}
-        onSend={activeStage === "pricing" || activeStage === "preview" ? onSendQuotation : undefined}
+        onSaveAsNew={onSaveAsNew}
+        onEdit={
+          isSaved
+            ? () => requestFlowStep(2)
+            : undefined
+        }
+        onCreatePdf={postSaveStage ? onCreatePdf : undefined}
+        onSend={postSaveStage ? onSendQuotation : undefined}
+        onBook={postSaveStage && onBookNow ? onBookNow : undefined}
+        bookEnabled={bookEnabled}
+        bookDisabledReason={bookDisabledReason}
         showNext={activeStage !== "preview"}
         nextLabel={
           activeStage === "services"
@@ -1413,7 +1762,7 @@ export function QuoteTripBuilder({
         }
         onNext={
           onFlowStepChange
-            ? () => onFlowStepChange(Math.min(activeFlow + 1, 5))
+            ? () => requestFlowStep(Math.min(activeFlow + 1, 5))
             : undefined
         }
       />
@@ -1511,6 +1860,114 @@ export function QuoteTripBuilder({
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>Cancel</Button>
             <Button type="button" className="bg-slate-900 hover:bg-slate-800 text-white" onClick={saveEdit}>
+              Save changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editAddOn)} onOpenChange={(open) => { if (!open) setEditAddOn(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit add-on</DialogTitle>
+            <DialogDescription>Updates the quotation Add-ons list (packages.addOns).</DialogDescription>
+          </DialogHeader>
+          {editAddOn ? (
+            <div className="space-y-3 py-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="addon-name">Name</Label>
+                <Input
+                  id="addon-name"
+                  value={editAddOn.name}
+                  onChange={(e) => setEditAddOn({ ...editAddOn, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="addon-desc">Description</Label>
+                <Textarea
+                  id="addon-desc"
+                  rows={2}
+                  value={editAddOn.description}
+                  onChange={(e) => setEditAddOn({ ...editAddOn, description: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="addon-date">Date</Label>
+                  <Input
+                    id="addon-date"
+                    type="date"
+                    value={editAddOn.date}
+                    onChange={(e) => setEditAddOn({ ...editAddOn, date: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="addon-city">City</Label>
+                  <Input
+                    id="addon-city"
+                    value={editAddOn.city}
+                    onChange={(e) => setEditAddOn({ ...editAddOn, city: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="addon-qty">Quantity</Label>
+                  <Input
+                    id="addon-qty"
+                    type="number"
+                    min={1}
+                    value={editAddOn.quantity}
+                    onChange={(e) => setEditAddOn({
+                      ...editAddOn,
+                      quantity: Math.max(1, Number(e.target.value) || 1),
+                    })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="addon-sell">Selling price</Label>
+                  <Input
+                    id="addon-sell"
+                    type="number"
+                    min={0}
+                    value={editAddOn.sellingPrice}
+                    onChange={(e) => setEditAddOn({
+                      ...editAddOn,
+                      sellingPrice: Math.max(0, Number(e.target.value) || 0),
+                    })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="addon-remarks">Remarks</Label>
+                <Textarea
+                  id="addon-remarks"
+                  rows={2}
+                  value={editAddOn.remarks}
+                  onChange={(e) => setEditAddOn({ ...editAddOn, remarks: e.target.value })}
+                />
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={() => setEditAddOn(null)}>Cancel</Button>
+            <Button
+              type="button"
+              className="bg-slate-900 hover:bg-slate-800 text-white"
+              onClick={() => {
+                if (!editAddOn || !onUpdateAddOn) return;
+                onUpdateAddOn(editAddOn.lineId, {
+                  name: editAddOn.name.trim(),
+                  description: editAddOn.description.trim(),
+                  date: editAddOn.date.trim(),
+                  city: editAddOn.city.trim(),
+                  quantity: editAddOn.quantity,
+                  sellingPrice: editAddOn.sellingPrice,
+                  remarks: editAddOn.remarks.trim(),
+                });
+                setEditAddOn(null);
+              }}
+            >
               Save changes
             </Button>
           </DialogFooter>
