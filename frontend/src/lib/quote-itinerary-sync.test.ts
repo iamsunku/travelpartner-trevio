@@ -9,7 +9,7 @@ import {
 const start = "2026-10-18";
 
 describe("MODULE 04A — itinerary sync", () => {
-  it("1–3. multi-city night dates without extra checkout day", () => {
+  it("1–3. multi-city night dates include final checkout day (N nights → N+1 days)", () => {
     const windows = buildTripCityStayWindows(
       [
         { city: "Phuket", nights: 3, order: 1 },
@@ -27,11 +27,11 @@ describe("MODULE 04A — itinerary sync", () => {
       "2026-10-22:Krabi",
       "2026-10-23:Bangkok",
       "2026-10-24:Bangkok",
+      "2026-10-25:Bangkok",
     ]);
-    expect(nights.some((n) => n.date === "2026-10-25")).toBe(false);
   });
 
-  it("4–6. hotel days + city night change + no Phuket spill", () => {
+  it("4–6. hotel days + city night change + final checkout day", () => {
     const windows = buildTripCityStayWindows(
       [
         { city: "Phuket", nights: 3, order: 1 },
@@ -62,19 +62,23 @@ describe("MODULE 04A — itinerary sync", () => {
       },
     ];
     const days = syncPackageItinerary([], { hotels, stayWindows: windows, travelStartDate: start });
-    expect(days).toHaveLength(5);
+    expect(days).toHaveLength(6);
     expect(days.map((d) => d.date)).toEqual([
       "2026-10-18",
       "2026-10-19",
       "2026-10-20",
       "2026-10-21",
       "2026-10-22",
+      "2026-10-23",
     ]);
-    expect(days.map((d) => d.city)).toEqual(["Phuket", "Phuket", "Phuket", "Krabi", "Krabi"]);
+    expect(days.map((d) => d.city)).toEqual(["Phuket", "Phuket", "Phuket", "Krabi", "Krabi", "Krabi"]);
     const d21 = days.find((d) => d.date === "2026-10-21")!;
     const hotelItems = (d21.items as Record<string, unknown>[]).filter((i) => i.autoFromHotel);
     expect(hotelItems.some((i) => String(i.activityName).includes("checkout"))).toBe(true);
-    expect(hotelItems.some((i) => String(i.activityName).includes("check-in"))).toBe(true);
+    expect(hotelItems.some((i) => String(i.sourceKey).includes("checkin"))).toBe(true);
+    const d23 = days.find((d) => d.date === "2026-10-23")!;
+    const checkoutItems = (d23.items as Record<string, unknown>[]).filter((i) => i.autoFromHotel);
+    expect(checkoutItems.some((i) => String(i.activityName).includes("checkout"))).toBe(true);
 
     const windows2 = buildTripCityStayWindows(
       [
@@ -88,7 +92,7 @@ describe("MODULE 04A — itinerary sync", () => {
       { ...hotels[1], checkIn: "2026-10-22", checkOut: "2026-10-24", nights: 2 },
     ];
     const days2 = syncPackageItinerary(days, { hotels: hotels2, stayWindows: windows2, travelStartDate: start });
-    expect(days2).toHaveLength(6);
+    expect(days2).toHaveLength(7);
     expect(days2.filter((d) => d.city === "Phuket")).toHaveLength(4);
   });
 

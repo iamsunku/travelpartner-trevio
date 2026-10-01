@@ -665,6 +665,7 @@ function AgencyDashboard() {
 
 function SuperAdminDashboard() {
   const setView = useAppStore((s) => s.setView);
+  const openQuotationWizard = useAppStore((s) => s.openQuotationWizard);
   const monthlyRevenue = useDemoDataStore((s) => s.financeStats?.monthly) || [];
   const platformNotifications = useDemoDataStore((s) => s.notifications);
   const dashboardStats = useDemoDataStore((s) => s.dashboardStats);
@@ -698,7 +699,17 @@ function SuperAdminDashboard() {
         }
         actions={
           <>
-            <Button className="bg-white text-primary hover:bg-white/90 shadow-sm h-9" onClick={() => setView("agencies")}>
+            <Button
+              className="bg-white text-primary hover:bg-white/90 shadow-sm h-9"
+              onClick={() => openQuotationWizard(null)}
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-1.5" /> Create Quotation
+            </Button>
+            <Button
+              variant="outline"
+              className="bg-white/10 border-white/25 text-white hover:bg-white/20 h-9"
+              onClick={() => setView("agencies")}
+            >
               <Plus className="w-4 h-4 mr-1.5" /> Add Agency
             </Button>
             <Button

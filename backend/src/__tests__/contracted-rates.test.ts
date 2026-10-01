@@ -12,6 +12,7 @@ import {
   findOverlap,
   presentApplicableRate,
   preservedSnapshotCost,
+  quoteUnresolvedRateReason,
   type RateWindow,
 } from "../lib/contracted-rates.js";
 import { sanitizeQuotationForRole } from "../lib/quotations.js";
@@ -157,5 +158,37 @@ describe("rate snapshot and security", () => {
     });
     expect(RATE_SOURCES.MANUAL).not.toBe(RATE_SOURCES.CONTRACTED_PRODUCT);
     expect(RATE_SOURCES.AMADEUS_API).not.toBe(RATE_SOURCES.CONTRACTED_PRODUCT);
+  });
+
+  it("catalogue / MANUAL fallback does not block submit; contracted unresolved does", () => {
+    expect(
+      quoteUnresolvedRateReason([
+        {
+          hotels: [
+            {
+              source: "MANUAL",
+              rateUnresolved: true,
+              rateUnresolvedReason: "No contracted rate for travel dates — catalogue selling price used",
+              sellingPrice: 7598,
+            },
+          ],
+        },
+      ]),
+    ).toBeNull();
+
+    expect(
+      quoteUnresolvedRateReason([
+        {
+          hotels: [
+            {
+              source: "CONTRACTED_PRODUCT",
+              productId: "h1",
+              rateUnresolved: true,
+              rateUnresolvedReason: NO_VALID_RATE_MESSAGE,
+            },
+          ],
+        },
+      ]),
+    ).toBe(NO_VALID_RATE_MESSAGE);
   });
 });

@@ -110,12 +110,14 @@ import {
   getTransferVehicleOptions,
   bindAirportTransfersToSelectedHotels,
   airportPickupSearchQuery,
+  airportDropSearchQuery,
   hotelsForAirportPickupDay,
   isAirportGuideMandatory,
   isGenericCityHotelAirportTransfer,
   isGentingDayCity,
   isMalaysiaHotelCatalogueCity,
   matchesAirportPickupForDayCity,
+  matchesAirportDropForDayCity,
   matchesAirportPickupForHotel,
   MALAYSIA_HOTEL_CITIES,
   MALAYSIA_TRANSFER_CITIES,
@@ -181,13 +183,12 @@ const STEPS = [
   { label: "Review", hint: "Finish" },
 ] as const;
 
-/** Agency-facing create flow (Personal → … → Preview & send). */
+/** Agency-facing create flow (Personal → Travel → Hotels & services → Pricing → Preview). */
 const FLOW_PERSONAL = 0;
 const FLOW_TRAVEL = 1;
 const FLOW_SERVICES = 2;
-const FLOW_ITINERARY = 3;
-const FLOW_PRICING = 4;
-const FLOW_PREVIEW = 5;
+const FLOW_PRICING = 3;
+const FLOW_PREVIEW = 4;
 
 function FormSection({
   title,
@@ -296,6 +297,7 @@ export function QuotationWizardView() {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
   const upsertQuotation = useDemoDataStore((s) => s.upsertQuotation);
+  const upsertBooking = useDemoDataStore((s) => s.upsertBooking);
   const quotationId = useAppStore((s) => s.wizardQuotationId);
   const prefill = useAppStore((s) => s.quotePrefill);
   const setWizardQuotationId = useAppStore((s) => s.setWizardQuotationId);
@@ -317,14 +319,14 @@ export function QuotationWizardView() {
   };
   const [step, setStep] = useState(0);
   const [wizardPhase, setWizardPhase] = useState<"basics" | "trip">("basics");
-  /** 0 Personal → 1 Travel → 2 Services → 3 Itinerary → 4 Pricing → 5 Preview */
+  /** 0 Personal → 1 Travel → 2 Hotels & services → 3 Pricing → 4 Preview */
   const [flowStep, setFlowStep] = useState(FLOW_PERSONAL);
   const [servicePicker, setServicePicker] = useState<{
     service: "Hotel" | "Flights" | "Transfers" | "Activities" | "Meals" | "Add-ons";
     dayNumber: number;
     date: string;
     city: string;
-    transferKind?: "transfer" | "airport_pickup";
+    transferKind?: "transfer" | "airport_pickup" | "airport_drop";
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const tripPersistChain = useRef(Promise.resolve<Quotation | null>(null));
@@ -432,7 +434,7 @@ export function QuotationWizardView() {
     if (!open) return;
     if ((id || knownIdRef.current) ) return;
     if (wizardPhase === "trip" && flowStep >= FLOW_PRICING) {
-      setFlowStep(FLOW_ITINERARY);
+      setFlowStep(FLOW_SERVICES);
     }
   }, [open, id, wizardPhase, flowStep]);
 
@@ -1432,6 +1434,7 @@ export function QuotationWizardView() {
         travelEndDate: form.travelEndDate || undefined,
       });
       const booking = (await import("@/lib/api-mappers")).mapApiBooking(res.booking);
+      upsertBooking(booking);
       upsertQuotation({
         ...buildReviewQuote(quoteId),
         id: quoteId,
@@ -1442,11 +1445,39 @@ export function QuotationWizardView() {
       setQuotationStatus("Converted to Booking");
       toast({
         title: res.idempotent ? "Booking already exists" : "Booking created",
-        description: `${booking.bookingRef} — open Bookings to continue.`,
+        description: `${booking.bookingRef} — opening Booking Management…`,
       });
+      try {
+        sessionStorage.setItem("trevio.openBookingId", booking.id);
+      } catch {
+        /* ignore */
+      }
       closeQuotationWizard();
       setView("bookings");
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.body?.booking) {
+        const booking = (await import("@/lib/api-mappers")).mapApiBooking(e.body.booking as never);
+        upsertBooking(booking);
+        upsertQuotation({
+          ...buildReviewQuote(quoteId!),
+          id: quoteId!,
+          quoteNo: quoteNo || undefined,
+          status: "Converted to Booking",
+          convertedBookingId: booking.id,
+        } as Quotation);
+        try {
+          sessionStorage.setItem("trevio.openBookingId", booking.id);
+        } catch {
+          /* ignore */
+        }
+        closeQuotationWizard();
+        setView("bookings");
+        toast({
+          title: "Booking already exists",
+          description: `${booking.bookingRef} — opening Booking Management…`,
+        });
+        return;
+      }
       toast({
         title: "Book Now unavailable",
         description: e instanceof ApiError
@@ -1589,10 +1620,10 @@ export function QuotationWizardView() {
       rateValidTo: rate.validTo,
       rateSelectedAt: new Date().toISOString(),
       rateTravelDate: cin || form.travelStartDate,
-      rateUnresolved: manual,
-      rateUnresolvedReason: manual
-        ? "No contracted rate for travel dates — catalogue selling price used"
-        : null,
+      // Catalogue fallback is a soft warning only — do not block submit/send.
+      rateUnresolved: false,
+      rateUnresolvedReason: null,
+      cataloguePriceFallback: manual || undefined,
       sellingPrice: selling || (cost ?? 0),
       markup: hasInternalCost ? Math.round((selling || cost || 0) - (cost || 0)) : undefined,
     };
@@ -1693,7 +1724,9 @@ export function QuotationWizardView() {
     const hasInternalCost = rate.contractedCost != null && Number.isFinite(Number(rate.contractedCost));
     const preferredType = servicePicker?.transferKind === "airport_pickup"
       ? "Airport Pickup"
-      : String(item.transferType || item.name || "Private Transfer");
+      : servicePicker?.transferKind === "airport_drop"
+        ? "Airport Drop"
+        : String(item.transferType || item.name || "Private Transfer");
     const vehicleType = String(item.vehicleType || "Sedan / Car");
     const vehicleQty = Math.max(1, Number((item as ProductRecord & { vehicleQty?: number }).vehicleQty || 1));
     const vehicleCapacity = vehicleCapacityMax(
@@ -1740,7 +1773,7 @@ export function QuotationWizardView() {
       duration: "",
       currency: form.currency || "INR",
       voucher: "",
-      remarks: preferredType === "Airport Pickup"
+      remarks: preferredType === "Airport Pickup" || preferredType === "Airport Drop"
         ? ""
         : (vehicleQty > 1 ? `Vehicle: ${vehicleType} × ${vehicleQty}` : `Vehicle: ${vehicleType}`),
       sellingPrice: selling,
@@ -1764,7 +1797,11 @@ export function QuotationWizardView() {
     setServicePicker(null);
     const routeLabel = pickup && drop ? `${pickup} → ${drop}` : String(item.name || "Transfer");
     toast({
-      title: preferredType === "Airport Pickup" ? "Airport pickup added" : "Transfer added",
+      title: preferredType === "Airport Pickup"
+        ? "Airport pickup added"
+        : preferredType === "Airport Drop"
+          ? "Airport drop added"
+          : "Transfer added",
       description: `${routeLabel} · ${vehicleType}${vehicleQty > 1 ? ` ×${vehicleQty}` : ""}${pickupTime ? ` · ${pickupTime}` : ""}`,
     });
   }
@@ -1863,7 +1900,7 @@ export function QuotationWizardView() {
           remarks: transferExtra.route,
           sellingPrice: transferExtra.sellingPrice,
           costPrice: transferExtra.sellingPrice,
-          rateUnresolved: true,
+          rateUnresolved: false,
         },
       ];
       row.remarks = `With private transfer · ${transferExtra.vehicleType}`;
@@ -2055,7 +2092,9 @@ export function QuotationWizardView() {
       rateValidTo: rate.validTo,
       rateSelectedAt: new Date().toISOString(),
       rateTravelDate: form.travelStartDate,
-      rateUnresolved: manual,
+      rateUnresolved: false,
+      rateUnresolvedReason: null,
+      cataloguePriceFallback: manual || undefined,
       sellingPrice: selling || (cost ?? 0),
       fare: selling || (cost ?? 0),
     };
@@ -2115,7 +2154,9 @@ export function QuotationWizardView() {
       servicePicker?.service === "Transfers"
         ? servicePicker.transferKind === "airport_pickup"
           ? `Add Airport Pickup in ${pickerCity || "your trip"}`
-          : `Add Transfer in ${pickerCity || "your trip"}`
+          : servicePicker.transferKind === "airport_drop"
+            ? `Add Airport Drop in ${pickerCity || "your trip"}`
+            : `Add Transfer in ${pickerCity || "your trip"}`
         : servicePicker?.service === "Activities"
           ? `Add Activity in ${pickerCity || "your trip"}`
           : servicePicker?.service === "Meals"
@@ -2142,13 +2183,11 @@ export function QuotationWizardView() {
           addOns={(selected?.addOns || []) as Record<string, unknown>[]}
           busy={busy}
           stage={
-            flowStep === FLOW_ITINERARY
-              ? "itinerary"
-              : flowStep === FLOW_PRICING
-                ? "pricing"
-                : flowStep === FLOW_PREVIEW
-                  ? "preview"
-                  : "services"
+            flowStep === FLOW_PRICING
+              ? "pricing"
+              : flowStep === FLOW_PREVIEW
+                ? "preview"
+                : "services"
           }
           flowStep={flowStep}
           costing={resolveQuotationCosting({
@@ -2573,6 +2612,14 @@ export function QuotationWizardView() {
                 trevioMarkupType={form.trevioMarkupType}
                 trevioMarkupValue={Number(form.trevioMarkupValue || 0)}
                 transferKind={servicePicker?.transferKind}
+                onSwitchAirportService={(kind) => {
+                  if (!servicePicker) return;
+                  setServicePicker({
+                    ...servicePicker,
+                    service: "Transfers",
+                    transferKind: kind,
+                  });
+                }}
                 selectedHotels={(selected?.hotels || []) as Record<string, unknown>[]}
                 selectedFlights={(selected?.flights || []) as Record<string, unknown>[]}
                 serviceDate={servicePicker?.date}
@@ -7435,6 +7482,7 @@ function CatalogPicker({
   trevioMarkupType = "Percentage",
   trevioMarkupValue = 0,
   transferKind,
+  onSwitchAirportService,
   selectedHotels = [],
   selectedFlights = [],
   serviceDate,
@@ -7462,8 +7510,10 @@ function CatalogPicker({
   children?: number;
   trevioMarkupType?: "Percentage" | "Fixed";
   trevioMarkupValue?: number;
-  /** Transfers dropdown choice from trip day actions. */
-  transferKind?: "transfer" | "airport_pickup";
+  /** Transfers dropdown choice from trip day Activities menu. */
+  transferKind?: "transfer" | "airport_pickup" | "airport_drop";
+  /** From Activities catalogue — jump to Airport Pickup / Drop without closing. */
+  onSwitchAirportService?: (kind: "airport_pickup" | "airport_drop") => void;
   /** Hotels already on the trip — used to scope Airport Pickup to the selected hotel. */
   selectedHotels?: Array<Record<string, unknown>>;
   /** Flights on the quote — arrival time gates earliest airport pickup. */
@@ -7529,6 +7579,7 @@ function CatalogPicker({
   const [mealDetailsItem, setMealDetailsItem] = useState<ProductRecord | null>(null);
   const [mealExpandId, setMealExpandId] = useState<string | null>(null);
   const [mealTimeSlot, setMealTimeSlot] = useState("12:00 - 13:00");
+  const [mealWantTransfer, setMealWantTransfer] = useState(false);
   const [mealVehicleQty, setMealVehicleQty] = useState<Record<string, number>>(() => defaultMealVehicleQty());
   const [roomSelectHotel, setRoomSelectHotel] = useState<ProductRecord | null>(null);
   const [confirmingRoom, setConfirmingRoom] = useState(false);
@@ -7644,6 +7695,7 @@ function CatalogPicker({
     setMealDetailsItem(null);
     setMealExpandId(null);
     setMealTimeSlot("12:00 - 13:00");
+    setMealWantTransfer(false);
     setMealVehicleQty(defaultMealVehicleQty());
     setRoomSelectHotel(null);
     setAvailableOnly(false);
@@ -7698,9 +7750,14 @@ function CatalogPicker({
             if (cityStayPayload) params.set("cityStayDates", cityStayPayload);
             if (hotelTab === "recommended") params.set("recommendedOnly", "true");
           } else if (isTransfers) {
-            if (transferKind === "airport_pickup") {
+            if (transferKind === "airport_pickup" || transferKind === "airport_drop") {
               const dayCity = destLabel || dayHotelCity || tripCities[0] || "Kuala Lumpur";
-              params.set("q", airportPickupSearchQuery(dayCity));
+              params.set(
+                "q",
+                transferKind === "airport_drop"
+                  ? airportDropSearchQuery(dayCity)
+                  : airportPickupSearchQuery(dayCity),
+              );
               params.set("pageSize", "120");
               if (travelDate) params.set("travelDate", travelDate);
             } else {
@@ -7759,12 +7816,14 @@ function CatalogPicker({
             next = (res.items || []).filter((item) =>
               transferKind === "airport_pickup"
                 ? matchesAirportPickupForDayCity(item, dayCity)
-                : transferMatchesDayCity(item, dayCity || transferCity || "Kuala Lumpur"),
+                : transferKind === "airport_drop"
+                  ? matchesAirportDropForDayCity(item, dayCity)
+                  : transferMatchesDayCity(item, dayCity || transferCity || "Kuala Lumpur"),
             );
           }
 
           // Regular transfers: keep products relevant to the day city (esp. Genting on KL hub).
-          if (isTransfers && transferKind !== "airport_pickup" && next.length) {
+          if (isTransfers && transferKind !== "airport_pickup" && transferKind !== "airport_drop" && next.length) {
             const dayCity = destLabel || dayHotelCity || tripCities[0] || transferCity || "";
             if (dayCity) {
               const scoped = next.filter((item) => transferMatchesDayCity(item, dayCity));
@@ -7871,6 +7930,9 @@ function CatalogPicker({
                 dayCity,
               });
               next = bindAirportTransfersToSelectedHotels(next, dayHotels) as ProductRecord[];
+            } else if (transferKind === "airport_drop") {
+              const dayCity = destLabel || dayHotelCity || tripCities[0] || "Kuala Lumpur";
+              next = next.filter((item) => matchesAirportDropForDayCity(item, dayCity));
             }
           }
           setItems(next);
@@ -7960,8 +8022,8 @@ function CatalogPicker({
       setRoomSelectHotel(item);
       return;
     }
-    // Airport Pickup: open vehicle table (qty / capacity / total) + pickup time.
-    if (kind === "transfers" && transferKind === "airport_pickup") {
+    // Airport Pickup / Drop: open vehicle table (qty / capacity / total) + pickup time.
+    if (kind === "transfers" && (transferKind === "airport_pickup" || transferKind === "airport_drop")) {
       const options = getTransferVehicleOptions(item);
       const qtyInit: Record<string, number> = {};
       for (const v of options) qtyInit[v.id] = 0;
@@ -8864,6 +8926,8 @@ function CatalogPicker({
 
   if (isInlineService && open && isTransfers) {
     const isAirportPickup = transferKind === "airport_pickup";
+    const isAirportDrop = transferKind === "airport_drop";
+    const isAirportService = isAirportPickup || isAirportDrop;
     const boundHotelItems = items.filter((item) =>
       Boolean(String((item as ProductRecord & { boundHotelName?: string }).boundHotelName || "").trim()),
     );
@@ -8892,7 +8956,7 @@ function CatalogPicker({
     const paxBand = requiredVehicleBandForPax(quoteTotalPax);
     const guideMandatory = isAirportGuideMandatory(quoteTotalPax);
 
-    if (vehiclePickItem && isAirportPickup) {
+    if (vehiclePickItem && isAirportService) {
       const routeLabel = formatTransferDestination(vehiclePickItem);
       const img = Array.isArray(vehiclePickItem.images) && vehiclePickItem.images[0]
         ? String(vehiclePickItem.images[0])
@@ -8912,7 +8976,9 @@ function CatalogPicker({
           )}
         >
           <div className="px-4 py-3 border-b bg-slate-900 text-white shrink-0 flex items-center justify-between gap-3">
-            <p className="text-sm sm:text-base font-semibold tracking-tight">Add Airport Pickup</p>
+            <p className="text-sm sm:text-base font-semibold tracking-tight">
+              {isAirportDrop ? "Add Airport Drop" : "Add Airport Pickup"}
+            </p>
             <Button
               type="button"
               size="icon"
@@ -9121,7 +9187,7 @@ function CatalogPicker({
       >
         <div className="px-4 py-3 border-b bg-slate-900 text-white shrink-0 flex items-center justify-between gap-3">
           <p className="text-sm sm:text-base font-semibold tracking-tight">
-            {isAirportPickup ? "Add Airport Pickup" : "Add Transfers"}
+            {isAirportPickup ? "Add Airport Pickup" : isAirportDrop ? "Add Airport Drop" : "Add Transfers"}
           </p>
           <Button
             type="button"
@@ -9146,10 +9212,21 @@ function CatalogPicker({
                 : `${dayAirportLabel} → Hotel`}
             </p>
           </div>
+        ) : isAirportDrop ? (
+          <div className="px-4 py-3 border-b bg-teal-50/80 shrink-0">
+            <p className="text-[10px] uppercase tracking-wide text-teal-800/70 font-semibold">
+              Destination · Hotel → Airport
+            </p>
+            <p className="text-sm font-semibold text-teal-950 mt-0.5">
+              {dayHotelName
+                ? `${dayHotelName}${dayHotelCity ? ` · ${dayHotelCity}` : ""} → ${dayAirportLabel}`
+                : `Hotel → ${dayAirportLabel}`}
+            </p>
+          </div>
         ) : null}
 
         <div className="px-4 py-3 border-b bg-muted/10 shrink-0 grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3">
-          {!isAirportPickup ? (
+          {!isAirportService ? (
             <div className="space-y-1">
               <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">City</Label>
               <select
@@ -9176,7 +9253,13 @@ function CatalogPicker({
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <Input
                 className="h-10 pl-8 text-sm"
-                placeholder={isAirportPickup ? "Search airport pickup…" : "Search transfer…"}
+                placeholder={
+                  isAirportPickup
+                    ? "Search airport pickup…"
+                    : isAirportDrop
+                      ? "Search airport drop…"
+                      : "Search transfer…"
+                }
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 autoFocus
@@ -9191,10 +9274,15 @@ function CatalogPicker({
               <Loader2 className="w-4 h-4 animate-spin" /> Loading transfers…
             </div>
           )}
-          {!loading && isAirportPickup && !dayHotelName ? (
+          {!loading && isAirportService && !dayHotelName ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-              Add a hotel for <span className="font-medium">{destLabel || "this city"}</span> first — Airport Pickup will then show{" "}
-              <span className="font-medium">{dayAirportLabel} → your hotel name</span>.
+              Add a hotel for <span className="font-medium">{destLabel || "this city"}</span> first —{" "}
+              {isAirportDrop ? "Airport Drop" : "Airport Pickup"} will then show{" "}
+              <span className="font-medium">
+                {isAirportDrop
+                  ? `your hotel → ${dayAirportLabel}`
+                  : `${dayAirportLabel} → your hotel name`}
+              </span>.
             </div>
           ) : null}
           {!loading && transferItems.length === 0 && (
@@ -9204,12 +9292,18 @@ function CatalogPicker({
                   ? !dayHotelName
                     ? `Add a hotel in ${destLabel || "this city"} first to see Airport → Hotel pickup options.`
                     : `No Airport → Hotel transfer destinations found for ${destLabel || dayHotelCity || "this city"}.`
-                  : `No transfer options for ${transferCity}.`}
+                  : isAirportDrop
+                    ? !dayHotelName
+                      ? `Add a hotel in ${destLabel || "this city"} first to see Hotel → Airport drop options.`
+                      : `No Hotel → Airport transfer options found for ${destLabel || dayHotelCity || "this city"}.`
+                    : `No transfer options for ${transferCity}.`}
               </p>
               <p className="text-xs text-muted-foreground">
                 {isAirportPickup
                   ? `KTH one-way rates from ${dayAirportLabel} to the selected hotel / outstation.`
-                  : "KTH 2026 rates cover Kuala Lumpur (KLIA), Langkawi, and Penang."}
+                  : isAirportDrop
+                    ? `KTH one-way rates from hotel to ${dayAirportLabel}.`
+                    : "KTH 2026 rates cover Kuala Lumpur (KLIA), Langkawi, and Penang."}
               </p>
             </div>
           )}
@@ -9231,7 +9325,9 @@ function CatalogPicker({
               ? (boundHotel
                 ? `One Way Transfer from ${dayAirportLabel} - ${boundHotel}`
                 : formatTransferDestination(item))
-              : formatTransferRoute(item);
+              : isAirportDrop
+                ? formatTransferRoute(item)
+                : formatTransferRoute(item);
             const listKey = String(
               (item as ProductRecord & { listKey?: string }).listKey
               || item.id
@@ -9287,7 +9383,7 @@ function CatalogPicker({
                     className="bg-slate-900 hover:bg-slate-800 text-white shrink-0 min-w-[88px]"
                     onClick={() => void pickCatalogItem(item)}
                   >
-                    {busyPick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isAirportPickup ? "Choose vehicle" : "Select"}
+                    {busyPick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isAirportService ? "Choose vehicle" : "Select"}
                   </Button>
                 </div>
               </div>
@@ -9719,6 +9815,28 @@ function CatalogPicker({
           </Button>
         </div>
 
+        {onSwitchAirportService ? (
+          <div className="px-4 py-2.5 border-b bg-muted/20 shrink-0 flex flex-wrap gap-2">
+            <span className="inline-flex h-8 items-center rounded-full bg-slate-900 px-3 text-xs font-medium text-white">
+              Sightseeing
+            </span>
+            <button
+              type="button"
+              className="inline-flex h-8 items-center rounded-full border border-border bg-background px-3 text-xs font-medium text-foreground hover:border-brand-blue/50 hover:text-brand-blue"
+              onClick={() => onSwitchAirportService("airport_pickup")}
+            >
+              Airport Pickup
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-8 items-center rounded-full border border-border bg-background px-3 text-xs font-medium text-foreground hover:border-brand-blue/50 hover:text-brand-blue"
+              onClick={() => onSwitchAirportService("airport_drop")}
+            >
+              Airport Drop
+            </button>
+          </div>
+        ) : null}
+
         <div className="px-4 py-3 border-b bg-muted/10 shrink-0 grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3">
           <div className="space-y-1">
             <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">City</Label>
@@ -9788,12 +9906,13 @@ function CatalogPicker({
 
     async function submitExpandedMeal(item: ProductRecord) {
       const food = mealFoodOnlyPrice(item);
-      const transferTotal = mealTransferVehicleTotal(mealVehicleQty);
-      const vehicles = selectedMealVehicles(mealVehicleQty);
-      if (!vehicles.length) {
+      const withTransfer = mealWantTransfer;
+      const transferTotal = withTransfer ? mealTransferVehicleTotal(mealVehicleQty) : 0;
+      const vehicles = withTransfer ? selectedMealVehicles(mealVehicleQty) : [];
+      if (withTransfer && !vehicles.length) {
         toast({
           title: "Select a vehicle",
-          description: "Choose qty for at least one vehicle.",
+          description: "Choose qty for at least one vehicle, or switch to Without transfer.",
           variant: "destructive",
         });
         return;
@@ -9804,17 +9923,19 @@ function CatalogPicker({
       }
       const enriched = {
         ...item,
+        transferInclusion: withTransfer ? "PRIVATE" : "NONE",
         mealExtras: {
           timeSlot: mealTimeSlot,
           foodPrice: food,
           transferTotal,
           sellingPrice: food + transferTotal,
           vehicles: vehicles.map((v) => ({ label: v.label, qty: v.qty, price: v.price })),
-          route: MEAL_TRANSFER_ROUTE,
+          route: withTransfer ? MEAL_TRANSFER_ROUTE : "",
         },
       } as ProductRecord;
       await pickCatalogItem(enriched);
       setMealExpandId(null);
+      setMealWantTransfer(false);
     }
 
     return (
@@ -9835,21 +9956,25 @@ function CatalogPicker({
               <div className="rounded-xl border bg-background p-8 text-center space-y-2">
                 <p className="text-sm text-muted-foreground">No meal options found.</p>
                 <p className="text-xs text-muted-foreground">
-                  Indian lunch / dinner set menus with optional private transfer.
+                  Indian lunch / dinner set menus — choose with or without private transfer.
                 </p>
               </div>
             )}
             {!loading && items.map((item) => {
               const busyPick = pickingId === item.id;
-              const isPrivate = item.transferInclusion === "PRIVATE";
-              const expanded = isPrivate && mealExpandId === item.id;
+              const expanded = mealExpandId === item.id;
               const foodPrice = mealFoodOnlyPrice(item);
-              const transferTotal = expanded ? mealTransferVehicleTotal(mealVehicleQty) : MEAL_TRANSFER_VEHICLES[0].price;
-              const displayPrice = isPrivate
-                ? (expanded ? foodPrice + transferTotal : Number(item.adultPrice || 0))
+              const transferTotal = expanded && mealWantTransfer
+                ? mealTransferVehicleTotal(mealVehicleQty)
+                : MEAL_TRANSFER_VEHICLES[0].price;
+              const displayPrice = expanded
+                ? foodPrice + (mealWantTransfer ? transferTotal : 0)
                 : Number(item.adultPrice || 0);
               const sub = String(item.description || "").trim();
               const slots = mealTimeSlotsForType(item.mealType);
+              const mealKind = /\bdinner\b/i.test(String(item.mealType || item.name || ""))
+                ? "Dinner"
+                : "Lunch";
 
               return (
                 <div
@@ -9863,14 +9988,23 @@ function CatalogPicker({
                     <div className="min-w-0 flex-1 space-y-1.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-sm text-slate-900 leading-snug">{item.name}</p>
-                        <span
-                          className={cn(
-                            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                            isPrivate ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-700",
-                          )}
-                        >
-                          {isPrivate ? "Private Transfer" : "No Transfer"}
+                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-amber-50 text-amber-800">
+                          {mealKind}
                         </span>
+                        {expanded ? (
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                              mealWantTransfer ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-700",
+                            )}
+                          >
+                            {mealWantTransfer ? "With Transfer" : "Without Transfer"}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-600">
+                            Transfer optional
+                          </span>
+                        )}
                         <button
                           type="button"
                           className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 hover:underline"
@@ -9898,13 +10032,10 @@ function CatalogPicker({
                           disabled={busyPick}
                           className="bg-slate-900 hover:bg-slate-800 text-white shrink-0 min-w-[88px] rounded-lg"
                           onClick={() => {
-                            if (isPrivate) {
-                              setMealExpandId(item.id);
-                              setMealTimeSlot(slots[0] || "12:00 - 13:00");
-                              setMealVehicleQty(defaultMealVehicleQty());
-                              return;
-                            }
-                            void pickCatalogItem(item);
+                            setMealExpandId(item.id);
+                            setMealWantTransfer(item.transferInclusion === "PRIVATE");
+                            setMealTimeSlot(slots[0] || "12:00 - 13:00");
+                            setMealVehicleQty(defaultMealVehicleQty());
                           }}
                         >
                           {busyPick ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Select"}
@@ -9915,6 +10046,47 @@ function CatalogPicker({
 
                   {expanded ? (
                     <div className="space-y-3 border-t border-slate-100 pt-3">
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-slate-800">Transfer</p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className={cn(
+                              "h-8 rounded-full px-3 text-xs font-medium border transition-colors",
+                              !mealWantTransfer
+                                ? "bg-slate-900 text-white border-slate-900"
+                                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300",
+                            )}
+                            onClick={() => setMealWantTransfer(false)}
+                          >
+                            Without transfer
+                          </button>
+                          <button
+                            type="button"
+                            className={cn(
+                              "h-8 rounded-full px-3 text-xs font-medium border transition-colors",
+                              mealWantTransfer
+                                ? "bg-slate-900 text-white border-slate-900"
+                                : "bg-white text-slate-700 border-slate-200 hover:border-slate-300",
+                            )}
+                            onClick={() => {
+                              setMealWantTransfer(true);
+                              setMealVehicleQty((prev) => {
+                                const any = Object.values(prev).some((n) => Number(n) > 0);
+                                return any ? prev : defaultMealVehicleQty();
+                              });
+                            }}
+                          >
+                            With private transfer
+                          </button>
+                        </div>
+                        {mealWantTransfer ? (
+                          <p className="text-[11px] text-slate-500">{MEAL_TRANSFER_ROUTE}</p>
+                        ) : (
+                          <p className="text-[11px] text-slate-500">Food only — guest arranges own transport.</p>
+                        )}
+                      </div>
+
                       <div className="flex flex-col lg:flex-row lg:items-end gap-3 lg:justify-between">
                         <div className="space-y-2">
                           <p className="text-xs font-semibold text-slate-800">Select Meal Time</p>
@@ -9944,6 +10116,18 @@ function CatalogPicker({
                           <Button
                             type="button"
                             size="sm"
+                            variant="outline"
+                            disabled={busyPick}
+                            onClick={() => {
+                              setMealExpandId(null);
+                              setMealWantTransfer(false);
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
                             disabled={busyPick}
                             className="bg-slate-900 hover:bg-slate-800 text-white min-w-[88px] rounded-lg"
                             onClick={() => void submitExpandedMeal(item)}
@@ -9953,6 +10137,7 @@ function CatalogPicker({
                         </div>
                       </div>
 
+                      {mealWantTransfer ? (
                       <div className="overflow-x-auto rounded-lg border border-slate-200">
                         <table className="w-full text-sm">
                           <thead>
@@ -10021,6 +10206,7 @@ function CatalogPicker({
                           </tbody>
                         </table>
                       </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

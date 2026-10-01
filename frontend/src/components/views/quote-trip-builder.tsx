@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo, useState } from "react";
 import {
@@ -53,7 +53,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
-export type TripBuilderStage = "services" | "itinerary" | "pricing" | "preview";
+export type TripBuilderStage = "services" | "pricing" | "preview";
 
 function ComponentSellLabel({ amount }: { amount: number | null }) {
   if (amount == null) return null;
@@ -65,16 +65,14 @@ function ComponentSellLabel({ amount }: { amount: number | null }) {
 }
 const STAGE_TO_FLOW: Record<TripBuilderStage, number> = {
   services: 2,
-  itinerary: 3,
-  pricing: 4,
-  preview: 5,
+  pricing: 3,
+  preview: 4,
 };
 
 const FLOW_TO_STAGE: Record<number, TripBuilderStage> = {
   2: "services",
-  3: "itinerary",
-  4: "pricing",
-  5: "preview",
+  3: "pricing",
+  4: "preview",
 };
 
 export type TripBuilderService = "Hotel" | "Flights" | "Transfers" | "Activities" | "Meals" | "Add-ons";
@@ -110,12 +108,22 @@ const DAY_SERVICES: Array<{
   key: TripBuilderService;
   icon: typeof Building2;
 }> = [
-  // Hotel is added from the Hotels & Stay section (and optional day chip when night uncovered).
   { key: "Hotel", icon: Building2 },
-  { key: "Transfers", icon: Car },
   { key: "Activities", icon: ClipboardList },
   { key: "Meals", icon: UtensilsCrossed },
 ];
+
+function hotelCoversNight(hotel: Record<string, unknown>, date: string): boolean {
+  const cin = String(hotel.checkIn || "");
+  const cout = String(hotel.checkOut || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cin) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cout)) return date >= cin && date < cout;
+  return date === cin;
+}
+
+function isHotelCheckInDay(hotel: Record<string, unknown>, date: string): boolean {
+  return String(hotel.checkIn || "") === date;
+}
 
 function weekdayShort(ymd: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return "";
@@ -351,7 +359,7 @@ export function QuoteTripBuilder({
     dayNumber: number;
     date: string;
     city: string;
-    transferKind?: "transfer" | "airport_pickup";
+    transferKind?: "transfer" | "airport_pickup" | "airport_drop";
   }) => void;
   onRemoveHotel?: (lineId: string) => void;
   onRemoveFlight?: (flightLineId: string) => void;
@@ -483,8 +491,8 @@ export function QuoteTripBuilder({
   const { toast } = useToast();
 
   function requestFlowStep(index: number) {
-    // Pricing (4) and Preview (5) require a persisted quotation ID.
-    if (index >= 4 && !quoteId) {
+    // Pricing (3) and Preview (4) require a persisted quotation ID.
+    if (index >= 3 && !quoteId) {
       toast({
         title: "Save Proposal first",
         description: "Pricing, Preview, PDF, and Send unlock after the quotation is saved.",
@@ -527,33 +535,14 @@ export function QuoteTripBuilder({
       />
 
       {activeStage === "services" && (
-        <div className="rounded-lg border bg-muted/20 px-3 py-2.5 flex flex-wrap items-start justify-between gap-3">
+        <div className="rounded-lg border bg-muted/20 px-3 py-2.5">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Hotels, flights, cars & activities</p>
             <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-              Trip-level Flights (if not land-only). Per day: Hotel · Cars &amp; Transfers · Activities · Meals · Misc.
+              Trip-level Flights (if not land-only). Per day: Hotel · Activities (incl. transfers) · Meals · sightseeing.
               Same lines transfer into booking Travel / Itinerary.
             </p>
           </div>
-          {onFlowStepChange ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="shrink-0 h-8"
-              onClick={() => onFlowStepChange(3)}
-            >
-              Skip to itinerary
-            </Button>
-          ) : null}
-        </div>
-      )}
-      {activeStage === "itinerary" && (
-        <div className="rounded-lg border bg-muted/20 px-3 py-2.5">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Day-wise itinerary</p>
-          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
-            Each day is locked to its Travel city. Pick sightseeing places from Products → Sightseeing Places.
-          </p>
         </div>
       )}
       {activeStage === "pricing" && (
@@ -592,18 +581,18 @@ export function QuoteTripBuilder({
             </div>
             <p className="text-sm text-muted-foreground">
               {dateRangeLabel}
-              <span className="mx-2 text-border">·</span>
+              <span className="mx-2 text-border">Â·</span>
               {paxLabel}
             </p>
             {form.landOnly ? (
-              <p className="text-xs font-medium text-teal-800">Land only · flights not included</p>
+              <p className="text-xs font-medium text-teal-800">Land only Â· flights not included</p>
             ) : (
-              <p className="text-xs font-medium text-muted-foreground">With flights · add air fares under Flights</p>
+              <p className="text-xs font-medium text-muted-foreground">With flights Â· add air fares under Flights</p>
             )}
             <p className="text-xs text-muted-foreground">
               Cities: {destinationLabel}
               {stayWindows.length
-                ? ` · ${stayWindows.map((w) => `${w.city} (${w.nights || 0}N)`).join(", ")}`
+                ? ` Â· ${stayWindows.map((w) => `${w.city} (${w.nights || 0}N)`).join(", ")}`
                 : ""}
             </p>
           </div>
@@ -644,7 +633,7 @@ export function QuoteTripBuilder({
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Travel / booking details</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
               <div className="rounded-lg border bg-card p-2 min-w-0">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">From → To</p>
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">From â†’ To</p>
                 <p className="font-medium mt-0.5 break-words text-sm">{routeTitle}</p>
               </div>
               <div className="rounded-lg border bg-card p-2 min-w-0">
@@ -670,10 +659,10 @@ export function QuoteTripBuilder({
                       className="rounded-md border bg-card px-2.5 py-1 text-xs text-foreground"
                     >
                       <span className="font-semibold">{w.city}</span>
-                      {" · "}
+                      {" Â· "}
                       {w.nights || 0}N
                       {w.checkIn && w.checkOut
-                        ? ` · ${formatStayShort(w.checkIn)} – ${formatStayShort(w.checkOut)}`
+                        ? ` Â· ${formatStayShort(w.checkIn)} — ${formatStayShort(w.checkOut)}`
                         : ""}
                     </li>
                   ))}
@@ -697,7 +686,7 @@ export function QuoteTripBuilder({
                   }}
                 >
                   <option value="none">None</option>
-                  <option value="Fixed">Fixed (₹)</option>
+                  <option value="Fixed">Fixed (â‚¹)</option>
                   <option value="Percentage">Percentage (%)</option>
                 </select>
               </div>
@@ -790,11 +779,11 @@ export function QuoteTripBuilder({
                       <p className="text-sm font-medium text-slate-900 truncate">{line.label}</p>
                       <p className="text-[11px] text-slate-500 capitalize">
                         {line.kind === "transfer" ? "car / transfer" : line.kind}
-                        {line.costPrice != null ? ` · cost ${formatFullINR(line.costPrice)}` : ""}
+                        {line.costPrice != null ? ` Â· cost ${formatFullINR(line.costPrice)}` : ""}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Label className="text-[11px] text-slate-500 shrink-0">Sell ₹</Label>
+                      <Label className="text-[11px] text-slate-500 shrink-0">Sell â‚¹</Label>
                       <Input
                         className="h-8 w-28 tabular-nums"
                         type="number"
@@ -824,8 +813,8 @@ export function QuoteTripBuilder({
                   Flights
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {String(form.departureCity || "Origin").trim()} →{" "}
-                  {stayWindows[0]?.city || form.destination || "Destination"} · air fares roll into Pricing
+                  {String(form.departureCity || "Origin").trim()} â†’{" "}
+                  {stayWindows[0]?.city || form.destination || "Destination"} Â· air fares roll into Pricing
                 </p>
               </div>
               <Button
@@ -858,7 +847,7 @@ export function QuoteTripBuilder({
                     String(f.airline || "").trim(),
                     String(f.flightNumber || "").trim(),
                   ].filter(Boolean).join(" ") || `Flight ${i + 1}`;
-                  const route = [String(f.from || "").trim(), String(f.to || "").trim()].filter(Boolean).join(" → ");
+                  const route = [String(f.from || "").trim(), String(f.to || "").trim()].filter(Boolean).join(" â†’ ");
                   const sell = displayComponentSellingPrice(f, "flight");
                   return (
                     <li key={lineId} className="flex flex-wrap items-center gap-3 px-4 sm:px-5 py-3">
@@ -866,8 +855,8 @@ export function QuoteTripBuilder({
                         <p className="text-sm font-medium text-slate-900">{label}</p>
                         <p className="text-xs text-slate-500">
                           {route || "Route TBD"}
-                          {f.date ? ` · ${formatStayShort(String(f.date))}` : ""}
-                          {f.cabinClass ? ` · ${String(f.cabinClass)}` : ""}
+                          {f.date ? ` Â· ${formatStayShort(String(f.date))}` : ""}
+                          {f.cabinClass ? ` Â· ${String(f.cabinClass)}` : ""}
                         </p>
                       </div>
                       {sell != null ? (
@@ -893,187 +882,6 @@ export function QuoteTripBuilder({
           </section>
         )}
 
-        {/* Quotation-level Hotel / Stay — before daily itinerary */}
-        <section className="rounded-2xl border border-teal-200/80 bg-white shadow-sm overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-teal-100 bg-teal-50/60">
-            <div className="min-w-0">
-              <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-brand-teal" />
-                Hotels &amp; Stay
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Accommodation for this quotation · stay totals (not per night)
-              </p>
-            </div>
-            {activeStage === "services" && onOpenService ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-full border-teal-200 bg-white text-teal-900 hover:border-teal-400 hover:bg-teal-50"
-                onClick={() => {
-                  const win = stayWindows[0];
-                  onOpenService({
-                    service: "Hotel",
-                    dayNumber: 1,
-                    date: win?.checkIn || form.travelStartDate || "",
-                    city: win?.city || form.destination || "",
-                  });
-                }}
-              >
-                <Building2 className="w-3.5 h-3.5 mr-1.5" />
-                Add hotel
-              </Button>
-            ) : null}
-          </div>
-          {hotels.length === 0 ? (
-            <p className="px-4 py-5 text-sm text-slate-500">
-              No hotels yet. Add accommodation for each city stay — hotels appear here, not inside Day cards.
-            </p>
-          ) : (
-            <ul className="divide-y">
-              {hotels.map((hotel, hi) => {
-                const name = String(hotel.hotelName || hotel.name || "Hotel");
-                const stars = hotelStars(hotel.starCategory);
-                const roomType = String(hotel.roomType || "").trim();
-                const meal = String(hotel.mealPlan || "").trim();
-                const rooms = hotel.rooms != null ? Math.max(1, Math.round(Number(hotel.rooms) || 1)) : null;
-                const nights = hotel.nights != null && Number(hotel.nights) > 0
-                  ? Math.round(Number(hotel.nights))
-                  : null;
-                const city = String(hotel.city || hotel.tripCity || "").trim();
-                const refundable = hotel.refundable === true
-                  || /refundable|free\s*cancel/i.test(String(hotel.cancellationPolicy || ""));
-                const selfBooked = hotel.selfBooked === true;
-                const img = String(hotel.imageUrl || "").trim()
-                  || placeholderHotelImage({
-                    name,
-                    city: city || form.destination || "",
-                    country: "Malaysia",
-                  });
-                const lineId = String(hotel.lineId || hotel.productId || `hotel-${hi}`);
-                const hotelSell = displayComponentSellingPrice(hotel, "hotel");
-                const remarks = String(hotel.remarks || "").trim();
-                return (
-                  <li
-                    key={lineId}
-                    className="flex flex-col sm:flex-row gap-3 px-4 sm:px-5 py-3.5"
-                  >
-                    <div className="relative h-24 w-full sm:h-20 sm:w-28 shrink-0 rounded-lg overflow-hidden bg-slate-100">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="min-w-0 space-y-0.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-sm font-semibold text-slate-900">{name}</p>
-                            {stars > 0 ? (
-                              <span className="inline-flex items-center gap-0.5">
-                                {Array.from({ length: stars }).map((_, i) => (
-                                  <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
-                                ))}
-                              </span>
-                            ) : null}
-                            {selfBooked ? (
-                              <span className="rounded-md bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium">
-                                Self-booked
-                              </span>
-                            ) : null}
-                          </div>
-                          {city ? (
-                            <p className="text-xs text-slate-600">{city}</p>
-                          ) : null}
-                          <p className="text-xs text-slate-500">
-                            {formatStayDisplay(String(hotel.checkIn || ""), String(hotel.checkOut || ""))}
-                            {nights != null ? ` · ${nights} night${nights === 1 ? "" : "s"}` : ""}
-                          </p>
-                          {roomType ? (
-                            <p className="text-xs text-slate-600">
-                              {roomType}
-                              {rooms != null ? ` · ${rooms} room${rooms === 1 ? "" : "s"}` : ""}
-                            </p>
-                          ) : rooms != null ? (
-                            <p className="text-xs text-slate-600">
-                              {rooms} room{rooms === 1 ? "" : "s"}
-                            </p>
-                          ) : null}
-                          {remarks ? (
-                            <p className="text-xs text-slate-500 line-clamp-2">{remarks}</p>
-                          ) : null}
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {meal ? (
-                              <span className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">
-                                {meal}
-                              </span>
-                            ) : null}
-                            {refundable ? (
-                              <span className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">
-                                Refundable
-                              </span>
-                            ) : (
-                              <span className="rounded-md bg-rose-50 text-rose-700 border border-rose-100 px-1.5 py-0.5 text-[10px] font-medium">
-                                Non-Refundable
-                              </span>
-                            )}
-                            <span className="rounded-md bg-amber-50 text-amber-800 border border-amber-100 px-1.5 py-0.5 text-[10px] font-medium">
-                              On Request
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
-                          {hotelSell != null ? (
-                            <div className="text-right">
-                              <p className="text-[10px] uppercase tracking-wide text-slate-500">Stay total</p>
-                              <ComponentSellLabel amount={hotelSell} />
-                            </div>
-                          ) : null}
-                          <ItemActionButtons
-                            onEdit={
-                              onUpdateHotel
-                                ? () => openEdit({
-                                  kind: "hotel",
-                                  lineId,
-                                  title: name,
-                                  roomType,
-                                  mealPlan: meal,
-                                  remarks: String(hotel.remarks || ""),
-                                })
-                                : undefined
-                            }
-                            onDelete={onRemoveHotel ? () => onRemoveHotel(lineId) : undefined}
-                            onView={() => setViewTarget({
-                              kind: "hotel",
-                              title: name,
-                              imageUrl: img,
-                              rows: [
-                                { label: "City", value: city || "—" },
-                                { label: "Room type", value: roomType || "—" },
-                                { label: "Rooms", value: rooms != null ? String(rooms) : "—" },
-                                { label: "Meal plan", value: meal || "—" },
-                                { label: "Check in / out", value: formatStayDisplay(String(hotel.checkIn || ""), String(hotel.checkOut || "")) },
-                                { label: "Nights", value: nights != null ? String(nights) : "—" },
-                                { label: "Cancellation", value: refundable ? "Refundable" : "Non-refundable" },
-                                ...(selfBooked ? [{ label: "Booking", value: "Self-booked" }] : []),
-                                ...(hotelSell != null
-                                  ? [{ label: "Stay total", value: formatFullINR(hotelSell) }]
-                                  : []),
-                                { label: "Remarks", value: remarks || "—" },
-                              ],
-                            })}
-                            deleteLabel="Remove hotel"
-                            editLabel="Edit hotel"
-                            viewLabel="View hotel"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
 
         {nights.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white/80 px-4 py-10 text-center text-sm text-slate-500">
@@ -1085,7 +893,7 @@ export function QuoteTripBuilder({
             const items = itineraryByDate.get(night.date) || [];
             const weekday = weekdayShort(night.date);
             const dayMeta = dayMetaByDate.get(night.date);
-            const dayTitle = String(dayMeta?.title || `Day ${dayNumber} · ${night.city || "City"}`);
+            const dayTitle = String(dayMeta?.title || `Day ${dayNumber} Â· ${night.city || "City"}`);
             const dayCover = String(dayMeta?.coverImage || dayMeta?.imageUrl || "");
             return (
               <section
@@ -1100,15 +908,9 @@ export function QuoteTripBuilder({
                   {activeStage === "services" ? (
                   <div className="flex flex-wrap gap-2">
                     {(() => {
-                      const dayHasHotel = hotels.some((h) => {
-                        const cin = String(h.checkIn || "");
-                        const cout = String(h.checkOut || "");
-                        if (!/^\d{4}-\d{2}-\d{2}$/.test(cin)) return false;
-                        if (/^\d{4}-\d{2}-\d{2}$/.test(cout)) return night.date >= cin && night.date < cout;
-                        return night.date === cin;
-                      });
+                      const dayHasHotel = hotels.some((h) => hotelCoversNight(h, night.date));
                       return DAY_SERVICES.filter(({ key }) => !(key === "Hotel" && dayHasHotel)).map(({ key, icon: Icon }) => {
-                        if (key === "Transfers") {
+                        if (key === "Activities") {
                           return (
                             <DropdownMenu key={key}>
                               <DropdownMenuTrigger asChild>
@@ -1119,11 +921,34 @@ export function QuoteTripBuilder({
                                   className="h-8 rounded-full border-slate-200 bg-white text-slate-700 hover:border-brand-blue/40 hover:text-brand-blue data-[state=open]:bg-brand-blue data-[state=open]:text-white data-[state=open]:border-brand-blue"
                                 >
                                   <Icon className="w-3.5 h-3.5 mr-1.5" />
-                                  Cars & Transfers
+                                  Activities
                                   <ChevronDown className="w-3 h-3 ml-1 opacity-70" />
                                 </Button>
                               </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="min-w-[180px] rounded-xl p-1">
+                              <DropdownMenuContent align="end" className="min-w-[200px] rounded-xl p-1">
+                                <DropdownMenuItem
+                                  className="rounded-lg cursor-pointer gap-2"
+                                  onSelect={() => {
+                                    if (onOpenService) {
+                                      onOpenService({
+                                        service: "Activities",
+                                        dayNumber,
+                                        date: night.date,
+                                        city: night.city,
+                                      });
+                                      return;
+                                    }
+                                    setServiceTarget({
+                                      service: "Activities",
+                                      dayNumber,
+                                      date: night.date,
+                                      city: night.city,
+                                    });
+                                  }}
+                                >
+                                  <ClipboardList className="w-3.5 h-3.5 text-brand-blue" />
+                                  Activity / Sightseeing
+                                </DropdownMenuItem>
                                 <DropdownMenuItem
                                   className="rounded-lg cursor-pointer gap-2"
                                   onSelect={() => {
@@ -1172,6 +997,30 @@ export function QuoteTripBuilder({
                                   <Plane className="w-3.5 h-3.5 text-brand-blue" />
                                   Airport Pickup
                                 </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="rounded-lg cursor-pointer gap-2"
+                                  onSelect={() => {
+                                    if (onOpenService) {
+                                      onOpenService({
+                                        service: "Transfers",
+                                        dayNumber,
+                                        date: night.date,
+                                        city: night.city,
+                                        transferKind: "airport_drop",
+                                      });
+                                      return;
+                                    }
+                                    setServiceTarget({
+                                      service: "Transfers",
+                                      dayNumber,
+                                      date: night.date,
+                                      city: night.city,
+                                    });
+                                  }}
+                                >
+                                  <Plane className="w-3.5 h-3.5 text-brand-blue rotate-180" />
+                                  Airport Drop
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           );
@@ -1188,7 +1037,6 @@ export function QuoteTripBuilder({
                                 onOpenService
                                 && (
                                   key === "Hotel"
-                                  || key === "Activities"
                                   || key === "Meals"
                                 )
                               ) {
@@ -1218,7 +1066,7 @@ export function QuoteTripBuilder({
                   ) : null}
                 </div>
 
-                {activeStage === "itinerary" ? (
+                {activeStage === "services" ? (
                   <div className="px-4 sm:px-5 py-4 border-b border-slate-100 space-y-3 bg-white">
                     {(() => {
                       const stay = stayWindows.find((w) => {
@@ -1296,24 +1144,6 @@ export function QuoteTripBuilder({
                             </div>
                           </div>
 
-                          {onOpenService ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="rounded-full"
-                              onClick={() => onOpenService({
-                                service: "Activities",
-                                dayNumber,
-                                date: night.date,
-                                city: night.city,
-                              })}
-                            >
-                              <ClipboardList className="w-3.5 h-3.5 mr-1.5" />
-                              Add activity from Products (this city)
-                            </Button>
-                          ) : null}
-
                           {dayCover ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img src={dayCover} alt="" className="h-36 w-full object-cover rounded-xl border" />
@@ -1326,9 +1156,12 @@ export function QuoteTripBuilder({
 
                 <div className="p-4 sm:p-5 space-y-3">
                   {(() => {
-                    // Hotel stay cards live in Hotels & Stay above — never inside Day cards.
+                    const dayHotels = hotels.filter((h) => hotelCoversNight(h, night.date));
+                    const checkInHotels = dayHotels.filter((h) => isHotelCheckInDay(h, night.date));
+                    const continuingHotels = dayHotels.filter((h) => !isHotelCheckInDay(h, night.date));
+                    // Hotel stay cards render from packages[].hotels; skip HOTEL itinerary projections to avoid duplicates.
                     const nonHotelItems = items.filter((item) => String(item.itemType || "").toUpperCase() !== "HOTEL");
-                    const empty = nonHotelItems.length === 0;
+                    const empty = nonHotelItems.length === 0 && dayHotels.length === 0;
                     if (empty) {
                       return (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center">
@@ -1337,14 +1170,17 @@ export function QuoteTripBuilder({
                           </div>
                           <p className="text-sm font-semibold text-slate-800">Day at Leisure</p>
                           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                            No activities planned. Free day to explore on your own.
+                            No hotel or activities planned. Add hotel or pick Activities (incl. transfers).
                           </p>
                         </div>
                       );
                     }
 
-                    // Display-only day sum (excludes hotels — those are in Hotels & Stay).
                     let dayDisplayTotal = 0;
+                    for (const hotel of checkInHotels) {
+                      const sell = displayComponentSellingPrice(hotel, "hotel");
+                      if (sell != null) dayDisplayTotal += sell;
+                    }
                     for (const item of nonHotelItems) {
                       const t = String(item.itemType || "").toUpperCase();
                       if (t === "TRANSFER") {
@@ -1368,6 +1204,165 @@ export function QuoteTripBuilder({
 
                     return (
                       <>
+                        {checkInHotels.length > 0 ? (
+                          <ul className="space-y-3">
+                            {checkInHotels.map((hotel, hi) => {
+                              const name = String(hotel.hotelName || hotel.name || "Hotel");
+                              const stars = hotelStars(hotel.starCategory);
+                              const roomType = String(hotel.roomType || "").trim();
+                              const meal = String(hotel.mealPlan || "").trim();
+                              const rooms = hotel.rooms != null ? Math.max(1, Math.round(Number(hotel.rooms) || 1)) : null;
+                              const nightsCount = hotel.nights != null && Number(hotel.nights) > 0
+                                ? Math.round(Number(hotel.nights))
+                                : null;
+                              const city = String(hotel.city || hotel.tripCity || "").trim();
+                              const refundable = hotel.refundable === true
+                                || /refundable|free\s*cancel/i.test(String(hotel.cancellationPolicy || ""));
+                              const selfBooked = hotel.selfBooked === true;
+                              const img = String(hotel.imageUrl || "").trim()
+                                || placeholderHotelImage({
+                                  name,
+                                  city: city || form.destination || "",
+                                  country: "Malaysia",
+                                });
+                              const lineId = String(hotel.lineId || hotel.productId || `hotel-${hi}`);
+                              const hotelSell = displayComponentSellingPrice(hotel, "hotel");
+                              const remarks = String(hotel.remarks || "").trim();
+                              return (
+                                <li
+                                  key={lineId}
+                                  className="flex flex-col sm:flex-row gap-3 rounded-xl border border-teal-100 bg-teal-50/30 px-3 py-3"
+                                >
+                                  <div className="relative h-24 w-full sm:h-20 sm:w-28 shrink-0 rounded-lg overflow-hidden bg-slate-100">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={img} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                                  </div>
+                                  <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div className="min-w-0 space-y-0.5">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <p className="text-sm font-semibold text-slate-900">{name}</p>
+                                          {stars > 0 ? (
+                                            <span className="inline-flex items-center gap-0.5">
+                                              {Array.from({ length: stars }).map((_, i) => (
+                                                <Star key={i} className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                              ))}
+                                            </span>
+                                          ) : null}
+                                          {selfBooked ? (
+                                            <span className="rounded-md bg-slate-100 text-slate-700 border border-slate-200 px-1.5 py-0.5 text-[10px] font-medium">
+                                              Self-booked
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        {city ? <p className="text-xs text-slate-600">{city}</p> : null}
+                                        <p className="text-xs text-slate-500">
+                                          {formatStayDisplay(String(hotel.checkIn || ""), String(hotel.checkOut || ""))}
+                                          {nightsCount != null ? ` · ${nightsCount} night${nightsCount === 1 ? "" : "s"}` : ""}
+                                        </p>
+                                        {roomType ? (
+                                          <p className="text-xs text-slate-600">
+                                            {roomType}
+                                            {rooms != null ? ` · ${rooms} room${rooms === 1 ? "" : "s"}` : ""}
+                                          </p>
+                                        ) : rooms != null ? (
+                                          <p className="text-xs text-slate-600">
+                                            {rooms} room{rooms === 1 ? "" : "s"}
+                                          </p>
+                                        ) : null}
+                                        <div className="flex flex-wrap gap-1.5 pt-1">
+                                          {meal ? (
+                                            <span className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">
+                                              {meal}
+                                            </span>
+                                          ) : null}
+                                          {refundable ? (
+                                            <span className="rounded-md bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 py-0.5 text-[10px] font-medium">
+                                              Refundable
+                                            </span>
+                                          ) : (
+                                            <span className="rounded-md bg-rose-50 text-rose-700 border border-rose-100 px-1.5 py-0.5 text-[10px] font-medium">
+                                              Non-Refundable
+                                            </span>
+                                          )}
+                                          <span className="rounded-md bg-amber-50 text-amber-800 border border-amber-100 px-1.5 py-0.5 text-[10px] font-medium">
+                                            On Request
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                                        {hotelSell != null ? (
+                                          <div className="text-right">
+                                            <p className="text-[10px] uppercase tracking-wide text-slate-500">Stay total</p>
+                                            <ComponentSellLabel amount={hotelSell} />
+                                          </div>
+                                        ) : null}
+                                        <ItemActionButtons
+                                          onEdit={
+                                            onUpdateHotel
+                                              ? () => openEdit({
+                                                kind: "hotel",
+                                                lineId,
+                                                title: name,
+                                                roomType,
+                                                mealPlan: meal,
+                                                remarks: String(hotel.remarks || ""),
+                                              })
+                                              : undefined
+                                          }
+                                          onDelete={onRemoveHotel ? () => onRemoveHotel(lineId) : undefined}
+                                          onView={() => setViewTarget({
+                                            kind: "hotel",
+                                            title: name,
+                                            imageUrl: img,
+                                            rows: [
+                                              { label: "City", value: city || "—" },
+                                              { label: "Room type", value: roomType || "—" },
+                                              { label: "Rooms", value: rooms != null ? String(rooms) : "—" },
+                                              { label: "Meal plan", value: meal || "—" },
+                                              { label: "Check in / out", value: formatStayDisplay(String(hotel.checkIn || ""), String(hotel.checkOut || "")) },
+                                              { label: "Nights", value: nightsCount != null ? String(nightsCount) : "—" },
+                                              { label: "Cancellation", value: refundable ? "Refundable" : "Non-refundable" },
+                                              ...(selfBooked ? [{ label: "Booking", value: "Self-booked" }] : []),
+                                              ...(hotelSell != null
+                                                ? [{ label: "Stay total", value: formatFullINR(hotelSell) }]
+                                                : []),
+                                              { label: "Remarks", value: remarks || "—" },
+                                            ],
+                                          })}
+                                          deleteLabel="Remove hotel"
+                                          editLabel="Edit hotel"
+                                          viewLabel="View hotel"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : null}
+                        {continuingHotels.length > 0 ? (
+                          <ul className="space-y-1.5">
+                            {continuingHotels.map((hotel, hi) => {
+                              const name = String(hotel.hotelName || hotel.name || "Hotel");
+                              const lineId = String(hotel.lineId || hotel.productId || `hotel-stay-${hi}`);
+                              return (
+                                <li
+                                  key={`${lineId}-cont`}
+                                  className="rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs text-slate-700 flex items-center gap-2"
+                                >
+                                  <Building2 className="w-3.5 h-3.5 text-brand-teal shrink-0" />
+                                  <span>
+                                    Staying at <span className="font-semibold">{name}</span>
+                                    {" · "}
+                                    {formatStayDisplay(String(hotel.checkIn || ""), String(hotel.checkOut || ""))}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : null}
                         {nonHotelItems.length > 0 ? (
                           <ul className="space-y-3">
                             {nonHotelItems.map((item, i) => {
@@ -1678,7 +1673,7 @@ export function QuoteTripBuilder({
                               date ? formatItineraryDate(date) : "",
                               city,
                               qty > 1 ? `Qty ${qty}` : "",
-                            ].filter(Boolean).join(" · ") || "No date / city"}
+                            ].filter(Boolean).join(" Â· ") || "No date / city"}
                           </p>
                           {sell != null ? (
                             <p className="text-sm font-semibold tabular-nums text-emerald-700">
@@ -1753,16 +1748,14 @@ export function QuoteTripBuilder({
         showNext={activeStage !== "preview"}
         nextLabel={
           activeStage === "services"
-            ? "Next · Itinerary"
-            : activeStage === "itinerary"
-              ? "Next · Pricing"
-              : activeStage === "pricing"
-                ? "Next · Preview & send"
-                : "Next"
+            ? "Next · Pricing"
+            : activeStage === "pricing"
+              ? "Next · Preview & send"
+              : "Next"
         }
         onNext={
           onFlowStepChange
-            ? () => requestFlowStep(Math.min(activeFlow + 1, 5))
+            ? () => requestFlowStep(Math.min(activeFlow + 1, 4))
             : undefined
         }
       />
@@ -1992,7 +1985,7 @@ function ContactCard({
     <div className="rounded-lg border bg-muted/20 p-2 min-w-0">
       <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{title}</p>
       <p className="font-medium mt-0.5 text-sm truncate">{name}</p>
-      <p className="text-[11px] text-muted-foreground truncate mt-0.5">{phone} · {email}</p>
+      <p className="text-[11px] text-muted-foreground truncate mt-0.5">{phone} Â· {email}</p>
     </div>
   );
 }
@@ -2006,7 +1999,7 @@ function ServicePlaceholderDialog({
 }) {
   const title = !target
     ? ""
-    : `${target.service} · Day ${target.dayNumber} · ${target.city} · ${formatItineraryDate(target.date)}`;
+    : `${target.service} Â· Day ${target.dayNumber} Â· ${target.city} Â· ${formatItineraryDate(target.date)}`;
 
   const description = !target
     ? ""

@@ -17,6 +17,8 @@ const AUTO_FLAGS = [
   "autoFromMisc",
 ] as const;
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 const TYPE_ORDER: Record<string, number> = {
   FLIGHT: 10,
   TRANSFER: 20,
@@ -117,7 +119,8 @@ function sortDayItems(items: Record<string, unknown>[]): Record<string, unknown>
   return [...autos, ...manuals];
 }
 
-/** Trip night dates from stay windows (preferred) or hotels — no extra checkout day. */
+/** Trip calendar days from stay windows (preferred) or hotels.
+ * N nights → N+1 days (final checkout / departure day included). */
 export function buildTripNightDates(
   stayWindows: TripCityStayWindow[] | undefined,
   hotels: Record<string, unknown>[] | undefined,
@@ -131,6 +134,10 @@ export function buildTripNightDates(
         if (date) out.push({ date, city: w.city });
       }
     }
+    const last = stayWindows[stayWindows.length - 1];
+    if (last?.checkOut && ISO_DATE.test(last.checkOut) && !out.some((n) => n.date === last.checkOut)) {
+      out.push({ date: last.checkOut, city: last.city });
+    }
     return out;
   }
 
@@ -140,9 +147,12 @@ export function buildTripNightDates(
 
   const out: Array<{ date: string; city: string }> = [];
   const seen = new Set<string>();
+  let lastCheckOut = "";
+  let lastCity = "";
   for (const hotel of sorted) {
     const city = String(hotel.tripCity || hotel.city || "").trim();
     const checkIn = String(hotel.checkIn || travelStartDate || "").trim();
+    const checkOut = String(hotel.checkOut || "").trim();
     const nights = Math.max(
       1,
       Number(hotel.nights) || stayNights(String(hotel.checkIn || ""), String(hotel.checkOut || "")) || 1,
@@ -154,6 +164,19 @@ export function buildTripNightDates(
       seen.add(date);
       out.push({ date, city });
     }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
+      lastCheckOut = checkOut;
+      lastCity = city;
+    } else {
+      const derived = addDaysYmd(checkIn, nights);
+      if (derived) {
+        lastCheckOut = derived;
+        lastCity = city;
+      }
+    }
+  }
+  if (lastCheckOut && !seen.has(lastCheckOut)) {
+    out.push({ date: lastCheckOut, city: lastCity });
   }
   return out;
 }
@@ -474,7 +497,7 @@ function finalizeDays(days: Record<string, unknown>[]): Record<string, unknown>[
 
 /**
  * Safe full sync: refresh AUTO items from package services; preserve manual days/items.
- * Does not create an extra checkout-only day after the last night.
+ * Trip days = nights + 1 (final checkout / departure day included).
  */
 export function syncPackageItinerary(
   existing: unknown,

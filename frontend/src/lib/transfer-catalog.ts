@@ -34,6 +34,11 @@ export function airportPickupSearchQuery(dayCity: string): string {
   return "Kuala Lumpur Airport";
 }
 
+/** Same airport hub search — used for Hotel → Airport drop products. */
+export function airportDropSearchQuery(dayCity: string): string {
+  return airportPickupSearchQuery(dayCity);
+}
+
 /**
  * Airport → Hotel products for the day's hub.
  * - KL / Genting → curated KLIA list (Genting destinations included)
@@ -62,6 +67,37 @@ export function matchesAirportPickupForDayCity(
 
   // KL hub — curated KLIA list; when day is Genting, keep Genting destinations only.
   if (!matchesMalaysiaKlAirportTransferList(item)) return false;
+  if (isGentingDayCity(dayCity)) {
+    return /genting/.test(hay);
+  }
+  return true;
+}
+
+/**
+ * Hotel → Airport products for the day's hub (Airport Drop).
+ */
+export function matchesAirportDropForDayCity(
+  item: {
+    name?: string | null;
+    pickupLocation?: string | null;
+    dropLocation?: string | null;
+  },
+  dayCity: string,
+): boolean {
+  if (!isHotelToAirportTransfer(item)) return false;
+  const hub = resolveTransferHubCity(dayCity);
+  const hay = [item.name, item.pickupLocation, item.dropLocation]
+    .map((v) => String(v || "").toLowerCase())
+    .join(" ");
+
+  if (hub === "Langkawi") {
+    return /langkawi\s*airport/.test(hay);
+  }
+  if (hub === "Penang") {
+    return /penang.*airport|airport.*penang|airport.*hotel or vice versa/.test(hay);
+  }
+
+  if (!/kuala lumpur airport|klia/.test(hay)) return false;
   if (isGentingDayCity(dayCity)) {
     return /genting/.test(hay);
   }
@@ -142,7 +178,7 @@ export function isAirportTransfer(item: {
 
 /**
  * Airport Pickup = one-way from Airport → Hotel (KTH sheet).
- * Hotel → Airport drops are excluded (those belong under Transfer / drop).
+ * Hotel → Airport drops are excluded (those belong under Airport Drop).
  */
 export function isAirportToHotelTransfer(item: {
   name?: string | null;
@@ -164,6 +200,37 @@ export function isAirportToHotelTransfer(item: {
     const from = m[1].toLowerCase();
     const to = m[2].toLowerCase();
     if (/airport|klia/.test(from) && /hotel/.test(to)) return true;
+  }
+  return false;
+}
+
+/**
+ * Airport Drop = one-way from Hotel → Airport.
+ * Bidirectional Penang products count for both pick and drop.
+ */
+export function isHotelToAirportTransfer(item: {
+  name?: string | null;
+  pickupLocation?: string | null;
+  dropLocation?: string | null;
+}): boolean {
+  const name = String(item.name || "");
+  const pickup = String(item.pickupLocation || "").toLowerCase();
+  const drop = String(item.dropLocation || "").toLowerCase();
+
+  if (/airport.*hotel or vice versa/i.test(name)) return true;
+
+  if (/hotel/.test(pickup) && /airport|klia/.test(drop)) return true;
+
+  const m = name.match(/from\s+(.+?)\s+-\s+(.+)$/i);
+  if (m) {
+    const from = m[1].toLowerCase();
+    const to = m[2].toLowerCase();
+    if (/hotel/.test(from) && /airport|klia/.test(to)) return true;
+  }
+
+  // Name may be "… Hotel - … Airport" without "from"
+  if (/hotel/.test(name) && /airport|klia/.test(name) && !isAirportToHotelTransfer(item)) {
+    return /hotel.+(airport|klia)|(to\s+).*(airport|klia)/i.test(name);
   }
   return false;
 }

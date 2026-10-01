@@ -1558,6 +1558,17 @@ export function BookingsView() {
   const [detailOpen, setDetailOpen] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    api.getBookings()
+      .then((res) => {
+        if (cancelled) return;
+        (res.bookings || []).forEach((b) => upsertBooking(mapApiBooking(b)));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [upsertBooking]);
+
+  useEffect(() => {
     let pending: string | null = null;
     try {
       pending = sessionStorage.getItem("trevio.openBookingId");

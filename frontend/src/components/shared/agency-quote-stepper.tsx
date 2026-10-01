@@ -6,8 +6,7 @@ import { cn } from "@/lib/utils";
 export const AGENCY_QUOTE_STEPS = [
   { id: "personal", label: "Personal", hint: "Guest & docs" },
   { id: "travel", label: "Travel", hint: "Cities & dates" },
-  { id: "services", label: "Hotels & services", hint: "Stay · cars · tours" },
-  { id: "itinerary", label: "Itinerary", hint: "Sightseeing picks" },
+  { id: "services", label: "Hotels & services", hint: "Stay · cars · tours · day plan" },
   { id: "pricing", label: "Pricing", hint: "Totals & edit" },
   { id: "preview", label: "Preview & send", hint: "PDF · share" },
 ] as const;

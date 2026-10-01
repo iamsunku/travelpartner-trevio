@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   FileText, Send, FileDown, Plus, Trash2, CheckCircle2, Clock,
   Mail, MessageCircle, Eye, TrendingUp, Wallet, Percent, Ticket, Loader2, Copy, Archive,
-  XCircle,
+  XCircle, Pencil,
 } from "lucide-react";
 import { useDemoDataStore } from "@/store/demo-data-store";
 import { useAuthStore, useAppStore } from "@/store/app-store";
@@ -316,10 +316,16 @@ function approvalAlreadySubmitted(q: Quotation): boolean {
   return Boolean(latestStage(q, "Team Lead"));
 }
 
+/** Quotes that can still be opened in the trip-builder wizard for edits. */
+function canEditQuotation(q: Pick<Quotation, "status">): boolean {
+  return ["Draft", "In Progress", "Revision Requested", "Pending Approval"].includes(q.status || "");
+}
+
 function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const { toast } = useToast();
   const user = useAuthStore((s) => s.user);
   const isAgent = user?.role === "travel_agent";
+  const openQuotationWizard = useAppStore((s) => s.openQuotationWizard);
   const { pdf, email, whatsapp } = useQuoteActions();
   const { proceed, busyId } = useProceedToBooking();
   const upsertQuotation = useDemoDataStore((s) => s.upsertQuotation);
@@ -872,6 +878,19 @@ function QuoteDetailDialog({ quote, open, onOpenChange }: { quote: Quotation | n
           )}
 
           <div className="flex flex-wrap gap-2">
+            {!isAgent && canEditQuotation(display) && (
+              <Button
+                variant="default"
+                size="sm"
+                className="bg-primary hover:bg-primary/90"
+                onClick={() => {
+                  onOpenChange(false);
+                  openQuotationWizard(display.id);
+                }}
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => pdf(display)}><FileDown className="w-3.5 h-3.5 mr-1" /> Download PDF</Button>
             <Button variant="outline" size="sm" disabled={display.status === "Expired"} onClick={() => email(display)}><Mail className="w-3.5 h-3.5 mr-1" /> Email</Button>
             <Button variant="outline" size="sm" disabled={display.status === "Expired"} onClick={() => whatsapp(display)}><MessageCircle className="w-3.5 h-3.5 mr-1" /> WhatsApp</Button>
@@ -1262,9 +1281,16 @@ export function QuotationsView() {
                         <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="View" onClick={() => openDetail(q)}>
                           <Eye className="w-3.5 h-3.5" />
                         </Button>
-                        {!isAgent && ["Draft", "In Progress", "Revision Requested"].includes(q.status) && (
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Edit wizard" onClick={() => openQuotationWizard(q.id)}>
-                            <FileText className="w-3.5 h-3.5" />
+                        {!isAgent && canEditQuotation(q) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 gap-1 text-primary"
+                            title="Edit quotation"
+                            onClick={() => openQuotationWizard(q.id)}
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span className="text-[11px] font-medium">Edit</span>
                           </Button>
                         )}
                         {!isAgent && (

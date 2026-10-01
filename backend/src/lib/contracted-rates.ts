@@ -345,6 +345,27 @@ export function applyUnresolvedLine(line: Record<string, unknown>, travelDate: s
   return next;
 }
 
+/** True when a line is expected to use a contracted product rate (not catalogue/manual/API). */
+export function lineRequiresContractedRate(line: Record<string, unknown>): boolean {
+  const source = String(line.source || "");
+  if (
+    source === RATE_SOURCES.MANUAL
+    || source === RATE_SOURCES.API
+    || source === RATE_SOURCES.AMADEUS_API
+    || source === RATE_SOURCES.MOCK
+    || source === "CATALOG"
+    || source === "PRESET"
+  ) {
+    return false;
+  }
+  if (line.selfBooked === true) return false;
+  return source === RATE_SOURCES.CONTRACTED_PRODUCT || Boolean(line.productId);
+}
+
+/**
+ * Hard block for submit/send/convert when a contracted product line failed rate resolution.
+ * Catalogue / MANUAL selling-price fallbacks are allowed — they are soft warnings only.
+ */
 export function quoteUnresolvedRateReason(packages: Array<Record<string, unknown>> | undefined): string | null {
   if (!packages) return null;
   for (const pkg of packages) {
@@ -352,9 +373,9 @@ export function quoteUnresolvedRateReason(packages: Array<Record<string, unknown
       const lines = Array.isArray(pkg[key]) ? pkg[key] : [];
       for (const raw of lines) {
         const line = asRecord(raw);
-        if (line?.rateUnresolved === true) {
-          return String(line.rateUnresolvedReason || NO_VALID_RATE_MESSAGE);
-        }
+        if (!line || line.rateUnresolved !== true) continue;
+        if (!lineRequiresContractedRate(line)) continue;
+        return String(line.rateUnresolvedReason || NO_VALID_RATE_MESSAGE);
       }
     }
   }
@@ -480,7 +501,8 @@ async function freezeLine(
     || source === RATE_SOURCES.AMADEUS_API
     || source === RATE_SOURCES.MOCK
   ) {
-    const manual = { ...line };
+    // Catalogue / manual / API lines are not contracted-rate gates.
+    const manual = { ...line, rateUnresolved: false, rateUnresolvedReason: null };
     delete manual.contractedCost;
     return manual;
   }
