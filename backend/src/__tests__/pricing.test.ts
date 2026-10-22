@@ -44,6 +44,75 @@ describe("phase 3 pricing", () => {
     expect(priced.contractedCost).toBe(5000 * 3 * 4);
   });
 
+  it("contracted PER_ROOM_NIGHT: snapshot unit × rooms × nights; sellingPrice is not the stay total", () => {
+    // Mirrors TG-QT-2026-000099 (Ramada Encore): unit 3276, 1 room, 3 nights → package 9828.
+    const line = {
+      source: "CONTRACTED_PRODUCT",
+      productType: "HOTEL",
+      rooms: 1,
+      nights: 3,
+      checkIn: "2026-10-13",
+      checkOut: "2026-10-16",
+      // Persisted display/unit fields — must NOT be treated as the stay total for contracted pricing.
+      sellingPrice: 3276,
+      costPrice: 3276,
+      rateSnapshot: {
+        contractedCost: 3276,
+        currency: "INR",
+        rateUnit: "PER_ROOM_NIGHT",
+        frozen: true,
+      },
+    };
+    const priced = pricePackage(
+      { hotels: [line] },
+      {
+        ...ctx,
+        nights: 3,
+        children: 0,
+        infants: 0,
+        trevioMarkup: { type: "Percentage", value: 0 },
+        agentMarkup: { type: "Fixed", value: 0 },
+        taxRule: { id: "gst5", name: "GST", rate: 5, method: "EXCLUSIVE", active: true },
+      },
+    );
+    expect(priced.contractedCost).toBe(3276 * 1 * 3);
+    expect(priced.customerPrice).toBe(9828);
+    expect(priced.taxAmount).toBe(491);
+    expect(priced.finalPrice).toBe(10319);
+    // Written-back line contractedCost is the extended stay amount.
+    expect((priced.lines.hotels as Array<{ contractedCost: number }>)[0].contractedCost).toBe(9828);
+    // Stored sellingPrice remains the unit figure and is ignored as a commercial stay total.
+    expect(line.sellingPrice).toBe(3276);
+    expect(line.sellingPrice * 1 * 3).toBe(priced.customerPrice);
+  });
+
+  it("manual hotel sellingPrice is a lump amount (not multiplied by rooms × nights)", () => {
+    // Catalogue/MANUAL fallback may persist an already-extended stay total in sellingPrice.
+    // priceLine uses that amount directly for non-contracted sources.
+    const priced = pricePackage(
+      {
+        hotels: [{
+          source: "MANUAL",
+          productType: "HOTEL",
+          rooms: 2,
+          nights: 3,
+          sellingPrice: 9828,
+        }],
+      },
+      {
+        ...ctx,
+        nights: 3,
+        children: 0,
+        infants: 0,
+        trevioMarkup: { type: "Fixed", value: 0 },
+        agentMarkup: { type: "Fixed", value: 0 },
+        taxRule: null,
+      },
+    );
+    expect(priced.contractedCost).toBe(9828);
+    expect(priced.contractedCost).not.toBe(9828 * 2 * 3);
+  });
+
   it("C-E. adult, child, and infant quantities use only configured rates", () => {
     const priced = pricePackage({
       activities: [{

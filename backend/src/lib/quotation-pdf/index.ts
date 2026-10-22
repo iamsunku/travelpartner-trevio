@@ -4,7 +4,14 @@ import { isAgentLike } from "../quotations.js";
 import { agentCanAccessQuote, agentQuoteScope, quoteSendBlockReason } from "../quote-access.js";
 import { putPrivateObject, objectKey } from "../document-storage.js";
 import { safeStoredName } from "../documents.js";
-import { assertCustomerSafeModel, buildQuotationPdfModel, type PdfAudience, type PdfMode } from "./model.js";
+import {
+  assertCustomerSafeModel,
+  buildQuotationPdfModel,
+  TREVIO_BRAND_NAME,
+  TREVIO_LEGAL_NAME,
+  type PdfAudience,
+  type PdfMode,
+} from "./model.js";
 import { resolveDestinationTravelImages } from "./destination-images.js";
 import { renderQuotationPdf } from "./render.js";
 
@@ -260,4 +267,10 @@ export async function generateQuotationPdf(input: GenerateQuotationPdfInput) {
   };
 }
 
-export { buildQuotationPdfModel, assertCustomerSafeModel, renderQuotationPdf };
+export {
+  buildQuotationPdfModel,
+  assertCustomerSafeModel,
+  TREVIO_BRAND_NAME,
+  TREVIO_LEGAL_NAME,
+  renderQuotationPdf,
+};

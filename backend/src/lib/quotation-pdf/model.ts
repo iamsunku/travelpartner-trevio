@@ -2,6 +2,10 @@
 
 import { resolveDestinationTravelImages } from "./destination-images.js";
 
+/** Document company brand — short form of the Trevio legal entity used on cover, headers, and closing. */
+export const TREVIO_BRAND_NAME = "Trevio Global";
+export const TREVIO_LEGAL_NAME = "TREVIO GLOBAL VOYAGE PRIVATE LIMITED";
+
 export type PdfAudience = "customer" | "agent" | "internal";
 export type PdfMode = "preview" | "customer";
 
@@ -138,8 +142,18 @@ export type QuotationPdfPackage = {
   exclusions: string[];
   /** Soft grouping of inclusion bullets for presentation only. */
   inclusionGroups: Array<{ label: string; items: string[] }>;
-  /** Customer-facing selling totals by service (no cost/markup). */
-  serviceTotals: Array<{ label: string; amount: number }>;
+  /**
+   * Customer-facing selling totals by service (no cost/markup).
+   * Hotel amounts may be rate-unit-extended for contracted PER_ROOM_NIGHT lines.
+   */
+  serviceTotals: Array<{
+    label: string;
+    amount: number;
+    /** Presentation-only formula, e.g. "Rs 3,276 × 1 room × 3 nights". */
+    detail?: string;
+    /** How the amount was derived — never exposes internal cost fields. */
+    basis?: "room_night_extended" | "lump_selling" | "unextended_unit";
+  }>;
   pricing: {
     perAdultPrice: number;
     perChildPrice: number;
@@ -570,6 +584,112 @@ function sumSelling(rows: Array<{ sellingPrice?: number }>): number {
   return rows.reduce((s, r) => s + (Number(r.sellingPrice) > 0 ? Math.round(Number(r.sellingPrice)) : 0), 0);
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isoStayNights(checkIn: unknown, checkOut: unknown): number | null {
+  if (typeof checkIn !== "string" || typeof checkOut !== "string") return null;
+  if (!ISO_DATE.test(checkIn) || !ISO_DATE.test(checkOut)) return null;
+  const start = Date.parse(`${checkIn}T00:00:00Z`);
+  const end = Date.parse(`${checkOut}T00:00:00Z`);
+  if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return null;
+  return Math.round((end - start) / 86400000);
+}
+
+function hotelLineSource(line: Record<string, unknown>): string {
+  return String(line.source || "").trim().toUpperCase();
+}
+
+function hotelLineRateUnit(line: Record<string, unknown>): string {
+  const snap = asRecord(line.rateSnapshot);
+  const fromSnap = String(snap?.rateUnit || "").trim().toUpperCase();
+  if (fromSnap) return fromSnap;
+  return String(line.rateUnit || "").trim().toUpperCase();
+}
+
+function isContractedHotelLine(line: Record<string, unknown>): boolean {
+  const source = hotelLineSource(line);
+  if (source === "CONTRACTED_PRODUCT") return true;
+  return Boolean(line.productId && asRecord(line.rateSnapshot));
+}
+
+export type HotelInformationalSell = {
+  amount: number;
+  unitPrice?: number;
+  rooms?: number;
+  nights?: number;
+  basis: "room_night_extended" | "lump_selling" | "unextended_unit";
+};
+
+/**
+ * Customer-facing hotel sell for PDF informational breakdown.
+ * - Contracted PER_ROOM_NIGHT: sellingPrice is treated as the unit sell × rooms × nights
+ *   (aligned with pricing.ts extension rules; never uses contractedCost values in the model).
+ * - Manual / unsupported / missing qty: sellingPrice is treated as a lump stay amount.
+ */
+export function customerFacingHotelSell(line: Record<string, unknown>): HotelInformationalSell {
+  const unitOrLump = moneyNumber(line.sellingPrice);
+  if (unitOrLump <= 0) {
+    return { amount: 0, basis: "lump_selling" };
+  }
+
+  const contracted = isContractedHotelLine(line);
+  const rateUnit = hotelLineRateUnit(line);
+
+  if (contracted && rateUnit === "PER_ROOM_NIGHT") {
+    const rooms = Math.round(Number(line.rooms ?? 0) || 0);
+    const nights = isoStayNights(line.checkIn, line.checkOut)
+      ?? (Number(line.nights) > 0 ? Math.round(Number(line.nights)) : 0);
+    if (rooms > 0 && nights > 0) {
+      return {
+        amount: unitOrLump * rooms * nights,
+        unitPrice: unitOrLump,
+        rooms,
+        nights,
+        basis: "room_night_extended",
+      };
+    }
+    // Rate unit known but quantities incomplete — do not invent multipliers.
+    return { amount: unitOrLump, unitPrice: unitOrLump, basis: "unextended_unit" };
+  }
+
+  // MANUAL / catalogue fallback / unsupported unit: sellingPrice is already the commercial line amount.
+  return { amount: unitOrLump, basis: "lump_selling" };
+}
+
+function formatHotelDetail(sell: HotelInformationalSell, currency: string): string | undefined {
+  if (sell.basis !== "room_night_extended" || sell.unitPrice == null || !sell.rooms || !sell.nights) {
+    return undefined;
+  }
+  const unit = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(sell.unitPrice);
+  const code = (currency || "INR").toUpperCase();
+  const prefix = code === "INR" ? "Rs" : code;
+  const roomLabel = sell.rooms === 1 ? "1 room" : `${sell.rooms} rooms`;
+  const nightLabel = sell.nights === 1 ? "1 night" : `${sell.nights} nights`;
+  return `${prefix} ${unit} × ${roomLabel} × ${nightLabel}`;
+}
+
+function hotelServiceTotal(
+  hotels: Record<string, unknown>[],
+  currency: string,
+): { amount: number; detail?: string; basis?: HotelInformationalSell["basis"] } {
+  const parts = hotels.map(customerFacingHotelSell).filter((p) => p.amount > 0);
+  if (!parts.length) return { amount: 0 };
+  const amount = parts.reduce((s, p) => s + p.amount, 0);
+  if (parts.length === 1) {
+    return {
+      amount,
+      detail: formatHotelDetail(parts[0], currency),
+      basis: parts[0].basis,
+    };
+  }
+  // Multiple hotels: aggregate amount only; avoid a misleading single formula.
+  const allExtended = parts.every((p) => p.basis === "room_night_extended");
+  return {
+    amount,
+    basis: allExtended ? "room_night_extended" : undefined,
+  };
+}
+
 function groupInclusions(items: string[]): Array<{ label: string; items: string[] }> {
   if (!items.length) return [];
   const groups: Record<string, string[]> = {
@@ -607,10 +727,8 @@ function mapPackage(pkg: Record<string, unknown>, quote: Record<string, unknown>
   const activities = mapActivities(asArr(pkg.activities));
   const meals = mapMeals(asArr(pkg.meals));
   const addOns = mapAddOns(asArr(pkg.addOns));
-  const hotelSell = asArr(pkg.hotels).reduce((s, h) => {
-    const n = Number(h.sellingPrice);
-    return s + (Number.isFinite(n) && n > 0 ? Math.round(n) : 0);
-  }, 0);
+  const pricing = packagePricing(pkg, quote);
+  const hotelTotal = hotelServiceTotal(asArr(pkg.hotels), pricing.currency);
   return {
     name: str(pkg.name, "Package"),
     description: str(pkg.description) || undefined,
@@ -627,26 +745,31 @@ function mapPackage(pkg: Record<string, unknown>, quote: Record<string, unknown>
     exclusions,
     inclusionGroups: groupInclusions(inclusions),
     serviceTotals: [
-      { label: "Hotels", amount: hotelSell },
+      {
+        label: "Hotels",
+        amount: hotelTotal.amount,
+        detail: hotelTotal.detail,
+        basis: hotelTotal.basis,
+      },
       { label: "Flights", amount: sumSelling(flights) },
       { label: "Cars & Transfers", amount: sumSelling(transfers) },
       { label: "Activities", amount: sumSelling(activities) },
       { label: "Meals", amount: sumSelling(meals) },
       { label: "Add-ons", amount: sumSelling(addOns) },
     ].filter((r) => r.amount > 0),
-    pricing: packagePricing(pkg, quote),
+    pricing,
   };
 }
 
-function resolveAgentName(quote: Record<string, unknown>, brandingName: string): string {
+function resolveAgentName(quote: Record<string, unknown>, agencyFallback: string): string {
   const candidates = [
     str(quote.agentName),
     str(quote.salesExecutiveName),
     str(quote.createdBy),
-    brandingName,
-    "Trevio Global",
+    agencyFallback,
+    TREVIO_BRAND_NAME,
   ].filter((v) => v && !/^undefined$/i.test(v) && !/^null$/i.test(v));
-  return candidates[0] || "Trevio Global";
+  return candidates[0] || TREVIO_BRAND_NAME;
 }
 
 function buildOverviewNotes(quote: Record<string, unknown>, pkg: QuotationPdfPackage): string[] {
@@ -754,7 +877,8 @@ export function buildQuotationPdfModel(input: {
     || primary?.hotels.find((h) => h.imageUrl)?.imageUrl
     || undefined;
   const branding = input.branding || {};
-  const agencyName = str(branding.agencyName, "Trevio Global");
+  // Agency name is for partner contacts / agent fallback only — not the document header brand.
+  const agencyName = str(branding.agencyName, TREVIO_BRAND_NAME);
   const visa = asRecord(first.visa);
   const insurance = asRecord(first.insurance);
   const routeLabel = departureCity
@@ -815,14 +939,15 @@ export function buildQuotationPdfModel(input: {
     overviewNotes: buildOverviewNotes(quote, primary),
     packages: mappedPackages,
     branding: {
-      brandName: agencyName,
-      legalName: "TREVIO GLOBAL VOYAGE PRIVATE LIMITED",
+      // Quotation PDFs are Trevio Global documents. Agency name must not replace the running header.
+      brandName: TREVIO_BRAND_NAME,
+      legalName: TREVIO_LEGAL_NAME,
       logo: isImgUrl(branding.logo) ? str(branding.logo) : undefined,
       watermark: isImgUrl(branding.watermark) ? str(branding.watermark) : undefined,
       phone: str(branding.phone) || undefined,
       email: str(branding.email) || undefined,
       address: str(branding.address) || undefined,
-      footerText: str(branding.footerText) || agencyName,
+      footerText: str(branding.footerText) || TREVIO_BRAND_NAME,
     },
     mode: input.mode,
     audience: input.audience,

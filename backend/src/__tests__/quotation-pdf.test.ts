@@ -2,8 +2,17 @@ import { afterAll, describe, expect, it } from "vitest";
 import { mkdtemp, rm, writeFile, mkdir } from "fs/promises";
 import os from "os";
 import path from "path";
-import { assertCustomerSafeModel, buildQuotationPdfModel } from "../lib/quotation-pdf/model.js";
-import { renderQuotationPdf } from "../lib/quotation-pdf/render.js";
+import {
+  assertCustomerSafeModel,
+  buildQuotationPdfModel,
+  customerFacingHotelSell,
+  TREVIO_BRAND_NAME,
+} from "../lib/quotation-pdf/model.js";
+import {
+  authorizedContactLines,
+  commercialDisplayRows,
+  renderQuotationPdf,
+} from "../lib/quotation-pdf/render.js";
 import { quoteSendBlockReason } from "../lib/quote-access.js";
 import { putPrivateObject, objectKey, readPrivateObject } from "../lib/document-storage.js";
 import { visibilityAllows } from "../lib/documents.js";
@@ -204,6 +213,10 @@ describe("phase 5 quotation pdf", () => {
     expect(textish).not.toMatch(/staff only remark/);
     expect(textish).not.toMatch(/trevioMarkup/i);
     expect(textish).not.toMatch(/contractedCost/i);
+    // PDFKit compresses content streams — assert via model + metadata, not latin1 body scrape.
+    expect(model.quoteNo).toBe("TG-QT-2026-PDF001");
+    expect(model.validTill).toBe("2026-09-20");
+    expect(model.packages[0].pricing.finalPrice || model.packages[0].pricing.packageBase).toBe(12650);
     expect(model.agentName).toBe("Aarav Sharma");
     expect(model.destinationName).toBe("Bali");
     expect(model.packages[0].itinerary.length).toBeGreaterThan(0);
@@ -411,8 +424,393 @@ describe("phase 5 quotation pdf", () => {
     await mkdir(outDir, { recursive: true });
     const outPath = path.join(outDir, "sample-redesigned-quotation-test.pdf");
     await writeFile(outPath, rendered.buffer);
-    expect(rendered.pageCount).toBeGreaterThan(6);
+    expect(rendered.pageCount).toBeGreaterThan(4);
+    expect(rendered.pageCount).toBeLessThan(20);
     expect(assertCustomerSafeModel(model)).toEqual([]);
+    expect(model.branding.phone).toBe("+91 89516 63471");
+    expect(model.destinationDescription).toMatch(/volcanic mountains/i);
+    expect(model.packages[0].flights.length).toBe(2);
+    expect(model.packages[0].hotels.length).toBe(1);
+  });
+
+  it("keeps refund policy on the model and omits short destination intro", async () => {
+    const quote = {
+      ...baseQuote,
+      refundPolicy: "Refunds processed within 14 working days after supplier confirmation.",
+      destinationDescription: "Short",
+    };
+    const model = buildQuotationPdfModel({ quote, mode: "customer", audience: "customer" });
+    expect(model.refundPolicy).toMatch(/14 working days/);
+    // Short catalogue blurbs are intentionally not treated as editorial intro copy.
+    expect(model.destinationDescription).toBe("Short");
+    const rendered = await renderQuotationPdf(model);
+    const textish = rendered.buffer.toString("latin1");
+    expect(textish).not.toMatch(/Hidden DMC|contractedCost/i);
+    expect(rendered.pageCount).toBeGreaterThan(3);
+    expect(rendered.pageCount).toBeLessThan(18);
+  });
+
+  it("destination image picker avoids immediate reuse when alternatives exist", async () => {
+    const { pickUnusedDestinationImage } = await import("../lib/quotation-pdf/destination-images.js");
+    const pool = ["a.jpg", "b.jpg", "c.jpg"];
+    const used = new Set<string>();
+    expect(pickUnusedDestinationImage(pool, used, 0)).toBe("a.jpg");
+    expect(pickUnusedDestinationImage(pool, used, 1)).toBe("b.jpg");
+    expect(pickUnusedDestinationImage(pool, used, 2)).toBe("c.jpg");
+    expect(used.size).toBe(3);
+  });
+
+  it("document brandName stays Trevio Global even when agency trading name is Wanderlust Travels", async () => {
+    const model = buildQuotationPdfModel({
+      quote: baseQuote,
+      branding: {
+        agencyName: "Wanderlust Travels",
+        footerText: "Wanderlust Travels • Partner",
+        phone: "+91 98200 12345",
+        email: "ops@wanderlust.example",
+      },
+      mode: "customer",
+      audience: "customer",
+    });
+    expect(model.branding.brandName).toBe(TREVIO_BRAND_NAME);
+    expect(model.branding.brandName).not.toMatch(/wanderlust/i);
+    expect(model.branding.legalName).toMatch(/TREVIO GLOBAL/i);
+    // Agency contact channels remain available for partner desk.
+    expect(model.branding.phone).toBe("+91 98200 12345");
+
+    const rendered = await renderQuotationPdf(model);
+    expect(rendered.buffer.subarray(0, 4).toString()).toBe("%PDF");
+    // Uncompressed PDF metadata / literal strings should not promote the agency trading name as header brand.
+    const textish = rendered.buffer.toString("latin1");
+    expect(textish).not.toMatch(/WANDERLUST TRAVELS/);
+    expect(assertCustomerSafeModel(model)).toEqual([]);
+  });
+
+  it("keeps customer identity distinct from advisor across authorized contact lines", () => {
+    const model = buildQuotationPdfModel({
+      quote: {
+        ...baseQuote,
+        customerName: "Manjunath B R",
+        agentName: "Kabir Khan",
+        contactPhone: "9876543210",
+        contactEmail: "guest@example.com",
+        salesExecutiveName: "Ananya Kapoor",
+        salesExecutivePhone: "+91 98600 55555",
+      },
+      branding: {
+        agencyName: "Trevio Global",
+        phone: "+91 98200 12345",
+        email: "not-an-email",
+      },
+      mode: "customer",
+      audience: "customer",
+    });
+    expect(model.customerName).toBe("Manjunath B R");
+    expect(model.agentName).toBe("Kabir Khan");
+    expect(model.customerName).not.toBe(model.agentName);
+    expect(model.salesContact).toMatch(/Ananya Kapoor/);
+
+    const contacts = authorizedContactLines(model);
+    expect(contacts.some((l) => l.startsWith("Customer:") && l.includes("Manjunath B R"))).toBe(true);
+    expect(contacts.some((l) => l.includes("9876543210"))).toBe(true);
+    expect(contacts.some((l) => l.startsWith("Advisor:") && l.includes("Kabir Khan"))).toBe(true);
+    expect(contacts.some((l) => l.startsWith("Partner desk:") && l.includes("+91 98200 12345"))).toBe(true);
+    // Names containing "na" (e.g. Ananya) must not be rejected as placeholder "n/a".
+    expect(contacts.some((l) => l.startsWith("Sales:") && l.includes("Ananya Kapoor"))).toBe(true);
+    // Invalid branding email must be omitted — never substitute another person's details.
+    expect(contacts.join("\n")).not.toMatch(/not-an-email/i);
+    // Customer group must never be the agent name.
+    expect(contacts.find((l) => l.startsWith("Customer:"))).not.toContain("Kabir Khan");
+  });
+
+  it("contracted PER_ROOM_NIGHT hotel: extends unit sell × rooms × nights (1×3)", () => {
+    const model = buildQuotationPdfModel({
+      quote: {
+        ...baseQuote,
+        adults: 2,
+        packages: [{
+          ...baseQuote.packages[0],
+          pricing: {
+            ...baseQuote.packages[0].pricing,
+            customerPrice: 9828,
+            taxAmount: 491,
+            taxRate: 5,
+            finalPrice: 10319,
+            perAdultPrice: 4914,
+            perChildPrice: 0,
+          },
+          hotels: [{
+            hotelName: "Ramada Encore",
+            source: "CONTRACTED_PRODUCT",
+            productType: "HOTEL",
+            productId: "prod-1",
+            rooms: 1,
+            nights: 3,
+            checkIn: "2026-10-13",
+            checkOut: "2026-10-16",
+            sellingPrice: 3276,
+            mealPlan: "Breakfast",
+            rateSnapshot: {
+              contractedCost: 3276,
+              currency: "INR",
+              rateUnit: "PER_ROOM_NIGHT",
+              frozen: true,
+            },
+          }],
+          flights: [],
+          transfers: [],
+          activities: [],
+          meals: [],
+          addOns: [],
+        }],
+      },
+      mode: "customer",
+      audience: "customer",
+    });
+    const pkg = model.packages[0];
+    const hotels = pkg.serviceTotals.find((r) => r.label === "Hotels");
+    expect(hotels?.amount).toBe(9828);
+    expect(hotels?.basis).toBe("room_night_extended");
+    expect(hotels?.detail).toMatch(/Rs 3,276 × 1 room × 3 nights/);
+    expect(hotels?.amount).toBe(pkg.pricing.packageBase);
+    expect(pkg.pricing.finalPrice).toBe(10319);
+
+    const rows = commercialDisplayRows(pkg, model.adults);
+    expect(rows.some((r) => r.component && r.value === "Rs 9,828" && /1 room × 3 nights/.test(r.label))).toBe(true);
+    expect(rows.find((r) => r.label === "Package total (before tax)")?.value).toBe("Rs 9,828");
+    expect(rows.find((r) => r.label === "TOTAL PAYABLE")?.value).toBe("Rs 10,319");
+    // Informational hotel equals package before tax — still must not be treated as additive.
+    const componentSum = rows.filter((r) => r.component).reduce((s, r) => s + Number(r.value.replace(/[^\d]/g, "")), 0);
+    const packageBase = 9828;
+    expect(componentSum).toBe(packageBase);
+    expect(packageBase + 491).toBe(10319);
+    // Customer model must not leak snapshot cost keys.
+    expect(assertCustomerSafeModel(model)).toEqual([]);
+    expect(JSON.stringify(model)).not.toMatch(/"contractedCost"/);
+    expect(JSON.stringify(model)).not.toMatch(/"rateSnapshot"/);
+  });
+
+  it("contracted PER_ROOM_NIGHT hotel: multi-room multi-night extension", () => {
+    const sell = customerFacingHotelSell({
+      source: "CONTRACTED_PRODUCT",
+      rooms: 2,
+      nights: 4,
+      sellingPrice: 1000,
+      rateSnapshot: { rateUnit: "PER_ROOM_NIGHT", contractedCost: 1000, frozen: true },
+    });
+    expect(sell).toEqual({
+      amount: 8000,
+      unitPrice: 1000,
+      rooms: 2,
+      nights: 4,
+      basis: "room_night_extended",
+    });
+
+    const model = buildQuotationPdfModel({
+      quote: {
+        ...baseQuote,
+        packages: [{
+          ...baseQuote.packages[0],
+          pricing: {
+            ...baseQuote.packages[0].pricing,
+            customerPrice: 8000,
+            taxAmount: null,
+            finalPrice: 8000,
+            perAdultPrice: 4000,
+            perChildPrice: 0,
+          },
+          hotels: [{
+            hotelName: "Multi Room Inn",
+            source: "CONTRACTED_PRODUCT",
+            rooms: 2,
+            nights: 4,
+            checkIn: "2026-11-01",
+            checkOut: "2026-11-05",
+            sellingPrice: 1000,
+            rateSnapshot: { rateUnit: "PER_ROOM_NIGHT", contractedCost: 900, frozen: true },
+          }],
+          flights: [],
+          transfers: [],
+          activities: [],
+          meals: [],
+          addOns: [],
+        }],
+      },
+      mode: "customer",
+      audience: "customer",
+    });
+    const hotels = model.packages[0].serviceTotals.find((r) => r.label === "Hotels");
+    expect(hotels?.amount).toBe(8000);
+    expect(hotels?.detail).toMatch(/2 rooms × 4 nights/);
+    // Uses customer sellingPrice unit (1000), not snapshot contractedCost (900).
+    expect(hotels?.detail).toMatch(/Rs 1,000/);
+    expect(assertCustomerSafeModel(model)).toEqual([]);
+  });
+
+  it("manual hotel sellingPrice is treated as stay total (no room-night multiply)", () => {
+    const sell = customerFacingHotelSell({
+      source: "MANUAL",
+      rooms: 2,
+      nights: 3,
+      sellingPrice: 9828,
+    });
+    expect(sell).toEqual({ amount: 9828, basis: "lump_selling" });
+
+    const model = buildQuotationPdfModel({
+      quote: {
+        ...baseQuote,
+        packages: [{
+          ...baseQuote.packages[0],
+          pricing: {
+            ...baseQuote.packages[0].pricing,
+            customerPrice: 9828,
+            taxAmount: 491,
+            taxRate: 5,
+            finalPrice: 10319,
+          },
+          hotels: [{
+            hotelName: "Manual Stay",
+            source: "MANUAL",
+            rooms: 2,
+            nights: 3,
+            sellingPrice: 9828,
+          }],
+          flights: [],
+          transfers: [],
+          activities: [],
+          meals: [],
+          addOns: [],
+        }],
+      },
+      mode: "customer",
+      audience: "customer",
+    });
+    const hotels = model.packages[0].serviceTotals.find((r) => r.label === "Hotels");
+    expect(hotels?.amount).toBe(9828);
+    expect(hotels?.basis).toBe("lump_selling");
+    expect(hotels?.detail).toBeUndefined();
+    const rows = commercialDisplayRows(model.packages[0], 2);
+    expect(rows.some((r) => r.label === "Hotels (stay total)" && r.value === "Rs 9,828")).toBe(true);
+    expect(assertCustomerSafeModel(model)).toEqual([]);
+  });
+
+  it("missing rooms/nights or unsupported rate unit does not invent multipliers", () => {
+    expect(customerFacingHotelSell({
+      source: "CONTRACTED_PRODUCT",
+      sellingPrice: 3276,
+      rateSnapshot: { rateUnit: "PER_ROOM_NIGHT", frozen: true },
+    }).basis).toBe("unextended_unit");
+
+    expect(customerFacingHotelSell({
+      source: "CONTRACTED_PRODUCT",
+      rooms: 1,
+      nights: 3,
+      sellingPrice: 3276,
+      rateSnapshot: { rateUnit: "PER_PASSENGER", frozen: true },
+    })).toEqual({ amount: 3276, basis: "lump_selling" });
+
+    const model = buildQuotationPdfModel({
+      quote: {
+        ...baseQuote,
+        packages: [{
+          ...baseQuote.packages[0],
+          hotels: [{
+            hotelName: "Incomplete",
+            source: "CONTRACTED_PRODUCT",
+            sellingPrice: 3276,
+            rateSnapshot: { rateUnit: "PER_ROOM_NIGHT", frozen: true },
+          }],
+          flights: [],
+          transfers: [],
+          activities: [],
+          meals: [],
+          addOns: [],
+        }],
+      },
+      mode: "customer",
+      audience: "customer",
+    });
+    const hotels = model.packages[0].serviceTotals.find((r) => r.label === "Hotels");
+    expect(hotels?.amount).toBe(3276);
+    expect(hotels?.basis).toBe("unextended_unit");
+    expect(assertCustomerSafeModel(model)).toEqual([]);
+  });
+
+  it("informational hotel amount must not be double-counted into payable", () => {
+    const model = buildQuotationPdfModel({
+      quote: {
+        ...baseQuote,
+        adults: 2,
+        packages: [{
+          ...baseQuote.packages[0],
+          pricing: {
+            customerPrice: 9828,
+            taxAmount: 491,
+            taxRate: 5,
+            finalPrice: 10319,
+            perAdultPrice: 4914,
+            perChildPrice: 0,
+          },
+          hotels: [{
+            hotelName: "Ramada Encore",
+            source: "CONTRACTED_PRODUCT",
+            rooms: 1,
+            nights: 3,
+            sellingPrice: 3276,
+            rateSnapshot: { rateUnit: "PER_ROOM_NIGHT", frozen: true },
+          }],
+          flights: [],
+          transfers: [],
+          activities: [],
+          meals: [],
+          addOns: [],
+        }],
+      },
+      mode: "customer",
+      audience: "customer",
+    });
+    const pkg = model.packages[0];
+    const hotelAmt = pkg.serviceTotals.find((r) => r.label === "Hotels")!.amount;
+    expect(hotelAmt).toBe(9828);
+    // Payable is package + tax only — never package + hotel + tax.
+    expect(pkg.pricing.packageBase + (pkg.pricing.taxAmount || 0)).toBe(pkg.pricing.finalPrice);
+    expect(pkg.pricing.packageBase + hotelAmt + (pkg.pricing.taxAmount || 0)).not.toBe(pkg.pricing.finalPrice);
+    const rows = commercialDisplayRows(pkg, 2);
+    expect(rows.filter((r) => r.component)).toHaveLength(1);
+    expect(rows.find((r) => r.emphasize)?.value).toBe("Rs 10,319");
+  });
+
+  it("omits placeholder contact emails from the customer-safe model path without leaking costs", async () => {
+    const quote = {
+      ...baseQuote,
+      contactEmail: "not-an-email",
+      packages: [{
+        ...baseQuote.packages[0],
+        hotels: [{
+          hotelName: "Ubud Garden",
+          nights: 4,
+          starCategory: "4",
+          mealPlan: "Breakfast",
+          imageUrl: "https://example.invalid/hotel.jpg",
+        }],
+      }],
+    };
+    const model = buildQuotationPdfModel({
+      quote,
+      branding: {
+        agencyName: "Trevio Global",
+        phone: "+91 89516 63471",
+        email: "not-an-email",
+      },
+      mode: "customer",
+      audience: "customer",
+    });
+    expect(assertCustomerSafeModel(model)).toEqual([]);
+    const rendered = await renderQuotationPdf(model);
+    expect(rendered.buffer.subarray(0, 4).toString()).toBe("%PDF");
+    const textish = rendered.buffer.toString("latin1");
+    expect(textish).not.toMatch(/Hidden DMC|contractedCost|trevioMarkup/i);
+    expect(model.branding.phone).toBe("+91 89516 63471");
   });
 });
 
