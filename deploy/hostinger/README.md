@@ -33,11 +33,19 @@ Both should return `200.234.47.151` before Certbot.
 
 ## 2. First-time server setup
 
-SSH in:
+### SSH access (required)
+
+From this workstation, key auth currently fails (`Permission denied`). Add this public key in Hostinger hPanel → VPS → SSH keys (or `~/.ssh/authorized_keys` on the server), **or** provide the root password so deploy can continue:
+
+```
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPZCSQr8KMM5IYrmSoMhpYj4N9sf5+gEM5D7MJHlVOlZ trevio-hostinger-deploy
+```
+
+Then connect with:
 
 ```bash
-ssh root@200.234.47.151
-# or: ssh YOUR_USER@200.234.47.151
+ssh -i ~/.ssh/trevio_vps root@200.234.47.151
+# or: ssh root@200.234.47.151
 ```
 
 Clone is handled by setup (or clone manually first):
